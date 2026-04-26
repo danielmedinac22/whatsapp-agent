@@ -1,6 +1,7 @@
 import { auth, signOut } from "@/auth";
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { ConnectionIndicator } from "./connection-indicator";
 
 export default async function AppLayout({
   children,
@@ -26,8 +27,13 @@ export default async function AppLayout({
           <NavLink href="/inbox" label="Inbox" />
           <NavLink href="/templates" label="Plantillas" />
           <NavLink href="/agent" label="Agente" />
+          <NavLink href="/orders" label="Pedidos" />
           <NavLink href="/connection" label="Conexión" />
         </nav>
+
+        <div className="my-3">
+          <ConnectionIndicator />
+        </div>
 
         <form
           action={async () => {

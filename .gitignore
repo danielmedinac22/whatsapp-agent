@@ -33,3 +33,4 @@ auth_info_baileys/
 # misc
 .turbo/
 coverage/
+.vercel

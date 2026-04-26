@@ -89,7 +89,7 @@ export async function startSession(opts?: { reset?: boolean }) {
       printQRInTerminal: false,
       browser: Browsers.appropriate("Chrome"),
       version,
-      logger: logger.child({ module: "baileys" }) as never,
+      logger: logger.child({ module: "baileys" }, { level: "warn" }) as never,
       markOnlineOnConnect: false,
       syncFullHistory: false,
     });

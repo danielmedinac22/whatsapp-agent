@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 export type ChatItem = {
@@ -111,6 +111,14 @@ function ConversationPane({ chat }: { chat: ChatItem }) {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({
+      top: scrollRef.current.scrollHeight,
+      behavior: "smooth",
+    });
+  }, [msgs]);
 
   const reload = async () => {
     const r = await fetch(`/api/conversations/${chat.id}/messages`, {
@@ -190,7 +198,7 @@ function ConversationPane({ chat }: { chat: ChatItem }) {
         </button>
       </header>
 
-      <div className="flex-1 space-y-2 overflow-y-auto p-4">
+      <div ref={scrollRef} className="flex-1 space-y-2 overflow-y-auto p-4">
         {msgs.map((m) => (
           <div
             key={m.id}
