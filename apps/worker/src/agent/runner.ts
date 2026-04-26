@@ -104,7 +104,18 @@ async function flushBuffer(contactId: string) {
       () => {},
     );
 
-    await sock.sendMessage(entry.contact.jid, { text: reply });
+    try {
+      await sock.sendMessage(entry.contact.jid, { text: reply });
+    } catch (sendErr) {
+      logger.warn(
+        { err: sendErr },
+        "first sendMessage failed, retrying once after 1.5s",
+      );
+      await new Promise((r) => setTimeout(r, 1500));
+      const sock2 = getSocket();
+      if (!sock2) throw sendErr;
+      await sock2.sendMessage(entry.contact.jid, { text: reply });
+    }
 
     // mark stored message as fromAgent — message-handler will persist via fromMe echo
     // ensure persistence even if echo is delayed

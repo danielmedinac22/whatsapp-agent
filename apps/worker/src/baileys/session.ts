@@ -54,6 +54,10 @@ async function setStatus(next: WaConnectionStatus, phone?: string | null) {
 }
 
 export async function startSession(opts?: { reset?: boolean }) {
+  if (status === "connected" && sock && !opts?.reset) {
+    logger.info("already connected — start request is a no-op");
+    return;
+  }
   if (starting) {
     logger.info("session start already in progress");
     return;
@@ -127,13 +131,21 @@ export async function startSession(opts?: { reset?: boolean }) {
           | undefined;
         const code = err?.output?.statusCode ?? DisconnectReason.connectionClosed;
         const loggedOut = code === DisconnectReason.loggedOut;
-        logger.warn({ code, loggedOut }, "whatsapp disconnected");
+        const replaced = code === DisconnectReason.connectionReplaced;
+        logger.warn({ code, loggedOut, replaced }, "whatsapp disconnected");
 
         if (loggedOut) {
           await authHandle?.clear();
           authHandle = null;
           currentQr = null;
           await setStatus("disconnected");
+        } else if (replaced) {
+          logger.warn(
+            "session replaced by another client — stopping auto-reconnect; user must re-pair",
+          );
+          await setStatus("disconnected");
+          sock = null;
+          // do NOT auto-reconnect; this would create a ban-prone tight loop
         } else {
           await setStatus("disconnected");
           starting = false;
