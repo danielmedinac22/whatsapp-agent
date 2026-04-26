@@ -1,0 +1,29 @@
+{
+  "name": "whatsapp-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "WhatsApp dashboard with Baileys + Shopify follow-up + OpenRouter agent",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@10.30.3",
+  "scripts": {
+    "dev": "pnpm -r --parallel --filter=./apps/* dev",
+    "dev:web": "pnpm --filter @wa/web dev",
+    "dev:worker": "pnpm --filter @wa/worker dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "db:generate": "pnpm --filter @wa/db generate",
+    "db:push": "pnpm --filter @wa/db push",
+    "db:migrate": "pnpm --filter @wa/db migrate",
+    "db:seed": "pnpm --filter @wa/db seed",
+    "db:studio": "pnpm --filter @wa/db studio"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "tsx": "^4.19.2",
+    "@types/node": "^22.10.2"
+  }
+}
