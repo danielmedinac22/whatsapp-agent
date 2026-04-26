@@ -104,8 +104,9 @@ async function flushBuffer(contactId: string) {
       () => {},
     );
 
+    let sendResult: Awaited<ReturnType<typeof sock.sendMessage>>;
     try {
-      await sock.sendMessage(entry.contact.jid, { text: reply });
+      sendResult = await sock.sendMessage(entry.contact.jid, { text: reply });
     } catch (sendErr) {
       logger.warn(
         { err: sendErr },
@@ -114,18 +115,29 @@ async function flushBuffer(contactId: string) {
       await new Promise((r) => setTimeout(r, 1500));
       const sock2 = getSocket();
       if (!sock2) throw sendErr;
-      await sock2.sendMessage(entry.contact.jid, { text: reply });
+      sendResult = await sock2.sendMessage(entry.contact.jid, { text: reply });
     }
 
-    // mark stored message as fromAgent — message-handler will persist via fromMe echo
-    // ensure persistence even if echo is delayed
-    await db.insert(messages).values({
-      conversationId: entry.conversation.id,
-      direction: "out",
-      body: reply,
-      status: "sent",
-      fromAgent: true,
-    });
+    // Upsert by wa_id so the messages.upsert echo from Baileys dedupes against
+    // this row. If our row arrives first, the echo's onConflictDoNothing skips.
+    // If the echo arrives first (without fromAgent), we update fromAgent=true.
+    const waId = sendResult?.key?.id ?? null;
+    if (waId) {
+      await db
+        .insert(messages)
+        .values({
+          conversationId: entry.conversation.id,
+          direction: "out",
+          waId,
+          body: reply,
+          status: "sent",
+          fromAgent: true,
+        })
+        .onConflictDoUpdate({
+          target: messages.waId,
+          set: { fromAgent: true, body: reply, status: "sent" },
+        });
+    }
 
     await db.insert(agentRuns).values({
       conversationId: entry.conversation.id,
