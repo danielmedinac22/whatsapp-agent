@@ -61,6 +61,7 @@ export default async function OrdersPage() {
                 <th className="px-4 py-3">Recibido</th>
                 <th className="px-4 py-3">Estado</th>
                 <th className="px-4 py-3">Follow-up</th>
+                <th className="px-4 py-3">Remarketing</th>
               </tr>
             </thead>
             <tbody>
@@ -96,6 +97,13 @@ export default async function OrdersPage() {
                         ? `enviado ${fmt(o.followupSentAt)}`
                         : o.followupScheduledFor
                           ? `agendado ${fmt(o.followupScheduledFor)}`
+                          : "—"}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-[var(--color-text-dim)]">
+                      {o.remarketingSentAt
+                        ? `enviado ${fmt(o.remarketingSentAt)}`
+                        : o.remarketingScheduledFor
+                          ? `agendado ${fmt(o.remarketingScheduledFor)}`
                           : "—"}
                     </td>
                   </tr>

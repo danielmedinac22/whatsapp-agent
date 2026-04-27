@@ -192,6 +192,13 @@ export const agentSettings = pgTable("agent_settings", {
     () => templates.id,
     { onDelete: "set null" },
   ),
+  remarketingDelayMs: integer("remarketing_delay_ms")
+    .notNull()
+    .default(3 * 60 * 60 * 1000),
+  remarketingTemplateId: uuid("remarketing_template_id").references(
+    () => templates.id,
+    { onDelete: "set null" },
+  ),
   activateAgentOnConfirm: boolean("activate_agent_on_confirm")
     .notNull()
     .default(true),
@@ -228,6 +235,13 @@ export const shopifyOrders = pgTable(
     followupJobId: text("followup_job_id"),
     followupSentAt: timestamp("followup_sent_at", { withTimezone: true }),
     confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+    remarketingScheduledFor: timestamp("remarketing_scheduled_for", {
+      withTimezone: true,
+    }),
+    remarketingJobId: text("remarketing_job_id"),
+    remarketingSentAt: timestamp("remarketing_sent_at", {
+      withTimezone: true,
+    }),
   },
   (t) => [
     uniqueIndex("shopify_orders_order_id_idx").on(t.orderId),

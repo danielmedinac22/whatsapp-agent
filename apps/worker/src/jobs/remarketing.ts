@@ -1,4 +1,4 @@
-import { eq, and, gte } from "@wa/db";
+import { and, eq, gte } from "@wa/db";
 import {
   agentSettings,
   contacts,
@@ -12,28 +12,31 @@ import { logger } from "../lib/logger";
 import { getSocket } from "../baileys/session";
 import { renderTemplate } from "../lib/template";
 import { extractOrderVariables } from "../shopify/extract";
-import { FOLLOWUP_QUEUE, getBoss } from "./queue";
+import { REMARKETING_QUEUE, getBoss } from "./queue";
 
-interface FollowupPayload {
+interface RemarketingPayload {
   orderId: string;
 }
 
-async function handleFollowup({ orderId }: FollowupPayload) {
+async function handleRemarketing({ orderId }: RemarketingPayload) {
   const [order] = await db
     .select()
     .from(shopifyOrders)
     .where(eq(shopifyOrders.id, orderId))
     .limit(1);
   if (!order) {
-    logger.warn({ orderId }, "follow-up: order not found");
+    logger.warn({ orderId }, "remarketing: order not found");
     return;
   }
-  if (order.confirmedAt || order.followupSentAt) {
-    logger.info({ orderId }, "follow-up: already handled, skipping");
+  if (order.confirmedAt || order.remarketingSentAt) {
+    logger.info(
+      { orderId },
+      "remarketing: already confirmed or sent, skipping",
+    );
     return;
   }
   if (!order.contactId) {
-    logger.warn({ orderId }, "follow-up: no contact linked");
+    logger.warn({ orderId }, "remarketing: no contact linked");
     return;
   }
 
@@ -50,7 +53,7 @@ async function handleFollowup({ orderId }: FollowupPayload) {
     .where(eq(conversations.contactId, contact.id))
     .limit(1);
 
-  // Did the customer reply since the order was received?
+  // Customer answered at any point since order — never remarket; mark confirmed.
   if (conv) {
     const [reply] = await db
       .select()
@@ -64,54 +67,43 @@ async function handleFollowup({ orderId }: FollowupPayload) {
       )
       .limit(1);
     if (reply) {
-      logger.info({ orderId }, "customer replied — skipping follow-up");
-      const [s] = await db
-        .select()
-        .from(agentSettings)
-        .where(eq(agentSettings.id, 1))
-        .limit(1);
-      await db
-        .update(shopifyOrders)
-        .set({ status: "confirmed", confirmedAt: new Date() })
-        .where(eq(shopifyOrders.id, order.id));
-      if (s?.activateAgentOnConfirm) {
+      logger.info(
+        { orderId },
+        "remarketing: customer already replied, skipping",
+      );
+      if (!order.confirmedAt) {
         await db
-          .update(contacts)
-          .set({ agentMode: true })
-          .where(eq(contacts.id, contact.id));
+          .update(shopifyOrders)
+          .set({ status: "confirmed", confirmedAt: new Date() })
+          .where(eq(shopifyOrders.id, order.id));
       }
       return;
     }
   }
 
-  // Send follow-up template
   const [s] = await db
     .select()
     .from(agentSettings)
     .where(eq(agentSettings.id, 1))
     .limit(1);
 
-  if (!s?.followupTemplateId) {
-    logger.warn({ orderId }, "no follow-up template configured");
-    await db
-      .update(shopifyOrders)
-      .set({ status: "no_response" })
-      .where(eq(shopifyOrders.id, order.id));
+  if (!s?.remarketingTemplateId) {
+    logger.warn({ orderId }, "no remarketing template configured");
     return;
   }
   const [tpl] = await db
     .select()
     .from(templates)
-    .where(eq(templates.id, s.followupTemplateId))
+    .where(eq(templates.id, s.remarketingTemplateId))
     .limit(1);
   if (!tpl) {
-    logger.warn({ orderId }, "follow-up template missing");
+    logger.warn({ orderId }, "remarketing template missing");
     return;
   }
 
   const sock = getSocket();
   if (!sock) {
-    logger.error({ orderId }, "no whatsapp socket — cannot send follow-up");
+    logger.error({ orderId }, "no whatsapp socket — cannot send remarketing");
     return;
   }
 
@@ -127,45 +119,43 @@ async function handleFollowup({ orderId }: FollowupPayload) {
 
   await db
     .update(shopifyOrders)
-    .set({
-      status: "followup_sent",
-      followupSentAt: new Date(),
-    })
+    .set({ remarketingSentAt: new Date() })
     .where(eq(shopifyOrders.id, order.id));
 
+  // Make sure agent_mode is on so any subsequent reply gets handled.
   await db
     .update(contacts)
     .set({ agentMode: true })
     .where(eq(contacts.id, contact.id));
 
-  logger.info({ orderId, contactId: contact.id }, "follow-up sent");
+  logger.info({ orderId, contactId: contact.id }, "remarketing sent");
 }
 
-export async function scheduleFollowup(orderId: string, delayMs: number) {
+export async function scheduleRemarketing(orderId: string, delayMs: number) {
   const boss = await getBoss();
   const id = await boss.send(
-    FOLLOWUP_QUEUE,
+    REMARKETING_QUEUE,
     { orderId },
     { startAfter: Math.max(1, Math.floor(delayMs / 1000)) },
   );
   return id;
 }
 
-export async function startFollowupWorker() {
+export async function startRemarketingWorker() {
   const boss = await getBoss();
-  await boss.work<FollowupPayload>(
-    FOLLOWUP_QUEUE,
+  await boss.work<RemarketingPayload>(
+    REMARKETING_QUEUE,
     { batchSize: 1 },
     async (jobs) => {
       for (const job of jobs) {
         try {
-          await handleFollowup(job.data);
+          await handleRemarketing(job.data);
         } catch (err) {
-          logger.error({ err, jobId: job.id }, "follow-up job failed");
+          logger.error({ err, jobId: job.id }, "remarketing job failed");
           throw err;
         }
       }
     },
   );
-  logger.info("follow-up worker started");
+  logger.info("remarketing worker started");
 }

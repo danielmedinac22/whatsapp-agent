@@ -8,6 +8,8 @@ type Initial = {
   debounceMs: number;
   followupDelayMs: number;
   followupTemplateId: string | null;
+  remarketingDelayMs: number;
+  remarketingTemplateId: string | null;
   activateAgentOnConfirm: boolean;
 };
 
@@ -145,6 +147,45 @@ export function AgentForm({
           ))}
         </select>
       </Field>
+
+      <div className="grid grid-cols-2 gap-4">
+        <Field
+          label={`Remarketing (${(v.remarketingDelayMs / 3_600_000).toFixed(1)} h)`}
+        >
+          <input
+            type="range"
+            min={60 * 60_000}
+            max={24 * 60 * 60_000}
+            step={30 * 60_000}
+            value={v.remarketingDelayMs}
+            onChange={(e) =>
+              setV({ ...v, remarketingDelayMs: Number(e.target.value) })
+            }
+            className="w-full"
+          />
+          <p className="text-xs text-[var(--color-text-dim)]">
+            Tras el follow-up, segundo intento si el cliente sigue sin
+            responder.
+          </p>
+        </Field>
+
+        <Field label="Plantilla de remarketing">
+          <select
+            value={v.remarketingTemplateId ?? ""}
+            onChange={(e) =>
+              setV({ ...v, remarketingTemplateId: e.target.value || null })
+            }
+            className="w-full rounded bg-[var(--color-panel-2)] px-3 py-2 outline-none"
+          >
+            <option value="">— ninguna —</option>
+            {templates.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </div>
 
       <label className="flex items-center gap-2 text-sm">
         <input

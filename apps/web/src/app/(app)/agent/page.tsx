@@ -26,6 +26,8 @@ export default async function AgentPage() {
             debounceMs: 8000,
             followupDelayMs: 5 * 60 * 1000,
             followupTemplateId: null,
+            remarketingDelayMs: 3 * 60 * 60 * 1000,
+            remarketingTemplateId: null,
             activateAgentOnConfirm: true,
           }
         }

@@ -11,6 +11,7 @@ import { db } from "../db";
 import { logger } from "../lib/logger";
 import { verifyShopifyHmac } from "../shopify/verify";
 import { scheduleFollowup } from "../jobs/followup";
+import { scheduleRemarketing } from "../jobs/remarketing";
 
 export const shopify = new Hono();
 
@@ -104,8 +105,10 @@ shopify.post("/webhook", async (c) => {
     .from(agentSettings)
     .where(eq(agentSettings.id, 1))
     .limit(1);
-  const delay = settings?.followupDelayMs ?? 5 * 60_000;
-  const scheduledFor = new Date(Date.now() + delay);
+  const followupDelay = settings?.followupDelayMs ?? 5 * 60_000;
+  const remarketingDelay = settings?.remarketingDelayMs ?? 3 * 60 * 60_000;
+  const followupAt = new Date(Date.now() + followupDelay);
+  const remarketingAt = new Date(Date.now() + remarketingDelay);
 
   const [stored] = await db
     .insert(shopifyOrders)
@@ -118,19 +121,35 @@ shopify.post("/webhook", async (c) => {
       currency: order.currency ?? null,
       rawPayload: json,
       status: "followup_scheduled",
-      followupScheduledFor: scheduledFor,
+      followupScheduledFor: followupAt,
+      remarketingScheduledFor: remarketingAt,
     })
     .returning();
 
-  const jobId = await scheduleFollowup(stored!.id, delay);
+  const followupJobId = await scheduleFollowup(stored!.id, followupDelay);
+  const remarketingJobId = await scheduleRemarketing(
+    stored!.id,
+    remarketingDelay,
+  );
+
   await db
     .update(shopifyOrders)
-    .set({ followupJobId: jobId ?? null })
+    .set({
+      followupJobId: followupJobId ?? null,
+      remarketingJobId: remarketingJobId ?? null,
+    })
     .where(eq(shopifyOrders.id, stored!.id));
 
   logger.info(
-    { orderId: order.id, contactId: contact!.id, jobId, scheduledFor },
-    "shopify order accepted, follow-up scheduled",
+    {
+      orderId: order.id,
+      contactId: contact!.id,
+      followupJobId,
+      remarketingJobId,
+      followupAt,
+      remarketingAt,
+    },
+    "shopify order accepted, follow-up + remarketing scheduled",
   );
 
   return c.json({ ok: true });

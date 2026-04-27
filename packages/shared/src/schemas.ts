@@ -21,6 +21,8 @@ export const agentSettingsInput = z.object({
   debounceMs: z.number().int().min(0).max(120_000),
   followupDelayMs: z.number().int().min(60_000).max(3_600_000),
   followupTemplateId: z.string().uuid().nullable(),
+  remarketingDelayMs: z.number().int().min(60_000).max(48 * 60 * 60_000),
+  remarketingTemplateId: z.string().uuid().nullable(),
   activateAgentOnConfirm: z.boolean().default(true),
 });
 export type AgentSettingsInput = z.infer<typeof agentSettingsInput>;

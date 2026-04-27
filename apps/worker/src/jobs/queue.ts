@@ -21,3 +21,4 @@ export async function getBoss(): Promise<PgBoss> {
 }
 
 export const FOLLOWUP_QUEUE = "shopify-followup";
+export const REMARKETING_QUEUE = "shopify-remarketing";
