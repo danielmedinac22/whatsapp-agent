@@ -12,6 +12,7 @@ import { logger } from "../lib/logger";
 import { verifyShopifyHmac } from "../shopify/verify";
 import { scheduleFollowup } from "../jobs/followup";
 import { scheduleRemarketing } from "../jobs/remarketing";
+import { getSocket } from "../baileys/session";
 
 export const shopify = new Hono();
 
@@ -24,6 +25,26 @@ function normalizePhone(input: string | null | undefined): string | null {
 
 function jidFromPhone(phone: string): string {
   return `${phone}@s.whatsapp.net`;
+}
+
+async function resolveJid(phone: string): Promise<string> {
+  const sock = getSocket();
+  if (!sock) {
+    logger.warn({ phone }, "no socket — falling back to s.whatsapp.net jid");
+    return jidFromPhone(phone);
+  }
+  try {
+    const results = await sock.onWhatsApp(`+${phone}`);
+    const hit = results?.[0];
+    if (hit?.exists && hit.jid) {
+      logger.info({ phone, resolved: hit.jid }, "resolved phone to jid");
+      return hit.jid;
+    }
+    logger.warn({ phone }, "phone not on whatsapp — using s.whatsapp.net fallback");
+  } catch (err) {
+    logger.warn({ err, phone }, "onWhatsApp lookup failed — using fallback");
+  }
+  return jidFromPhone(phone);
 }
 
 shopify.post("/webhook", async (c) => {
@@ -58,8 +79,8 @@ shopify.post("/webhook", async (c) => {
     .join(" ")
     .trim() || order.shipping_address?.name || null;
 
-  // Upsert contact + conversation linked to phone
-  const jid = jidFromPhone(phone);
+  // Resolve the actual JID via Baileys — handles LID-only accounts.
+  const jid = await resolveJid(phone);
   let [contact] = await db
     .select()
     .from(contacts)
