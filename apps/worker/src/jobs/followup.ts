@@ -157,6 +157,14 @@ export async function startFollowupWorker() {
   const workerId = await boss.work<FollowupPayload>(
     FOLLOWUP_QUEUE,
     async (raw) => {
+      console.log(
+        "[FOLLOWUP-INVOKED]",
+        JSON.stringify({
+          isArray: Array.isArray(raw),
+          rawType: typeof raw,
+          rawSample: Array.isArray(raw) ? raw[0] : raw,
+        }),
+      );
       const list = (Array.isArray(raw) ? raw : [raw]) as Array<{
         id?: string;
         data?: FollowupPayload;
