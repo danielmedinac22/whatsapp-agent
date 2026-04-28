@@ -19,12 +19,14 @@ interface FollowupPayload {
 }
 
 async function handleFollowup({ orderId }: FollowupPayload) {
+  console.log("[FU-STEP-1]", "handler entered", orderId);
   logger.info({ orderId }, "follow-up: handler entered");
   const [order] = await db
     .select()
     .from(shopifyOrders)
     .where(eq(shopifyOrders.id, orderId))
     .limit(1);
+  console.log("[FU-STEP-2]", "order loaded", { id: order?.id, status: order?.status });
   if (!order) {
     logger.warn({ orderId }, "follow-up: order not found");
     return;
@@ -43,6 +45,7 @@ async function handleFollowup({ orderId }: FollowupPayload) {
     .from(contacts)
     .where(eq(contacts.id, order.contactId))
     .limit(1);
+  console.log("[FU-STEP-3]", "contact loaded", { jid: contact?.jid });
   if (!contact) return;
 
   const [conv] = await db
@@ -50,6 +53,7 @@ async function handleFollowup({ orderId }: FollowupPayload) {
     .from(conversations)
     .where(eq(conversations.contactId, contact.id))
     .limit(1);
+  console.log("[FU-STEP-4]", "conv loaded", { id: conv?.id });
 
   // Did the customer reply since the order was received?
   if (conv) {
@@ -85,7 +89,7 @@ async function handleFollowup({ orderId }: FollowupPayload) {
     }
   }
 
-  // Send follow-up template
+  console.log("[FU-STEP-5]", "loading settings");
   const [s] = await db
     .select()
     .from(agentSettings)
@@ -93,6 +97,7 @@ async function handleFollowup({ orderId }: FollowupPayload) {
     .limit(1);
 
   if (!s?.followupTemplateId) {
+    console.log("[FU-STEP-EXIT]", "no template configured");
     logger.warn({ orderId }, "no follow-up template configured");
     await db
       .update(shopifyOrders)
@@ -105,12 +110,14 @@ async function handleFollowup({ orderId }: FollowupPayload) {
     .from(templates)
     .where(eq(templates.id, s.followupTemplateId))
     .limit(1);
+  console.log("[FU-STEP-6]", "template loaded", { id: tpl?.id, name: tpl?.name });
   if (!tpl) {
     logger.warn({ orderId }, "follow-up template missing");
     return;
   }
 
   const sock = getSocket();
+  console.log("[FU-STEP-7]", "socket?", !!sock);
   if (!sock) {
     logger.error({ orderId }, "no whatsapp socket — cannot send follow-up");
     return;
@@ -124,8 +131,17 @@ async function handleFollowup({ orderId }: FollowupPayload) {
     pedido: order.orderId,
   });
 
-  await sock.sendMessage(contact.jid, { text });
+  console.log("[FU-STEP-8]", "sending message", { jid: contact.jid, len: text.length });
+  try {
+    await sock.sendMessage(contact.jid, { text });
+    console.log("[FU-STEP-9]", "sendMessage returned");
+  } catch (err) {
+    console.error("[FU-STEP-9-ERR]", err);
+    logger.error({ err, orderId, jid: contact.jid }, "sendMessage failed");
+    return;
+  }
 
+  console.log("[FU-STEP-10]", "updating shopify_orders");
   await db
     .update(shopifyOrders)
     .set({
@@ -139,6 +155,7 @@ async function handleFollowup({ orderId }: FollowupPayload) {
     .set({ agentMode: true })
     .where(eq(contacts.id, contact.id));
 
+  console.log("[FU-STEP-11]", "done");
   logger.info({ orderId, contactId: contact.id }, "follow-up sent");
 }
 

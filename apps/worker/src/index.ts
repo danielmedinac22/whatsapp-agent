@@ -2,6 +2,15 @@ import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "./lib/logger";
+
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("[UNHANDLED-REJECTION]", reason);
+  logger.error({ reason: String(reason), promise: String(promise) }, "unhandled rejection");
+});
+process.on("uncaughtException", (err) => {
+  console.error("[UNCAUGHT-EXCEPTION]", err);
+  logger.error({ err }, "uncaught exception");
+});
 import { auth } from "./middleware/auth";
 import { health } from "./routes/health";
 import { wa } from "./routes/wa";
