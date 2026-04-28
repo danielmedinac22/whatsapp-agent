@@ -46,6 +46,27 @@ export const orderStatus = pgEnum("order_status", [
   "cancelled",
 ]);
 
+export const outboundStatus = pgEnum("outbound_status", [
+  "pending",
+  "sending",
+  "sent",
+  "acked",
+  "dead",
+  "failed",
+]);
+
+export const outboundSource = pgEnum("outbound_source", [
+  "followup",
+  "remarketing",
+  "agent",
+  "manual",
+]);
+
+export const outboundErrorKind = pgEnum("outbound_error_kind", [
+  "transient",
+  "permanent",
+]);
+
 // ────────────────────────────────────────────────────────────────────────────
 // users
 // ────────────────────────────────────────────────────────────────────────────
@@ -251,6 +272,52 @@ export const shopifyOrders = pgTable(
 );
 
 // ────────────────────────────────────────────────────────────────────────────
+// outbound messages (outbox)
+// ────────────────────────────────────────────────────────────────────────────
+
+export const outboundMessages = pgTable(
+  "outbound_messages",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    jid: text("jid").notNull(),
+    body: text("body").notNull(),
+    source: outboundSource("source").notNull(),
+    sourceRef: text("source_ref"),
+    dedupKey: text("dedup_key").notNull(),
+    conversationId: uuid("conversation_id").references(() => conversations.id, {
+      onDelete: "set null",
+    }),
+    sentByUserId: uuid("sent_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    status: outboundStatus("status").notNull().default("pending"),
+    waId: text("wa_id"),
+    attempts: integer("attempts").notNull().default(0),
+    lastError: text("last_error"),
+    lastErrorKind: outboundErrorKind("last_error_kind"),
+    scheduledFor: timestamp("scheduled_for", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    ackedAt: timestamp("acked_at", { withTimezone: true }),
+    failedAt: timestamp("failed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("outbound_messages_dedup_idx").on(t.dedupKey),
+    uniqueIndex("outbound_messages_wa_id_idx").on(t.waId),
+    index("outbound_messages_status_sched_idx").on(t.status, t.scheduledFor),
+    index("outbound_messages_jid_idx").on(t.jid, t.createdAt),
+    index("outbound_messages_source_idx").on(t.source, t.sourceRef),
+  ],
+);
+
+// ────────────────────────────────────────────────────────────────────────────
 // agent runs (audit)
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -290,3 +357,5 @@ export type AgentSettings = typeof agentSettings.$inferSelect;
 export type ShopifyOrder = typeof shopifyOrders.$inferSelect;
 export type NewShopifyOrder = typeof shopifyOrders.$inferInsert;
 export type WaSession = typeof waSession.$inferSelect;
+export type OutboundMessage = typeof outboundMessages.$inferSelect;
+export type NewOutboundMessage = typeof outboundMessages.$inferInsert;

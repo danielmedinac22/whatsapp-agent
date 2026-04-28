@@ -5,8 +5,8 @@ import {
   makeWASocket,
   type WASocket,
 } from "baileys";
-import { eq } from "@wa/db";
-import { waSession } from "@wa/db";
+import { and, eq, isNull } from "@wa/db";
+import { messages, outboundMessages, waSession } from "@wa/db";
 import type { WaConnectionStatus } from "@wa/shared";
 import { db } from "../db";
 import { logger } from "../lib/logger";
@@ -164,6 +164,62 @@ export async function startSession(opts?: { reset?: boolean }) {
         await onMessages(sock!, m);
       } catch (err) {
         logger.error({ err }, "messages.upsert handler failed");
+      }
+    });
+
+    // Real ACKs from WhatsApp servers. WAMessageStatus enum:
+    // 0=ERROR, 1=PENDING, 2=SERVER_ACK, 3=DELIVERY_ACK, 4=READ, 5=PLAYED.
+    // SERVER_ACK (>=2) is the only honest "yes WhatsApp received it" signal.
+    sock.ev.on("messages.update", async (updates) => {
+      for (const u of updates) {
+        const waId = u.key?.id;
+        if (!waId) continue;
+        const status = u.update?.status;
+        if (status == null) continue;
+
+        try {
+          if (status >= 2) {
+            await db
+              .update(outboundMessages)
+              .set({
+                status: "acked",
+                ackedAt: new Date(),
+                updatedAt: new Date(),
+              })
+              .where(
+                and(
+                  eq(outboundMessages.waId, waId),
+                  isNull(outboundMessages.ackedAt),
+                ),
+              );
+            const msgStatus =
+              status >= 4 ? "read" : status >= 3 ? "delivered" : "sent";
+            await db
+              .update(messages)
+              .set({ status: msgStatus })
+              .where(eq(messages.waId, waId));
+          } else if (status === 0) {
+            await db
+              .update(outboundMessages)
+              .set({
+                status: "dead",
+                failedAt: new Date(),
+                lastError: "wa rejected (status=0)",
+                lastErrorKind: "permanent",
+                updatedAt: new Date(),
+              })
+              .where(eq(outboundMessages.waId, waId));
+            await db
+              .update(messages)
+              .set({ status: "failed" })
+              .where(eq(messages.waId, waId));
+          }
+        } catch (err) {
+          logger.error(
+            { err, waId, status },
+            "messages.update handler failed",
+          );
+        }
       }
     });
   } finally {

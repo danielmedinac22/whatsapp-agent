@@ -15,6 +15,13 @@
       "when": 1777333225367,
       "tag": "0001_quiet_quicksilver",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1777340190076,
+      "tag": "0002_cynical_giant_girl",
+      "breakpoints": true
     }
   ]
 }

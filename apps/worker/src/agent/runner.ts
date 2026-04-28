@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { generateText, type ModelMessage } from "ai";
 import {
   agentRuns,
@@ -11,8 +12,12 @@ import {
 } from "@wa/db";
 import { db } from "../db";
 import { logger } from "../lib/logger";
-import { getSocket } from "../baileys/session";
+import { enqueueOutbound } from "../jobs/outbound";
 import { openrouter } from "./openrouter";
+
+function shortHash(s: string): string {
+  return createHash("sha1").update(s).digest("hex").slice(0, 12);
+}
 
 interface AgentInbound {
   contact: Contact;
@@ -69,11 +74,6 @@ async function flushBuffer(contactId: string) {
     logger.warn("no agent_settings configured, skipping reply");
     return;
   }
-  const sock = getSocket();
-  if (!sock) {
-    logger.warn("no socket, agent reply dropped");
-    return;
-  }
 
   const history = await loadHistory(
     entry.conversation.id,
@@ -96,48 +96,14 @@ async function flushBuffer(contactId: string) {
       return;
     }
 
-    await sock.sendPresenceUpdate("composing", entry.contact.jid).catch(
-      () => {},
-    );
-    await new Promise((r) => setTimeout(r, Math.min(reply.length * 30, 2500)));
-    await sock.sendPresenceUpdate("paused", entry.contact.jid).catch(
-      () => {},
-    );
-
-    let sendResult: Awaited<ReturnType<typeof sock.sendMessage>>;
-    try {
-      sendResult = await sock.sendMessage(entry.contact.jid, { text: reply });
-    } catch (sendErr) {
-      logger.warn(
-        { err: sendErr },
-        "first sendMessage failed, retrying once after 1.5s",
-      );
-      await new Promise((r) => setTimeout(r, 1500));
-      const sock2 = getSocket();
-      if (!sock2) throw sendErr;
-      sendResult = await sock2.sendMessage(entry.contact.jid, { text: reply });
-    }
-
-    // Upsert by wa_id so the messages.upsert echo from Baileys dedupes against
-    // this row. If our row arrives first, the echo's onConflictDoNothing skips.
-    // If the echo arrives first (without fromAgent), we update fromAgent=true.
-    const waId = sendResult?.key?.id ?? null;
-    if (waId) {
-      await db
-        .insert(messages)
-        .values({
-          conversationId: entry.conversation.id,
-          direction: "out",
-          waId,
-          body: reply,
-          status: "sent",
-          fromAgent: true,
-        })
-        .onConflictDoUpdate({
-          target: messages.waId,
-          set: { fromAgent: true, body: reply, status: "sent" },
-        });
-    }
+    await enqueueOutbound({
+      jid: entry.contact.jid,
+      body: reply,
+      source: "agent",
+      sourceRef: entry.conversation.id,
+      dedupKey: `agent:${entry.conversation.id}:${shortHash(reply)}`,
+      conversationId: entry.conversation.id,
+    });
 
     await db.insert(agentRuns).values({
       conversationId: entry.conversation.id,

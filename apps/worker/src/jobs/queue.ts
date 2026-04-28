@@ -6,6 +6,7 @@ let starting: Promise<PgBoss> | null = null;
 
 export const FOLLOWUP_QUEUE = "shopify-followup";
 export const REMARKETING_QUEUE = "shopify-remarketing";
+export const OUTBOUND_QUEUE = "outbound-send";
 
 export async function getBoss(): Promise<PgBoss> {
   if (boss) return boss;
@@ -20,6 +21,7 @@ export async function getBoss(): Promise<PgBoss> {
     // createQueue is idempotent.
     await b.createQueue(FOLLOWUP_QUEUE);
     await b.createQueue(REMARKETING_QUEUE);
+    await b.createQueue(OUTBOUND_QUEUE);
     boss = b;
     starting = null;
     return b;

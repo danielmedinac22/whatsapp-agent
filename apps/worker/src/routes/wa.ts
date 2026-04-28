@@ -1,11 +1,12 @@
+import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import { z } from "zod";
 import {
-  getSocket,
   getStatus,
   logoutSession,
   startSession,
 } from "../baileys/session";
+import { enqueueOutbound } from "../jobs/outbound";
 import { logger } from "../lib/logger";
 
 export const wa = new Hono();
@@ -30,11 +31,14 @@ const sendSchema = z.object({
 });
 
 wa.post("/send", async (c) => {
-  const sock = getSocket();
-  if (!sock) return c.json({ error: "not connected" }, 409);
   const parsed = sendSchema.safeParse(await c.req.json());
   if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
   const { jid, body } = parsed.data;
-  const result = await sock.sendMessage(jid, { text: body });
-  return c.json({ ok: true, id: result?.key.id });
+  const { outboundId } = await enqueueOutbound({
+    jid,
+    body,
+    source: "manual",
+    dedupKey: `manual:${randomUUID()}`,
+  });
+  return c.json({ ok: true, outboundId, status: getStatus().status });
 });

@@ -9,9 +9,9 @@ import {
 } from "@wa/db";
 import { db } from "../db";
 import { logger } from "../lib/logger";
-import { getSocket } from "../baileys/session";
 import { renderTemplate } from "../lib/template";
 import { extractOrderVariables } from "../shopify/extract";
+import { enqueueOutbound } from "./outbound";
 import { REMARKETING_QUEUE, getBoss } from "./queue";
 
 interface RemarketingPayload {
@@ -101,12 +101,6 @@ async function handleRemarketing({ orderId }: RemarketingPayload) {
     return;
   }
 
-  const sock = getSocket();
-  if (!sock) {
-    logger.error({ orderId }, "no whatsapp socket — cannot send remarketing");
-    return;
-  }
-
   const vars = extractOrderVariables(order.rawPayload);
   const text = renderTemplate(tpl.body, {
     ...vars,
@@ -115,20 +109,26 @@ async function handleRemarketing({ orderId }: RemarketingPayload) {
     pedido: order.orderId,
   });
 
-  await sock.sendMessage(contact.jid, { text });
+  await enqueueOutbound({
+    jid: contact.jid,
+    body: text,
+    source: "remarketing",
+    sourceRef: order.id,
+    dedupKey: `remarketing:${order.id}`,
+    conversationId: conv?.id ?? null,
+  });
 
   await db
     .update(shopifyOrders)
     .set({ remarketingSentAt: new Date() })
     .where(eq(shopifyOrders.id, order.id));
 
-  // Make sure agent_mode is on so any subsequent reply gets handled.
   await db
     .update(contacts)
     .set({ agentMode: true })
     .where(eq(contacts.id, contact.id));
 
-  logger.info({ orderId, contactId: contact.id }, "remarketing sent");
+  logger.info({ orderId, contactId: contact.id }, "remarketing enqueued");
 }
 
 export async function scheduleRemarketing(orderId: string, delayMs: number) {

@@ -19,6 +19,7 @@ import { agent } from "./routes/agent";
 import { shopify } from "./routes/shopify";
 import { autoStart } from "./baileys/session";
 import { startFollowupWorker } from "./jobs/followup";
+import { startOutboundWorker } from "./jobs/outbound";
 import { startRemarketingWorker } from "./jobs/remarketing";
 
 const app = new Hono();
@@ -53,5 +54,8 @@ serve({ fetch: app.fetch, port }, (info) => {
   );
   startRemarketingWorker().catch((err) =>
     logger.error({ err }, "remarketing worker failed to start"),
+  );
+  startOutboundWorker().catch((err) =>
+    logger.error({ err }, "outbound worker failed to start"),
   );
 });
