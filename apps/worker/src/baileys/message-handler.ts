@@ -4,13 +4,14 @@ import {
   contacts,
   conversations,
   messages,
-  type Contact,
   type Conversation,
 } from "@wa/db";
 import { db } from "../db";
 import { logger } from "../lib/logger";
 import { events } from "../lib/events";
 import { onAgentInbound } from "../agent/runner";
+import { resolveIdentity } from "./jid-resolver";
+import { upsertContactByIdentity } from "./contact-upsert";
 
 function extractText(m: WAMessage): string {
   const msg = m.message;
@@ -23,29 +24,6 @@ function extractText(m: WAMessage): string {
     msg.documentMessage?.caption ??
     ""
   );
-}
-
-async function ensureContact(jid: string, pushName?: string): Promise<Contact> {
-  const phone = jid.split("@")[0]?.split(":")[0] ?? null;
-  const existing = await db
-    .select()
-    .from(contacts)
-    .where(eq(contacts.jid, jid))
-    .limit(1);
-  if (existing[0]) {
-    if (pushName && existing[0].pushName !== pushName) {
-      await db
-        .update(contacts)
-        .set({ pushName })
-        .where(eq(contacts.id, existing[0].id));
-    }
-    return existing[0];
-  }
-  const [created] = await db
-    .insert(contacts)
-    .values({ jid, phone, pushName, name: pushName ?? phone })
-    .returning();
-  return created!;
 }
 
 async function ensureConversation(contactId: string): Promise<Conversation> {
@@ -63,7 +41,7 @@ async function ensureConversation(contactId: string): Promise<Conversation> {
 }
 
 export async function onMessages(
-  _sock: WASocket,
+  sock: WASocket,
   upsert: { messages: WAMessage[]; type: string },
 ) {
   for (const m of upsert.messages) {
@@ -76,10 +54,10 @@ export async function onMessages(
     if (!body && !m.message?.imageMessage && !m.message?.audioMessage)
       continue;
 
-    const contact = await ensureContact(
-      m.key.remoteJid,
-      m.pushName ?? undefined,
-    );
+    const identity = await resolveIdentity(sock, m.key.remoteJid);
+    const contact = await upsertContactByIdentity(identity, {
+      pushName: m.pushName ?? null,
+    });
     const conv = await ensureConversation(contact.id);
 
     const [stored] = await db

@@ -111,7 +111,11 @@ export const contacts = pgTable(
   "contacts",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    // jid = "preferred JID for sending" (LID if known, else PN-JID).
+    // Kept for backward-compat with sendMessage call sites.
     jid: text("jid").notNull(),
+    lid: text("lid"),
+    pnJid: text("pn_jid"),
     phone: text("phone"),
     name: text("name"),
     pushName: text("push_name"),
@@ -122,7 +126,13 @@ export const contacts = pgTable(
       .defaultNow(),
   },
   (t) => [
-    uniqueIndex("contacts_jid_idx").on(t.jid),
+    index("contacts_jid_idx").on(t.jid),
+    uniqueIndex("contacts_lid_idx")
+      .on(t.lid)
+      .where(sql`${t.lid} is not null`),
+    uniqueIndex("contacts_pn_jid_idx")
+      .on(t.pnJid)
+      .where(sql`${t.pnJid} is not null`),
     index("contacts_phone_idx").on(t.phone),
   ],
 );

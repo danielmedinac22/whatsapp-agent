@@ -1,11 +1,6 @@
 import { Hono } from "hono";
 import { eq } from "@wa/db";
-import {
-  agentSettings,
-  contacts,
-  conversations,
-  shopifyOrders,
-} from "@wa/db";
+import { agentSettings, conversations, shopifyOrders } from "@wa/db";
 import { shopifyOrderWebhook } from "@wa/shared";
 import { db } from "../db";
 import { logger } from "../lib/logger";
@@ -13,39 +8,15 @@ import { verifyShopifyHmac } from "../shopify/verify";
 import { scheduleFollowup } from "../jobs/followup";
 import { scheduleRemarketing } from "../jobs/remarketing";
 import { getSocket } from "../baileys/session";
+import {
+  jidFromPhone,
+  normalizePhone,
+  resolveFromPhone,
+  type ResolvedIdentity,
+} from "../baileys/jid-resolver";
+import { upsertContactByIdentity } from "../baileys/contact-upsert";
 
 export const shopify = new Hono();
-
-function normalizePhone(input: string | null | undefined): string | null {
-  if (!input) return null;
-  const digits = input.replace(/[^\d+]/g, "");
-  if (!digits) return null;
-  return digits.startsWith("+") ? digits.slice(1) : digits;
-}
-
-function jidFromPhone(phone: string): string {
-  return `${phone}@s.whatsapp.net`;
-}
-
-async function resolveJid(phone: string): Promise<string> {
-  const sock = getSocket();
-  if (!sock) {
-    logger.warn({ phone }, "no socket — falling back to s.whatsapp.net jid");
-    return jidFromPhone(phone);
-  }
-  try {
-    const results = await sock.onWhatsApp(`+${phone}`);
-    const hit = results?.[0];
-    if (hit?.exists && hit.jid) {
-      logger.info({ phone, resolved: hit.jid }, "resolved phone to jid");
-      return hit.jid;
-    }
-    logger.warn({ phone }, "phone not on whatsapp — using s.whatsapp.net fallback");
-  } catch (err) {
-    logger.warn({ err, phone }, "onWhatsApp lookup failed — using fallback");
-  }
-  return jidFromPhone(phone);
-}
 
 shopify.post("/webhook", async (c) => {
   const raw = await c.req.text();
@@ -79,34 +50,34 @@ shopify.post("/webhook", async (c) => {
     .join(" ")
     .trim() || order.shipping_address?.name || null;
 
-  // Resolve the actual JID via Baileys — handles LID-only accounts.
-  const jid = await resolveJid(phone);
-  let [contact] = await db
-    .select()
-    .from(contacts)
-    .where(eq(contacts.jid, jid))
-    .limit(1);
-  if (!contact) {
-    [contact] = await db
-      .insert(contacts)
-      .values({ jid, phone, name: customerName })
-      .returning();
-  } else if (customerName && !contact.name) {
-    await db
-      .update(contacts)
-      .set({ name: customerName })
-      .where(eq(contacts.id, contact.id));
+  // Resolve the actual identity via Baileys — handles LID/PN duality.
+  const sock = getSocket();
+  let identity: ResolvedIdentity;
+  if (sock) {
+    identity = (await resolveFromPhone(sock, phone)) ?? {
+      lid: null,
+      pnJid: jidFromPhone(phone),
+      phone,
+      preferredJid: jidFromPhone(phone),
+    };
+  } else {
+    logger.warn({ phone }, "no socket — using PN-JID fallback for shopify upsert");
+    const pnJid = jidFromPhone(phone);
+    identity = { lid: null, pnJid, phone, preferredJid: pnJid };
   }
+  const contact = await upsertContactByIdentity(identity, {
+    name: customerName,
+  });
 
   let [conv] = await db
     .select()
     .from(conversations)
-    .where(eq(conversations.contactId, contact!.id))
+    .where(eq(conversations.contactId, contact.id))
     .limit(1);
   if (!conv) {
     [conv] = await db
       .insert(conversations)
-      .values({ contactId: contact!.id })
+      .values({ contactId: contact.id })
       .returning();
   }
 
@@ -137,7 +108,7 @@ shopify.post("/webhook", async (c) => {
       orderId: order.id,
       customerPhone: phone,
       customerName,
-      contactId: contact!.id,
+      contactId: contact.id,
       totalPrice: order.total_price ?? null,
       currency: order.currency ?? null,
       rawPayload: json,
@@ -164,7 +135,7 @@ shopify.post("/webhook", async (c) => {
   logger.info(
     {
       orderId: order.id,
-      contactId: contact!.id,
+      contactId: contact.id,
       followupJobId,
       remarketingJobId,
       followupAt,

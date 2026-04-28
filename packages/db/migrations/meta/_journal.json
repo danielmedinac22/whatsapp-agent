@@ -22,6 +22,13 @@
       "when": 1777340190076,
       "tag": "0002_cynical_giant_girl",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1777385718428,
+      "tag": "0003_abandoned_black_knight",
+      "breakpoints": true
     }
   ]
 }
