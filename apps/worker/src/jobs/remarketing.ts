@@ -146,12 +146,18 @@ export async function startRemarketingWorker() {
   await boss.work<RemarketingPayload>(
     REMARKETING_QUEUE,
     { batchSize: 1 },
-    async (jobs) => {
-      for (const job of jobs) {
+    async (raw) => {
+      const list = Array.isArray(raw) ? raw : [raw];
+      logger.info(
+        { count: list.length, sample: list[0]?.data ?? list[0] },
+        "remarketing worker invoked",
+      );
+      for (const job of list) {
+        const data = (job?.data ?? job) as RemarketingPayload;
         try {
-          await handleRemarketing(job.data);
+          await handleRemarketing(data);
         } catch (err) {
-          logger.error({ err, jobId: job.id }, "remarketing job failed");
+          logger.error({ err, jobId: job?.id }, "remarketing job failed");
           throw err;
         }
       }

@@ -19,6 +19,7 @@ interface FollowupPayload {
 }
 
 async function handleFollowup({ orderId }: FollowupPayload) {
+  logger.info({ orderId }, "follow-up: handler entered");
   const [order] = await db
     .select()
     .from(shopifyOrders)
@@ -156,12 +157,18 @@ export async function startFollowupWorker() {
   await boss.work<FollowupPayload>(
     FOLLOWUP_QUEUE,
     { batchSize: 1 },
-    async (jobs) => {
-      for (const job of jobs) {
+    async (raw) => {
+      const list = Array.isArray(raw) ? raw : [raw];
+      logger.info(
+        { count: list.length, sample: list[0]?.data ?? list[0] },
+        "follow-up worker invoked",
+      );
+      for (const job of list) {
+        const data = (job?.data ?? job) as FollowupPayload;
         try {
-          await handleFollowup(job.data);
+          await handleFollowup(data);
         } catch (err) {
-          logger.error({ err, jobId: job.id }, "follow-up job failed");
+          logger.error({ err, jobId: job?.id }, "follow-up job failed");
           throw err;
         }
       }
