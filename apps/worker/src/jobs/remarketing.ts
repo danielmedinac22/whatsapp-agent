@@ -143,11 +143,13 @@ export async function scheduleRemarketing(orderId: string, delayMs: number) {
 
 export async function startRemarketingWorker() {
   const boss = await getBoss();
-  await boss.work<RemarketingPayload>(
+  const workerId = await boss.work<RemarketingPayload>(
     REMARKETING_QUEUE,
-    { batchSize: 1 },
     async (raw) => {
-      const list = Array.isArray(raw) ? raw : [raw];
+      const list = (Array.isArray(raw) ? raw : [raw]) as Array<{
+        id?: string;
+        data?: RemarketingPayload;
+      }>;
       logger.info(
         { count: list.length, sample: list[0]?.data ?? list[0] },
         "remarketing worker invoked",
@@ -163,5 +165,5 @@ export async function startRemarketingWorker() {
       }
     },
   );
-  logger.info("remarketing worker started");
+  logger.info({ workerId }, "remarketing worker started");
 }

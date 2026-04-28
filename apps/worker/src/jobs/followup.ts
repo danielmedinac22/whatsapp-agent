@@ -154,11 +154,13 @@ export async function scheduleFollowup(orderId: string, delayMs: number) {
 
 export async function startFollowupWorker() {
   const boss = await getBoss();
-  await boss.work<FollowupPayload>(
+  const workerId = await boss.work<FollowupPayload>(
     FOLLOWUP_QUEUE,
-    { batchSize: 1 },
     async (raw) => {
-      const list = Array.isArray(raw) ? raw : [raw];
+      const list = (Array.isArray(raw) ? raw : [raw]) as Array<{
+        id?: string;
+        data?: FollowupPayload;
+      }>;
       logger.info(
         { count: list.length, sample: list[0]?.data ?? list[0] },
         "follow-up worker invoked",
@@ -174,5 +176,5 @@ export async function startFollowupWorker() {
       }
     },
   );
-  logger.info("follow-up worker started");
+  logger.info({ workerId }, "follow-up worker started");
 }
