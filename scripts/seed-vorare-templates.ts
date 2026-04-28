@@ -12,9 +12,9 @@ Te escribimos desde Tienda Vorare para confirmar que tu pedido de {{producto}} y
 
 Para enviarlo hoy mismo necesitamos validar los siguientes datos:
 
-📍 Dirección de entrega:
-🏙 Ciudad / Barrio:
-📞 Número de contacto:
+📍 Dirección de entrega: {{direccion}}
+🏙 Ciudad / Barrio: {{ciudad}}
+📞 Número de contacto: {{telefono}}
 💵 Pago contra entrega: Q{{total}}
 
 Por favor respóndenos confirmando que todos los datos están correctos para proceder con el despacho 🚚📦
@@ -59,6 +59,9 @@ async function main() {
     "nombre",
     "producto",
     "total",
+    "direccion",
+    "ciudad",
+    "telefono",
   ]);
   const remarketingId = await upsertTemplate(
     "remarketing_3hr",

@@ -41,6 +41,12 @@ export const shopifyOrderWebhook = z.object({
     .object({
       phone: z.string().nullish(),
       name: z.string().nullish(),
+      address1: z.string().nullish(),
+      address2: z.string().nullish(),
+      city: z.string().nullish(),
+      province: z.string().nullish(),
+      zip: z.string().nullish(),
+      country: z.string().nullish(),
     })
     .nullish(),
   total_price: z.string().nullish(),
