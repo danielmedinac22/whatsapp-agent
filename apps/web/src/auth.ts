@@ -3,7 +3,7 @@ import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { users, eq } from "@wa/db";
+import { ensureWorkspaceEnv, users, eq } from "@wa/db";
 
 declare module "next-auth" {
   interface Session {
@@ -19,8 +19,17 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
+ensureWorkspaceEnv();
+
+const authSecret =
+  process.env.AUTH_SECRET ??
+  (process.env.NODE_ENV !== "production"
+    ? "local-dev-auth-secret-change-me"
+    : undefined);
+
 export const { auth, handlers, signIn, signOut } = NextAuth({
   trustHost: true,
+  secret: authSecret,
   session: { strategy: "jwt" },
   pages: { signIn: "/login" },
   providers: [

@@ -1,26 +1,170 @@
 @import "tailwindcss";
 
 @theme {
-  --color-bg: #0b141a;
-  --color-panel: #111b21;
-  --color-panel-2: #202c33;
-  --color-border: #2a3942;
-  --color-text: #e9edef;
-  --color-text-dim: #aebac1;
-  --color-accent: #00a884;
-  --color-accent-hover: #02906f;
-  --color-bubble-out: #005c4b;
-  --color-bubble-in: #202c33;
+  --color-bg: #071119;
+  --color-bg-soft: #0d1822;
+  --color-panel: rgba(10, 24, 34, 0.82);
+  --color-panel-2: rgba(18, 35, 48, 0.9);
+  --color-panel-3: rgba(26, 47, 62, 0.78);
+  --color-border: rgba(157, 187, 210, 0.16);
+  --color-border-strong: rgba(157, 187, 210, 0.28);
+  --color-text: #eff7fb;
+  --color-text-dim: #99adbc;
+  --color-text-soft: #6f8798;
+  --color-accent: #6ee7b7;
+  --color-accent-strong: #34d399;
+  --color-accent-hover: #5ad0a6;
+  --color-highlight: #f4c16d;
+  --color-danger: #f87171;
+  --color-bubble-out: linear-gradient(135deg, rgba(42, 93, 82, 0.96), rgba(29, 74, 67, 0.98));
+  --color-bubble-in: linear-gradient(135deg, rgba(20, 40, 54, 0.96), rgba(15, 29, 40, 0.96));
+  --shadow-panel: 0 14px 42px rgba(3, 10, 16, 0.32);
+  --font-body: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+  --font-display: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
 }
 
 @layer base {
   html,
   body {
     height: 100%;
-    background: var(--color-bg);
     color: var(--color-text);
+    background:
+      linear-gradient(90deg, rgba(110, 231, 183, 0.05), transparent 34%),
+      linear-gradient(180deg, rgba(244, 193, 109, 0.04), transparent 28%),
+      linear-gradient(180deg, #09131c 0%, #071119 45%, #050d14 100%);
+    font-family: var(--font-body), sans-serif;
   }
   * {
     border-color: var(--color-border);
+  }
+  body {
+    min-height: 100vh;
+  }
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-display), sans-serif;
+    letter-spacing: 0;
+  }
+  ::selection {
+    background: rgba(110, 231, 183, 0.24);
+    color: var(--color-text);
+  }
+}
+
+@layer components {
+  .app-shell {
+    @apply grid min-h-screen grid-cols-1 lg:grid-cols-[248px_1fr];
+  }
+
+  .app-sidebar {
+    background:
+      linear-gradient(180deg, rgba(12, 25, 34, 0.98), rgba(8, 18, 25, 0.98)),
+      var(--color-panel);
+    @apply relative flex flex-col border-b px-3 py-3 lg:h-screen lg:border-b-0 lg:border-r lg:px-3 lg:py-4;
+  }
+
+  .app-sidebar::after {
+    content: "";
+    background: linear-gradient(180deg, rgba(110, 231, 183, 0.08), transparent 55%);
+    @apply pointer-events-none absolute inset-x-0 top-0 h-24;
+  }
+
+  .app-main {
+    @apply min-h-screen;
+  }
+
+  .app-page {
+    @apply mx-auto w-full max-w-7xl p-3 md:p-4;
+  }
+
+  .app-card {
+    background: var(--color-panel);
+    box-shadow: var(--shadow-panel);
+    backdrop-filter: blur(18px);
+    @apply rounded-lg border;
+  }
+
+  .app-card-muted {
+    background: var(--color-panel-2);
+    @apply rounded-lg border;
+  }
+
+  .app-eyebrow {
+    color: var(--color-highlight);
+    @apply text-xs font-medium uppercase;
+  }
+
+  .app-muted {
+    color: var(--color-text-dim);
+  }
+
+  .app-soft {
+    color: var(--color-text-soft);
+  }
+
+  .app-title {
+    @apply text-xl font-semibold md:text-2xl;
+  }
+
+  .app-subtitle {
+    @apply max-w-2xl text-sm leading-5;
+  }
+
+  .app-input {
+    background: rgba(14, 29, 40, 0.9);
+    @apply h-9 w-full rounded-md border px-3 text-sm text-[var(--color-text)] outline-none transition focus:border-[var(--color-accent)] focus:ring-2 focus:ring-[rgba(110,231,183,0.16)];
+  }
+
+  .app-select {
+    background: rgba(14, 29, 40, 0.9);
+    @apply h-9 w-full rounded-md border px-3 text-sm text-[var(--color-text)] outline-none transition focus:border-[var(--color-accent)] focus:ring-2 focus:ring-[rgba(110,231,183,0.16)];
+  }
+
+  .app-textarea {
+    background: rgba(14, 29, 40, 0.9);
+    @apply w-full rounded-md border px-3 py-2 text-sm text-[var(--color-text)] outline-none transition focus:border-[var(--color-accent)] focus:ring-2 focus:ring-[rgba(110,231,183,0.16)];
+  }
+
+  .app-button {
+    background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-strong) 100%);
+    color: #032617;
+    @apply inline-flex h-9 items-center justify-center rounded-md px-3 text-sm font-semibold transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .app-button-secondary {
+    background: rgba(15, 31, 43, 0.88);
+    @apply inline-flex h-9 items-center justify-center rounded-md border px-3 text-sm font-semibold text-[var(--color-text)] transition hover:border-[var(--color-border-strong)] hover:bg-[rgba(22,40,53,0.96)];
+  }
+
+  .app-pill {
+    @apply inline-flex items-center gap-2 rounded-md border px-2 py-1 text-xs font-medium;
+  }
+
+  .app-nav-link {
+    @apply flex h-10 items-center gap-2 rounded-lg border border-transparent px-3 text-sm font-medium text-[var(--color-text-dim)] transition hover:border-[var(--color-border)] hover:bg-[rgba(18,35,48,0.72)] hover:text-[var(--color-text)];
+  }
+
+  .app-table {
+    @apply w-full text-sm;
+  }
+
+  .app-table thead {
+    @apply text-left text-[11px] uppercase text-[var(--color-text-soft)];
+  }
+
+  .app-table th {
+    @apply px-3 py-2 font-medium;
+  }
+
+  .app-table td {
+    @apply px-3 py-3 align-top;
+  }
+
+  .app-table tbody tr {
+    @apply border-t border-[var(--color-border)];
   }
 }

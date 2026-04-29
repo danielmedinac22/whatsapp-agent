@@ -37,23 +37,21 @@ export default async function OrdersPage() {
   const orders = await listShopifyOrders(200);
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6 p-6">
-      <header>
-        <h1 className="text-xl font-semibold">Pedidos Shopify</h1>
-        <p className="text-sm text-[var(--color-text-dim)]">
-          Pedidos recibidos vía webhook y estado del follow-up.
-        </p>
+    <div className="app-page space-y-3">
+      <header className="max-w-3xl">
+        <h1 className="app-title">Pedidos Shopify</h1>
+        <p className="app-subtitle app-muted mt-1">Webhook y follow-up</p>
       </header>
 
       {orders.length === 0 ? (
-        <div className="rounded bg-[var(--color-panel)] p-8 text-center text-sm text-[var(--color-text-dim)] border">
+        <div className="app-card p-4 text-center text-sm text-[var(--color-text-dim)]">
           No hay pedidos todavía. Cuando configures el webhook de Shopify
           aparecerán aquí.
         </div>
       ) : (
-        <div className="overflow-hidden rounded border bg-[var(--color-panel)]">
-          <table className="w-full text-sm">
-            <thead className="bg-[var(--color-panel-2)] text-left text-xs uppercase tracking-wide text-[var(--color-text-dim)]">
+        <div className="app-card overflow-hidden">
+          <table className="app-table">
+            <thead className="bg-[rgba(12,27,38,0.82)]">
               <tr>
                 <th className="px-4 py-3">Pedido</th>
                 <th className="px-4 py-3">Cliente</th>
@@ -68,10 +66,10 @@ export default async function OrdersPage() {
               {orders.map((o) => {
                 const st = STATUS_LABEL[o.status] ?? {
                   label: o.status,
-                  color: "bg-zinc-500/20",
+                  color: "bg-zinc-500/20 text-zinc-200",
                 };
                 return (
-                  <tr key={o.id} className="border-t">
+                  <tr key={o.id}>
                     <td className="px-4 py-3 font-mono text-xs">
                       {o.orderId}
                     </td>
