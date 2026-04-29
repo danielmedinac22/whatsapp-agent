@@ -2,7 +2,22 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Bot, MessageSquareText, Send, Sparkles } from "lucide-react";
+import {
+  Bot,
+  CheckCircle2,
+  CircleDashed,
+  HelpCircle,
+  MessageSquareText,
+  Send,
+  Sparkles,
+  XCircle,
+} from "lucide-react";
+
+export type ConfirmationStatus =
+  | "unknown"
+  | "pending"
+  | "confirmed"
+  | "not_confirmed";
 
 export type ChatItem = {
   id: string;
@@ -12,22 +27,70 @@ export type ChatItem = {
   agentMode: boolean;
   preview: string | null;
   unread: number;
+  confirmationStatus: ConfirmationStatus;
+  confirmationSource: "auto" | "manual" | null;
   lastAt: string;
+};
+
+type FilterKey = "all" | "pending" | "confirmed" | "not_confirmed";
+
+const STATUS_META: Record<
+  ConfirmationStatus,
+  { label: string; classes: string; icon: typeof CheckCircle2 }
+> = {
+  confirmed: {
+    label: "confirmado",
+    classes: "border-emerald-400/30 bg-emerald-500/10 text-emerald-200",
+    icon: CheckCircle2,
+  },
+  not_confirmed: {
+    label: "no confirmado",
+    classes: "border-red-400/30 bg-red-500/10 text-red-200",
+    icon: XCircle,
+  },
+  pending: {
+    label: "pendiente",
+    classes: "border-amber-400/30 bg-amber-500/10 text-amber-200",
+    icon: CircleDashed,
+  },
+  unknown: {
+    label: "sin clasificar",
+    classes: "border-[var(--color-border)] text-[var(--color-text-soft)]",
+    icon: HelpCircle,
+  },
 };
 
 export function InboxClient({ initial }: { initial: ChatItem[] }) {
   const router = useRouter();
   const [items, setItems] = useState<ChatItem[]>(initial);
   const [selected, setSelected] = useState<ChatItem | null>(initial[0] ?? null);
+  const [filter, setFilter] = useState<FilterKey>("all");
   const automatedCount = items.filter((item) => item.agentMode).length;
   const unreadCount = items.reduce((sum, item) => sum + item.unread, 0);
+  const pendingCount = items.filter(
+    (item) => item.confirmationStatus === "pending",
+  ).length;
+  const confirmedCount = items.filter(
+    (item) => item.confirmationStatus === "confirmed",
+  ).length;
+  const notConfirmedCount = items.filter(
+    (item) => item.confirmationStatus === "not_confirmed",
+  ).length;
+
+  const visibleItems =
+    filter === "all"
+      ? items
+      : items.filter((item) => item.confirmationStatus === filter);
 
   useEffect(() => {
     const es = new EventSource("/api/events");
     es.addEventListener("wa", (e) => {
       try {
         const ev = JSON.parse((e as MessageEvent).data);
-        if (ev.type === "message.created") {
+        if (
+          ev.type === "message.created" ||
+          ev.type === "conversation.updated"
+        ) {
           router.refresh();
         }
       } catch {
@@ -57,10 +120,15 @@ export function InboxClient({ initial }: { initial: ChatItem[] }) {
             Conversaciones en vivo
           </p>
         </div>
-        <div className="grid gap-2 sm:grid-cols-3">
+        <div className="grid gap-2 sm:grid-cols-4">
           <SummaryCard label="Conversaciones" value={String(items.length)} />
           <SummaryCard label="Sin leer" value={String(unreadCount)} />
           <SummaryCard label="Modo agente" value={String(automatedCount)} />
+          <SummaryCard
+            label="Por confirmar"
+            value={String(pendingCount)}
+            accent={pendingCount > 0 ? "text-amber-200" : undefined}
+          />
         </div>
       </header>
 
@@ -71,16 +139,47 @@ export function InboxClient({ initial }: { initial: ChatItem[] }) {
               <p className="text-sm font-semibold">Conversaciones</p>
             </div>
             <span className="rounded-md border border-[var(--color-border)] bg-[rgba(8,21,30,0.72)] px-2 py-1 text-xs text-[var(--color-text-dim)]">
-              {items.length} activas
+              {visibleItems.length}/{items.length}
             </span>
           </div>
+          <div className="flex flex-wrap gap-1 border-b border-[var(--color-border)] px-2 py-2">
+            <FilterPill
+              active={filter === "all"}
+              onClick={() => setFilter("all")}
+              label="Todas"
+              count={items.length}
+            />
+            <FilterPill
+              active={filter === "pending"}
+              onClick={() => setFilter("pending")}
+              label="Pendientes"
+              count={pendingCount}
+              tone="amber"
+            />
+            <FilterPill
+              active={filter === "confirmed"}
+              onClick={() => setFilter("confirmed")}
+              label="Confirmadas"
+              count={confirmedCount}
+              tone="emerald"
+            />
+            <FilterPill
+              active={filter === "not_confirmed"}
+              onClick={() => setFilter("not_confirmed")}
+              label="No conf."
+              count={notConfirmedCount}
+              tone="red"
+            />
+          </div>
           <ul className="flex-1 overflow-y-auto p-2">
-          {items.length === 0 && (
+          {visibleItems.length === 0 && (
             <li className="p-4 text-center text-sm text-[var(--color-text-dim)]">
-              No hay conversaciones todavía.
+              {items.length === 0
+                ? "No hay conversaciones todavía."
+                : "Sin resultados con este filtro."}
             </li>
           )}
-          {items.map((it) => (
+          {visibleItems.map((it) => (
             <li
               key={it.id}
               onClick={() => setSelected(it)}
@@ -103,18 +202,24 @@ export function InboxClient({ initial }: { initial: ChatItem[] }) {
               <p className="mt-1 truncate text-xs text-[var(--color-text-dim)]">
                 {it.preview ?? "—"}
               </p>
-              <div className="mt-2 flex items-center justify-between">
-                {it.agentMode ? (
-                  <span className="inline-flex items-center gap-1 rounded-md border border-emerald-400/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] uppercase text-emerald-200">
-                    <Sparkles className="h-3 w-3" />
-                    agente
-                  </span>
-                ) : (
-                  <span className="text-[10px] uppercase text-[var(--color-text-soft)]">
-                    manual
-                  </span>
-                )}
-                <span className="text-[11px] text-[var(--color-text-soft)]">
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-1">
+                  {it.agentMode ? (
+                    <span className="inline-flex items-center gap-1 rounded-md border border-emerald-400/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] uppercase text-emerald-200">
+                      <Sparkles className="h-3 w-3" />
+                      agente
+                    </span>
+                  ) : (
+                    <span className="text-[10px] uppercase text-[var(--color-text-soft)]">
+                      manual
+                    </span>
+                  )}
+                  <ConfirmationChip status={it.confirmationStatus} />
+                </div>
+                <span
+                  className="text-[11px] text-[var(--color-text-soft)]"
+                  suppressHydrationWarning
+                >
                   {new Date(it.lastAt).toLocaleTimeString([], {
                     hour: "2-digit",
                     minute: "2-digit",
@@ -227,17 +332,20 @@ function ConversationPane({ chat }: { chat: ChatItem }) {
           <p className="text-base font-semibold">{chat.name}</p>
           <p className="text-xs text-[var(--color-text-dim)]">{chat.jid}</p>
         </div>
-        <button
-          onClick={toggleAgent}
-          className={`inline-flex h-8 items-center gap-2 rounded-md border px-3 text-xs uppercase ${
-            chat.agentMode
-              ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-200"
-              : "border-[var(--color-border)] text-[var(--color-text-dim)]"
-          }`}
-        >
-          <Bot className="h-3.5 w-3.5" />
-          Agente: {chat.agentMode ? "ON" : "OFF"}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <ConfirmationMenu chat={chat} />
+          <button
+            onClick={toggleAgent}
+            className={`inline-flex h-8 items-center gap-2 rounded-md border px-3 text-xs uppercase ${
+              chat.agentMode
+                ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-200"
+                : "border-[var(--color-border)] text-[var(--color-text-dim)]"
+            }`}
+          >
+            <Bot className="h-3.5 w-3.5" />
+            Agente: {chat.agentMode ? "ON" : "OFF"}
+          </button>
+        </div>
       </header>
 
       <div className="border-b border-[var(--color-border)] px-4 py-2">
@@ -270,7 +378,10 @@ function ConversationPane({ chat }: { chat: ChatItem }) {
               }`}
             >
               <p className="whitespace-pre-wrap break-words">{m.body}</p>
-              <p className="mt-1 text-right text-[10px] uppercase text-[var(--color-text-dim)]">
+              <p
+                className="mt-1 text-right text-[10px] uppercase text-[var(--color-text-dim)]"
+                suppressHydrationWarning
+              >
                 {m.fromAgent && "BOT "}
                 {new Date(m.createdAt).toLocaleTimeString([], {
                   hour: "2-digit",
@@ -310,15 +421,147 @@ function ConversationPane({ chat }: { chat: ChatItem }) {
   );
 }
 
-function SummaryCard({ label, value }: { label: string; value: string }) {
+function SummaryCard({
+  label,
+  value,
+  accent,
+}: {
+  label: string;
+  value: string;
+  accent?: string;
+}) {
   return (
     <div className="app-card min-w-[132px] px-3 py-2">
       <p className="text-[11px] uppercase text-[var(--color-text-soft)]">
         {label}
       </p>
-      <p className="mt-1 text-xl font-semibold text-[var(--color-text)]">
+      <p
+        className={`mt-1 text-xl font-semibold text-[var(--color-text)] ${accent ?? ""}`}
+      >
         {value}
       </p>
+    </div>
+  );
+}
+
+function FilterPill({
+  active,
+  onClick,
+  label,
+  count,
+  tone,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  count: number;
+  tone?: "amber" | "emerald" | "red";
+}) {
+  const toneClass =
+    tone === "amber"
+      ? "border-amber-400/30 text-amber-200"
+      : tone === "emerald"
+        ? "border-emerald-400/30 text-emerald-200"
+        : tone === "red"
+          ? "border-red-400/30 text-red-200"
+          : "border-[var(--color-border)] text-[var(--color-text-dim)]";
+  const activeClass = active
+    ? "bg-[rgba(18,42,53,0.92)]"
+    : "bg-transparent hover:bg-[rgba(18,35,48,0.68)]";
+  return (
+    <button
+      onClick={onClick}
+      className={`inline-flex h-7 items-center gap-1.5 rounded-md border px-2 text-[11px] uppercase transition ${toneClass} ${activeClass}`}
+    >
+      <span>{label}</span>
+      <span className="rounded bg-[rgba(8,21,30,0.72)] px-1 text-[10px]">
+        {count}
+      </span>
+    </button>
+  );
+}
+
+function ConfirmationChip({ status }: { status: ConfirmationStatus }) {
+  if (status === "unknown") return null;
+  const meta = STATUS_META[status];
+  const Icon = meta.icon;
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] uppercase ${meta.classes}`}
+    >
+      <Icon className="h-3 w-3" />
+      {meta.label}
+    </span>
+  );
+}
+
+function ConfirmationMenu({ chat }: { chat: ChatItem }) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const meta = STATUS_META[chat.confirmationStatus];
+  const Icon = meta.icon;
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [open]);
+
+  const set = async (status: ConfirmationStatus) => {
+    setBusy(true);
+    try {
+      await fetch(`/api/conversations/${chat.id}/confirmation`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      setOpen(false);
+      location.reload();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const options: ConfirmationStatus[] = [
+    "confirmed",
+    "not_confirmed",
+    "pending",
+    "unknown",
+  ];
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className={`inline-flex h-8 items-center gap-2 rounded-md border px-3 text-xs uppercase ${meta.classes}`}
+        disabled={busy}
+      >
+        <Icon className="h-3.5 w-3.5" />
+        {meta.label}
+        {chat.confirmationSource === "manual" && (
+          <span className="ml-1 rounded bg-[rgba(8,21,30,0.72)] px-1 text-[9px]">
+            manual
+          </span>
+        )}
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full z-10 mt-1 w-48 rounded-md border border-[var(--color-border)] bg-[rgba(8,21,30,0.96)] p-1 text-xs shadow-lg">
+          {options.map((status) => (
+            <button
+              key={status}
+              onClick={() => set(status)}
+              disabled={busy}
+              className="flex w-full items-center rounded px-2 py-1.5 text-left hover:bg-[rgba(18,42,53,0.92)]"
+            >
+              <ConfirmationChip status={status} />
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

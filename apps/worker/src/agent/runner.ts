@@ -14,6 +14,7 @@ import { db } from "../db";
 import { logger } from "../lib/logger";
 import { enqueueOutbound } from "../jobs/outbound";
 import { openrouter } from "./openrouter";
+import { buildShopifyContextBlock } from "./shopify-context";
 
 function shortHash(s: string): string {
   return createHash("sha1").update(s).digest("hex").slice(0, 12);
@@ -82,11 +83,19 @@ async function flushBuffer(contactId: string) {
 
   const prompt: ModelMessage[] = history;
 
+  let systemPrompt = settings.systemPrompt;
+  try {
+    const ctx = await buildShopifyContextBlock(entry.contact.id);
+    if (ctx) systemPrompt = `${systemPrompt}\n\n${ctx}`;
+  } catch (err) {
+    logger.warn({ err }, "shopify context build failed; continuing without it");
+  }
+
   try {
     const provider = openrouter();
     const result = await generateText({
       model: provider(settings.model),
-      system: settings.systemPrompt,
+      system: systemPrompt,
       messages: prompt,
     });
 

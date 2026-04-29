@@ -28,6 +28,19 @@ export const agentSettingsInput = z.object({
 });
 export type AgentSettingsInput = z.infer<typeof agentSettingsInput>;
 
+export const shopifyConnectionInput = z.object({
+  shopDomain: z
+    .string()
+    .min(3)
+    .max(120)
+    .regex(/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/i, {
+      message: "debe ser un dominio *.myshopify.com",
+    }),
+  adminAccessToken: z.string().min(20).max(200),
+  apiVersion: z.string().min(4).max(20).optional(),
+});
+export type ShopifyConnectionInput = z.infer<typeof shopifyConnectionInput>;
+
 export const shopifyOrderWebhook = z.object({
   id: z.union([z.number(), z.string()]).transform(String),
   customer: z

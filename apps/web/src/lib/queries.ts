@@ -80,6 +80,26 @@ export async function setAgentMode(contactId: string, on: boolean) {
     .where(eq(contacts.id, contactId));
 }
 
+export type ConfirmationStatus =
+  | "unknown"
+  | "pending"
+  | "confirmed"
+  | "not_confirmed";
+
+export async function setConfirmationStatus(
+  conversationId: string,
+  status: ConfirmationStatus,
+) {
+  await db
+    .update(conversations)
+    .set({
+      confirmationStatus: status,
+      confirmationSource: "manual",
+      confirmationUpdatedAt: new Date(),
+    })
+    .where(eq(conversations.id, conversationId));
+}
+
 export async function listShopifyOrders(limit = 50) {
   return db
     .select()

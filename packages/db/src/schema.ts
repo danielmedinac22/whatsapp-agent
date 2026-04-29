@@ -68,6 +68,18 @@ export const outboundErrorKind = pgEnum("outbound_error_kind", [
   "permanent",
 ]);
 
+export const confirmationStatus = pgEnum("confirmation_status", [
+  "unknown",
+  "pending",
+  "confirmed",
+  "not_confirmed",
+]);
+
+export const confirmationSource = pgEnum("confirmation_source", [
+  "auto",
+  "manual",
+]);
+
 // ────────────────────────────────────────────────────────────────────────────
 // users
 // ────────────────────────────────────────────────────────────────────────────
@@ -149,6 +161,13 @@ export const conversations = pgTable(
     lastOutboundAt: timestamp("last_outbound_at", { withTimezone: true }),
     lastMessagePreview: text("last_message_preview"),
     unreadCount: integer("unread_count").notNull().default(0),
+    confirmationStatus: confirmationStatus("confirmation_status")
+      .notNull()
+      .default("unknown"),
+    confirmationSource: confirmationSource("confirmation_source"),
+    confirmationUpdatedAt: timestamp("confirmation_updated_at", {
+      withTimezone: true,
+    }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -156,6 +175,7 @@ export const conversations = pgTable(
   (t) => [
     uniqueIndex("conversations_contact_idx").on(t.contactId),
     index("conversations_last_msg_idx").on(t.lastInboundAt, t.lastOutboundAt),
+    index("conversations_confirmation_idx").on(t.confirmationStatus),
   ],
 );
 
@@ -239,6 +259,21 @@ export const agentSettings = pgTable("agent_settings", {
     .notNull()
     .default(true),
   memoryWindow: integer("memory_window").notNull().default(30),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// shopify connection (singleton row, id=1)
+// ────────────────────────────────────────────────────────────────────────────
+
+export const shopifyConnection = pgTable("shopify_connection", {
+  id: integer("id").primaryKey().default(1),
+  shopDomain: text("shop_domain"),
+  adminAccessToken: text("admin_access_token"),
+  apiVersion: text("api_version").notNull().default("2025-01"),
+  connectedAt: timestamp("connected_at", { withTimezone: true }),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -374,3 +409,5 @@ export type NewShopifyOrder = typeof shopifyOrders.$inferInsert;
 export type WaSession = typeof waSession.$inferSelect;
 export type OutboundMessage = typeof outboundMessages.$inferSelect;
 export type NewOutboundMessage = typeof outboundMessages.$inferInsert;
+export type ShopifyConnection = typeof shopifyConnection.$inferSelect;
+export type NewShopifyConnection = typeof shopifyConnection.$inferInsert;

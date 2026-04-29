@@ -1,9 +1,19 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
+import type { WaEvent } from "@wa/shared";
 import { events as bus } from "../lib/events";
 import { getStatus } from "../baileys/session";
 
 export const events = new Hono();
+
+events.post("/notify", async (c) => {
+  const ev = (await c.req.json().catch(() => null)) as WaEvent | null;
+  if (!ev || typeof ev !== "object" || !("type" in ev)) {
+    return c.json({ error: "invalid event" }, 400);
+  }
+  bus.emitEvent(ev);
+  return c.json({ ok: true });
+});
 
 events.get("/", (c) =>
   streamSSE(c, async (stream) => {

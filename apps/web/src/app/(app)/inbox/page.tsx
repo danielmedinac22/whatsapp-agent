@@ -15,6 +15,8 @@ export default async function InboxPage() {
         agentMode: i.contact.agentMode,
         preview: i.conversation.lastMessagePreview,
         unread: i.conversation.unreadCount,
+        confirmationStatus: i.conversation.confirmationStatus,
+        confirmationSource: i.conversation.confirmationSource,
         lastAt:
           (
             i.conversation.lastInboundAt ??

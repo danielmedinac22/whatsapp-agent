@@ -10,6 +10,7 @@ import { db } from "../db";
 import { logger } from "../lib/logger";
 import { events } from "../lib/events";
 import { onAgentInbound } from "../agent/runner";
+import { scheduleConfirmationClassify } from "../agent/confirmation-classifier";
 import { handleInboundConfirmation } from "../jobs/confirmation-ack";
 import { resolveIdentity } from "./jid-resolver";
 import { upsertContactByIdentity } from "./contact-upsert";
@@ -101,6 +102,11 @@ export async function onMessages(
     });
 
     if (direction === "in") {
+      scheduleConfirmationClassify({
+        conversationId: conv.id,
+        contactId: contact.id,
+      });
+
       const acked = await handleInboundConfirmation({
         contact,
         conversation: conv,

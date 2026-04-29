@@ -19,15 +19,13 @@ interface Input {
 }
 
 /**
- * Cuando el cliente envía un mensaje y existe un pedido pendiente
- * (status != confirmed) para su contacto, marcamos el pedido como
- * confirmado y enviamos el acuse "pedido agendado".
+ * Suprime followup/remarketing y envía el ACK al primer mensaje del cliente.
  *
- * Los workers de followup/remarketing tienen guard sobre `confirmedAt`,
- * así que se auto-skipean cuando corren después.
- *
- * Devuelve true si disparó el flujo (para que el caller pueda decidir si
- * el agente LLM aún debe responder ese mismo mensaje).
+ * Marca shopifyOrders.status = "confirmed" y confirmedAt como señal interna
+ * "el cliente respondió, ya no le mandes plantillas automáticas". NO es la
+ * misma señal que la etiqueta del Inbox (conversations.confirmationStatus),
+ * que se decide por el classifier (apps/worker/src/agent/confirmation-classifier.ts)
+ * y refleja una confirmación real del cliente.
  */
 export async function handleInboundConfirmation({
   contact,
