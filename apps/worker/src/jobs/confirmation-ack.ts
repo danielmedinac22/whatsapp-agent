@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull } from "@wa/db";
+import { and, desc, eq, isNull, or } from "@wa/db";
 import {
   agentSettings,
   contacts,
@@ -31,20 +31,47 @@ export async function handleInboundConfirmation({
   contact,
   conversation,
 }: Input): Promise<boolean> {
+  // Match by contactId first; fall back to customerPhone so we still close the
+  // loop when the order was upserted with a PN-JID contact (e.g. socket down at
+  // webhook time) and the inbound message arrives later under the LID contact.
+  const matchByContact = eq(shopifyOrders.contactId, contact.id);
+  const matchByPhone = contact.phone
+    ? eq(shopifyOrders.customerPhone, contact.phone)
+    : null;
+  const identityMatch = matchByPhone
+    ? or(matchByContact, matchByPhone)!
+    : matchByContact;
+
   const [order] = await db
     .select()
     .from(shopifyOrders)
-    .where(
-      and(eq(shopifyOrders.contactId, contact.id), isNull(shopifyOrders.confirmedAt)),
-    )
+    .where(and(identityMatch, isNull(shopifyOrders.confirmedAt)))
     .orderBy(desc(shopifyOrders.receivedAt))
     .limit(1);
 
   if (!order) return false;
 
+  // Re-link the order to the current contact when it was previously tied to a
+  // different PN/LID identity for the same phone.
+  const shouldRelink = order.contactId !== contact.id;
+  if (shouldRelink) {
+    logger.info(
+      {
+        orderId: order.id,
+        previousContactId: order.contactId,
+        contactId: contact.id,
+      },
+      "confirmation-ack: re-linking order to current contact",
+    );
+  }
+
   await db
     .update(shopifyOrders)
-    .set({ status: "confirmed", confirmedAt: new Date() })
+    .set({
+      status: "confirmed",
+      confirmedAt: new Date(),
+      ...(shouldRelink ? { contactId: contact.id } : {}),
+    })
     .where(eq(shopifyOrders.id, order.id));
 
   const [s] = await db

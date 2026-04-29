@@ -51,20 +51,23 @@ shopify.post("/webhook", async (c) => {
     .trim() || order.shipping_address?.name || null;
 
   // Resolve the actual identity via Baileys — handles LID/PN duality.
+  // If the socket is down we cannot resolve the LID, so we'd link the order to
+  // the wrong contact and miss the customer's confirmation. Return 503 so
+  // Shopify retries the webhook (it retries non-2xx for ~48h).
   const sock = getSocket();
-  let identity: ResolvedIdentity;
-  if (sock) {
-    identity = (await resolveFromPhone(sock, phone)) ?? {
-      lid: null,
-      pnJid: jidFromPhone(phone),
-      phone,
-      preferredJid: jidFromPhone(phone),
-    };
-  } else {
-    logger.warn({ phone }, "no socket — using PN-JID fallback for shopify upsert");
-    const pnJid = jidFromPhone(phone);
-    identity = { lid: null, pnJid, phone, preferredJid: pnJid };
+  if (!sock) {
+    logger.warn(
+      { phone, orderId: order.id },
+      "shopify webhook: no socket — returning 503 so Shopify retries",
+    );
+    return c.json({ error: "whatsapp socket not ready" }, 503);
   }
+  const identity: ResolvedIdentity = (await resolveFromPhone(sock, phone)) ?? {
+    lid: null,
+    pnJid: jidFromPhone(phone),
+    phone,
+    preferredJid: jidFromPhone(phone),
+  };
   const contact = await upsertContactByIdentity(identity, {
     name: customerName,
   });
