@@ -3,7 +3,7 @@ import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { ensureWorkspaceEnv, users, eq } from "@wa/db";
+import { users, eq } from "@wa/db";
 
 declare module "next-auth" {
   interface Session {
@@ -18,8 +18,6 @@ const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
 });
-
-ensureWorkspaceEnv();
 
 const authSecret =
   process.env.AUTH_SECRET ??
