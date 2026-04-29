@@ -28,6 +28,7 @@ export default async function AgentPage() {
             followupTemplateId: null,
             remarketingDelayMs: 3 * 60 * 60 * 1000,
             remarketingTemplateId: null,
+            confirmationAckTemplateId: null,
             activateAgentOnConfirm: true,
           }
         }

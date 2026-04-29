@@ -17,7 +17,7 @@ const MAX_BODY_LEN = 4096;
 interface EnqueueInput {
   jid: string;
   body: string;
-  source: "followup" | "remarketing" | "agent" | "manual";
+  source: "followup" | "remarketing" | "agent" | "manual" | "confirmation_ack";
   sourceRef?: string | null;
   dedupKey: string;
   conversationId?: string | null;

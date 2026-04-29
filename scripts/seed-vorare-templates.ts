@@ -31,6 +31,14 @@ Queríamos confirmarlo contigo para poder despacharlo lo antes posible 🚚💨
 Quedamos muy atentos a tu confirmación.
 ¡Muchas gracias! 💚`;
 
+const CONFIRMATION_ACK_BODY = `¡Listo {{nombre}}! 🎉
+
+Recibimos tu confirmación y datos de despacho. Tu pedido de {{producto}} quedó agendado con éxito ✅ y será despachado lo antes posible 🚚
+
+Te avisaremos cuando esté en ruta. Si tienes alguna duda puedes responder por aquí.
+
+¡Gracias por tu compra! 💚`;
+
 async function upsertTemplate(name: string, body: string, vars: string[]) {
   const db = getDb();
   const existing = await db
@@ -68,6 +76,11 @@ async function main() {
     REMARKETING_BODY,
     ["nombre"],
   );
+  const confirmationAckId = await upsertTemplate(
+    "confirmation_ack",
+    CONFIRMATION_ACK_BODY,
+    ["nombre", "producto"],
+  );
 
   await db
     .insert(agentSettings)
@@ -75,6 +88,7 @@ async function main() {
       id: 1,
       followupTemplateId: followupId,
       remarketingTemplateId: remarketingId,
+      confirmationAckTemplateId: confirmationAckId,
       remarketingDelayMs: 3 * 60 * 60 * 1000,
       updatedAt: new Date(),
     })
@@ -83,6 +97,7 @@ async function main() {
       set: {
         followupTemplateId: followupId,
         remarketingTemplateId: remarketingId,
+        confirmationAckTemplateId: confirmationAckId,
         remarketingDelayMs: 3 * 60 * 60 * 1000,
         updatedAt: new Date(),
       },
@@ -91,7 +106,8 @@ async function main() {
   console.log("Seeded:");
   console.log(`  shopify_followup → ${followupId}`);
   console.log(`  remarketing_3hr  → ${remarketingId}`);
-  console.log("agent_settings updated to use both templates.");
+  console.log(`  confirmation_ack → ${confirmationAckId}`);
+  console.log("agent_settings updated to use all three templates.");
   await getRawClient().end();
 }
 

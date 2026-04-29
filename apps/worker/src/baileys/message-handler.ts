@@ -10,6 +10,7 @@ import { db } from "../db";
 import { logger } from "../lib/logger";
 import { events } from "../lib/events";
 import { onAgentInbound } from "../agent/runner";
+import { handleInboundConfirmation } from "../jobs/confirmation-ack";
 import { resolveIdentity } from "./jid-resolver";
 import { upsertContactByIdentity } from "./contact-upsert";
 
@@ -99,12 +100,22 @@ export async function onMessages(
       messageId: stored.id,
     });
 
-    if (direction === "in" && contact.agentMode) {
-      onAgentInbound({
+    if (direction === "in") {
+      const acked = await handleInboundConfirmation({
         contact,
         conversation: conv,
-        body,
-      }).catch((err) => logger.error({ err }, "agent runner failed"));
+      }).catch((err) => {
+        logger.error({ err }, "confirmation-ack failed");
+        return false;
+      });
+
+      if (!acked && contact.agentMode) {
+        onAgentInbound({
+          contact,
+          conversation: conv,
+          body,
+        }).catch((err) => logger.error({ err }, "agent runner failed"));
+      }
     }
   }
   void and; // suppress unused warning when build re-orders

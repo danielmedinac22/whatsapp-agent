@@ -10,6 +10,7 @@ type Initial = {
   followupTemplateId: string | null;
   remarketingDelayMs: number;
   remarketingTemplateId: string | null;
+  confirmationAckTemplateId: string | null;
   activateAgentOnConfirm: boolean;
 };
 
@@ -186,6 +187,28 @@ export function AgentForm({
           </select>
         </Field>
       </div>
+
+      <Field label="Plantilla de acuse al confirmar">
+        <select
+          value={v.confirmationAckTemplateId ?? ""}
+          onChange={(e) =>
+            setV({ ...v, confirmationAckTemplateId: e.target.value || null })
+          }
+          className="w-full rounded bg-[var(--color-panel-2)] px-3 py-2 outline-none"
+        >
+          <option value="">— ninguna —</option>
+          {templates.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+        </select>
+        <p className="text-xs text-[var(--color-text-dim)]">
+          Mensaje que enviamos al cliente cuando responde al pedido
+          (confirmación recibida). Si está vacío, no se envía acuse pero el
+          pedido se marca como confirmado igual.
+        </p>
+      </Field>
 
       <label className="flex items-center gap-2 text-sm">
         <input

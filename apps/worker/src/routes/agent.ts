@@ -29,6 +29,7 @@ agent.put("/settings", async (c) => {
       followupTemplateId: v.followupTemplateId,
       remarketingDelayMs: v.remarketingDelayMs,
       remarketingTemplateId: v.remarketingTemplateId,
+      confirmationAckTemplateId: v.confirmationAckTemplateId,
       activateAgentOnConfirm: v.activateAgentOnConfirm,
       updatedAt: new Date(),
     })
@@ -42,6 +43,7 @@ agent.put("/settings", async (c) => {
         followupTemplateId: v.followupTemplateId,
         remarketingDelayMs: v.remarketingDelayMs,
         remarketingTemplateId: v.remarketingTemplateId,
+        confirmationAckTemplateId: v.confirmationAckTemplateId,
         activateAgentOnConfirm: v.activateAgentOnConfirm,
         updatedAt: new Date(),
       },

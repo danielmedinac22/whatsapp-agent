@@ -60,6 +60,7 @@ export const outboundSource = pgEnum("outbound_source", [
   "remarketing",
   "agent",
   "manual",
+  "confirmation_ack",
 ]);
 
 export const outboundErrorKind = pgEnum("outbound_error_kind", [
@@ -227,6 +228,10 @@ export const agentSettings = pgTable("agent_settings", {
     .notNull()
     .default(3 * 60 * 60 * 1000),
   remarketingTemplateId: uuid("remarketing_template_id").references(
+    () => templates.id,
+    { onDelete: "set null" },
+  ),
+  confirmationAckTemplateId: uuid("confirmation_ack_template_id").references(
     () => templates.id,
     { onDelete: "set null" },
   ),
