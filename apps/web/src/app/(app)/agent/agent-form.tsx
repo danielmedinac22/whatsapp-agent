@@ -57,14 +57,23 @@ export function AgentForm({
         e.preventDefault();
         save();
       }}
-      className="space-y-5 rounded bg-[var(--color-panel)] p-5 border"
+      className="app-card space-y-4 p-4"
     >
+      <div className="grid gap-2 rounded-lg border border-[var(--color-border)] bg-[rgba(8,21,30,0.75)] p-3 md:grid-cols-3">
+        <Metric label="Modelo" value={v.model.split("/").pop() ?? v.model} />
+        <Metric label="Debounce" value={`${Math.round(v.debounceMs / 1000)}s`} />
+        <Metric
+          label="Auto activación"
+          value={v.activateAgentOnConfirm ? "Encendida" : "Apagada"}
+        />
+      </div>
+
       <Field label="Prompt del sistema">
         <textarea
           value={v.systemPrompt}
           onChange={(e) => setV({ ...v, systemPrompt: e.target.value })}
           rows={8}
-          className="w-full rounded bg-[var(--color-panel-2)] px-3 py-2 outline-none"
+          className="app-textarea"
           placeholder="Eres un asistente de servicio al cliente…"
         />
       </Field>
@@ -73,7 +82,7 @@ export function AgentForm({
         <select
           value={v.model}
           onChange={(e) => setV({ ...v, model: e.target.value })}
-          className="w-full rounded bg-[var(--color-panel-2)] px-3 py-2 outline-none"
+          className="app-select"
         >
           {MODELS.map((m) => (
             <option key={m} value={m}>
@@ -87,12 +96,12 @@ export function AgentForm({
         <input
           value={v.model}
           onChange={(e) => setV({ ...v, model: e.target.value })}
-          className="mt-2 w-full rounded bg-[var(--color-panel-2)] px-3 py-2 text-xs outline-none"
+          className="app-input mt-3 text-xs"
           placeholder="o pega un slug custom de openrouter.ai/models"
         />
       </Field>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid gap-3 lg:grid-cols-2">
         <Field label={`Desfase / debounce (${v.debounceMs} ms)`}>
           <input
             type="range"
@@ -105,10 +114,6 @@ export function AgentForm({
             }
             className="w-full"
           />
-          <p className="text-xs text-[var(--color-text-dim)]">
-            Tiempo que esperamos para agrupar mensajes consecutivos del mismo
-            contacto en una sola petición al modelo.
-          </p>
         </Field>
 
         <Field
@@ -125,10 +130,6 @@ export function AgentForm({
             }
             className="w-full"
           />
-          <p className="text-xs text-[var(--color-text-dim)]">
-            Cuánto esperamos tras un pedido sin respuesta antes de mandar el
-            mensaje de follow-up.
-          </p>
         </Field>
       </div>
 
@@ -138,7 +139,7 @@ export function AgentForm({
           onChange={(e) =>
             setV({ ...v, followupTemplateId: e.target.value || null })
           }
-          className="w-full rounded bg-[var(--color-panel-2)] px-3 py-2 outline-none"
+          className="app-select"
         >
           <option value="">— ninguna —</option>
           {templates.map((t) => (
@@ -149,7 +150,7 @@ export function AgentForm({
         </select>
       </Field>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid gap-3 lg:grid-cols-2">
         <Field
           label={`Remarketing (${(v.remarketingDelayMs / 3_600_000).toFixed(1)} h)`}
         >
@@ -164,10 +165,6 @@ export function AgentForm({
             }
             className="w-full"
           />
-          <p className="text-xs text-[var(--color-text-dim)]">
-            Tras el follow-up, segundo intento si el cliente sigue sin
-            responder.
-          </p>
         </Field>
 
         <Field label="Plantilla de remarketing">
@@ -176,7 +173,7 @@ export function AgentForm({
             onChange={(e) =>
               setV({ ...v, remarketingTemplateId: e.target.value || null })
             }
-            className="w-full rounded bg-[var(--color-panel-2)] px-3 py-2 outline-none"
+            className="app-select"
           >
             <option value="">— ninguna —</option>
             {templates.map((t) => (
@@ -194,7 +191,7 @@ export function AgentForm({
           onChange={(e) =>
             setV({ ...v, confirmationAckTemplateId: e.target.value || null })
           }
-          className="w-full rounded bg-[var(--color-panel-2)] px-3 py-2 outline-none"
+          className="app-select"
         >
           <option value="">— ninguna —</option>
           {templates.map((t) => (
@@ -203,14 +200,9 @@ export function AgentForm({
             </option>
           ))}
         </select>
-        <p className="text-xs text-[var(--color-text-dim)]">
-          Mensaje que enviamos al cliente cuando responde al pedido
-          (confirmación recibida). Si está vacío, no se envía acuse pero el
-          pedido se marca como confirmado igual.
-        </p>
       </Field>
 
-      <label className="flex items-center gap-2 text-sm">
+      <label className="flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[rgba(8,21,30,0.75)] px-3 py-2 text-sm">
         <input
           type="checkbox"
           checked={v.activateAgentOnConfirm}
@@ -225,11 +217,7 @@ export function AgentForm({
         {saved && (
           <span className="text-sm text-[var(--color-accent)]">Guardado</span>
         )}
-        <button
-          type="submit"
-          disabled={saving}
-          className="rounded bg-[var(--color-accent)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-        >
+        <button type="submit" disabled={saving} className="app-button">
           {saving ? "Guardando…" : "Guardar"}
         </button>
       </div>
@@ -246,10 +234,23 @@ function Field({
 }) {
   return (
     <div className="space-y-2">
-      <label className="text-xs uppercase tracking-wide text-[var(--color-text-dim)]">
+      <label className="text-xs uppercase text-[var(--color-text-soft)]">
         {label}
       </label>
       {children}
+    </div>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-[var(--color-border)] bg-[rgba(12,27,38,0.76)] px-3 py-2">
+      <p className="text-[11px] uppercase text-[var(--color-text-soft)]">
+        {label}
+      </p>
+      <p className="mt-1 truncate text-sm font-semibold text-[var(--color-text)]">
+        {value}
+      </p>
     </div>
   );
 }

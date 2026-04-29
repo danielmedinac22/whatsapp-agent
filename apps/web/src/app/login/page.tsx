@@ -28,53 +28,54 @@ export default async function LoginPage({
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[var(--color-bg)] p-6">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden p-4">
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,rgba(110,231,183,0.08),transparent_35%),linear-gradient(180deg,rgba(244,193,109,0.05),transparent_32%)]" />
       <form
         action={action}
-        className="w-full max-w-sm space-y-4 rounded-lg bg-[var(--color-panel)] p-8 shadow-xl border"
+        className="app-card relative w-full max-w-sm space-y-4 p-5"
       >
-        <div className="space-y-1">
-          <h1 className="text-2xl font-semibold text-[var(--color-text)]">
+        <div className="space-y-2">
+          <h1 className="text-xl font-semibold text-[var(--color-text)]">
             WhatsApp Agent
           </h1>
-          <p className="text-sm text-[var(--color-text-dim)]">
-            Inicia sesión para continuar
+          <p className="text-sm leading-5 text-[var(--color-text-dim)]">
+            Inicia sesión para continuar.
           </p>
         </div>
 
         {sp.error && (
-          <div className="rounded bg-red-900/40 px-3 py-2 text-sm text-red-200">
+          <div className="rounded-md border border-red-500/30 bg-red-950/30 px-3 py-2 text-sm text-red-100">
             Email o contraseña incorrectos
           </div>
         )}
 
         <div className="space-y-2">
-          <label className="block text-sm text-[var(--color-text-dim)]">
+          <label className="block text-xs uppercase text-[var(--color-text-soft)]">
             Email
           </label>
           <input
             name="email"
             type="email"
             required
-            className="w-full rounded border bg-[var(--color-panel-2)] px-3 py-2 text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
+            className="app-input"
           />
         </div>
 
         <div className="space-y-2">
-          <label className="block text-sm text-[var(--color-text-dim)]">
+          <label className="block text-xs uppercase text-[var(--color-text-soft)]">
             Contraseña
           </label>
           <input
             name="password"
             type="password"
             required
-            className="w-full rounded border bg-[var(--color-panel-2)] px-3 py-2 text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
+            className="app-input"
           />
         </div>
 
         <button
           type="submit"
-          className="w-full rounded bg-[var(--color-accent)] px-4 py-2 font-medium text-white hover:bg-[var(--color-accent-hover)]"
+          className="app-button w-full"
         >
           Entrar
         </button>

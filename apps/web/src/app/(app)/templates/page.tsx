@@ -45,42 +45,43 @@ export default async function TemplatesPage() {
   const list = await listTemplates();
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-8 p-6">
-      <header>
-        <h1 className="text-xl font-semibold">Plantillas</h1>
-        <p className="text-sm text-[var(--color-text-dim)]">
+    <div className="app-page max-w-5xl space-y-3">
+      <header className="max-w-3xl">
+        <h1 className="app-title">Plantillas</h1>
+        <p className="app-subtitle app-muted mt-1">
           Usa <code>{"{{variable}}"}</code> para insertar valores en el cuerpo.
         </p>
       </header>
 
       <form
         action={createTemplate}
-        className="space-y-3 rounded bg-[var(--color-panel)] p-4 border"
+        className="app-card space-y-3 p-4"
       >
         <div>
-          <label className="text-xs text-[var(--color-text-dim)]">Nombre</label>
+          <label className="text-xs uppercase text-[var(--color-text-soft)]">
+            Nombre
+          </label>
           <input
             name="name"
             required
-            className="mt-1 w-full rounded bg-[var(--color-panel-2)] px-3 py-2 outline-none"
+            className="app-input mt-2"
             placeholder="confirmacion_pedido"
           />
         </div>
         <div>
-          <label className="text-xs text-[var(--color-text-dim)]">Cuerpo</label>
+          <label className="text-xs uppercase text-[var(--color-text-soft)]">
+            Cuerpo
+          </label>
           <textarea
             name="body"
             required
             rows={4}
-            className="mt-1 w-full rounded bg-[var(--color-panel-2)] px-3 py-2 outline-none"
+            className="app-textarea mt-2"
             placeholder="Hola {{nombre}}, ¿confirmas tu pedido?"
           />
         </div>
         <div className="flex justify-end">
-          <button
-            type="submit"
-            className="rounded bg-[var(--color-accent)] px-4 py-2 text-sm font-medium text-white"
-          >
+          <button type="submit" className="app-button">
             Crear plantilla
           </button>
         </div>
@@ -88,13 +89,12 @@ export default async function TemplatesPage() {
 
       <div className="space-y-3">
         {list.length === 0 && (
-          <p className="text-sm text-[var(--color-text-dim)]">Aún no hay plantillas.</p>
+          <p className="app-card p-4 text-sm text-[var(--color-text-dim)]">
+            Aún no hay plantillas.
+          </p>
         )}
         {list.map((t) => (
-          <div
-            key={t.id}
-            className="rounded bg-[var(--color-panel)] p-4 border space-y-2"
-          >
+          <div key={t.id} className="app-card space-y-2 p-4">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="font-medium">{t.name}</p>
@@ -108,13 +108,13 @@ export default async function TemplatesPage() {
                 <input type="hidden" name="id" value={t.id} />
                 <button
                   type="submit"
-                  className="text-xs text-red-300 hover:underline"
+                  className="rounded-md border border-red-500/20 px-2 py-1 text-xs text-red-200 transition hover:bg-red-950/30"
                 >
                   Eliminar
                 </button>
               </form>
             </div>
-            <pre className="whitespace-pre-wrap rounded bg-[var(--color-panel-2)] p-3 text-sm">
+            <pre className="whitespace-pre-wrap rounded-lg border border-[var(--color-border)] bg-[rgba(8,21,30,0.82)] p-3 text-sm">
               {t.body}
             </pre>
           </div>

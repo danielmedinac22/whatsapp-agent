@@ -75,51 +75,102 @@ export function ConnectionPanel() {
   };
 
   return (
-    <div className="w-full max-w-md space-y-6 rounded-lg bg-[var(--color-panel)] p-8 border">
-      <div>
-        <h2 className="text-xl font-semibold">Conexión de WhatsApp</h2>
-        <p className="text-sm text-[var(--color-text-dim)]">
-          Estado:{" "}
-          <span className="font-medium text-[var(--color-text)]">
-            {labelFor(snap.status)}
-          </span>
-        </p>
-      </div>
+    <div className="app-card w-full max-w-5xl p-4">
+      <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+        <div className="space-y-4">
+          <div>
+            <h2 className="text-xl font-semibold">Conexión de WhatsApp</h2>
+            <p className="mt-1 text-sm leading-5 text-[var(--color-text-dim)]">
+              Estado:{" "}
+              <span className="font-medium text-[var(--color-text)]">
+                {labelFor(snap.status)}
+              </span>
+            </p>
+          </div>
 
-      {snap.status === "connected" && (
-        <div className="rounded bg-[var(--color-bubble-out)]/40 p-4 text-sm">
-          Tu WhatsApp está conectado.
+          <div className="grid gap-2 md:grid-cols-3">
+            <StatusTile
+              label="Estado"
+              value={labelFor(snap.status)}
+              accent={snap.status === "connected" ? "text-emerald-300" : "text-amber-200"}
+            />
+            <StatusTile
+              label="Sesión"
+              value={snap.status === "connected" ? "Activa" : "Pendiente"}
+            />
+            <StatusTile
+              label="Acción"
+              value={snap.status === "connected" ? "Monitorear" : "Escanear QR"}
+            />
+          </div>
+
+          {snap.status === "connected" && (
+            <div className="rounded-lg border border-emerald-400/18 bg-emerald-500/10 p-3 text-sm">
+              Tu WhatsApp está conectado y listo para recibir y enviar mensajes.
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-3">
+            {snap.status !== "connected" && (
+              <button onClick={start} className="app-button">
+                {snap.qr ? "Regenerar QR" : "Iniciar / mostrar QR"}
+              </button>
+            )}
+            {snap.status === "connected" && (
+              <button
+                onClick={logout}
+                className="app-button-secondary border-red-500/25 text-red-100 hover:bg-red-950/30"
+              >
+                Desconectar
+              </button>
+            )}
+          </div>
         </div>
-      )}
 
-      {snap.qr && snap.status !== "connected" && (
-        <div className="flex flex-col items-center gap-3">
-          <canvas ref={canvasRef} className="rounded bg-white p-2" />
-          <p className="text-center text-xs text-[var(--color-text-dim)]">
-            Abre WhatsApp en tu teléfono → Dispositivos vinculados → Vincular
-            dispositivo
-          </p>
+        <div className="app-card-muted flex min-h-[280px] flex-col items-center justify-center gap-3 p-4">
+          {snap.qr && snap.status !== "connected" ? (
+            <>
+              <canvas ref={canvasRef} className="rounded-lg bg-white p-2" />
+              <p className="max-w-xs text-center text-xs leading-5 text-[var(--color-text-dim)]">
+                Abre WhatsApp en tu teléfono, entra a Dispositivos vinculados y
+                escanea este código.
+              </p>
+            </>
+          ) : (
+            <>
+              <div className="flex h-14 w-14 items-center justify-center rounded-lg border border-[var(--color-border)] bg-[rgba(8,21,30,0.72)] text-2xl">
+                {snap.status === "connected" ? "✓" : "⌁"}
+              </div>
+              <p className="max-w-xs text-center text-sm leading-5 text-[var(--color-text-dim)]">
+                {snap.status === "connected"
+                  ? "La sesión está enlazada. Puedes seguir operando desde el inbox."
+                  : "Cuando generes el QR, aparecerá aquí para completar el enlace del dispositivo."}
+              </p>
+            </>
+          )}
         </div>
-      )}
-
-      <div className="flex gap-2">
-        {snap.status !== "connected" && (
-          <button
-            onClick={start}
-            className="flex-1 rounded bg-[var(--color-accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--color-accent-hover)]"
-          >
-            {snap.qr ? "Regenerar QR" : "Iniciar / mostrar QR"}
-          </button>
-        )}
-        {snap.status === "connected" && (
-          <button
-            onClick={logout}
-            className="flex-1 rounded border border-red-500/40 px-4 py-2 text-sm text-red-300 hover:bg-red-900/20"
-          >
-            Desconectar
-          </button>
-        )}
       </div>
+    </div>
+  );
+}
+
+function StatusTile({
+  label,
+  value,
+  accent,
+}: {
+  label: string;
+  value: string;
+  accent?: string;
+}) {
+  return (
+    <div className="rounded-lg border border-[var(--color-border)] bg-[rgba(8,21,30,0.72)] px-3 py-2">
+      <p className="text-[11px] uppercase text-[var(--color-text-soft)]">
+        {label}
+      </p>
+      <p className={`mt-1 text-sm font-semibold text-[var(--color-text)] ${accent ?? ""}`}>
+        {value}
+      </p>
     </div>
   );
 }

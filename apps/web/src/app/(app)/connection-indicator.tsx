@@ -41,10 +41,12 @@ export function ConnectionIndicator() {
   }, []);
 
   return (
-    <div className="flex items-center gap-2 rounded bg-[var(--color-panel-2)] px-3 py-2 text-xs">
-      <span className={`h-2 w-2 rounded-full ${COLOR[status]}`} />
-      <span className="text-[var(--color-text-dim)]">WhatsApp:</span>
-      <span className="text-[var(--color-text)]">{LABEL[status]}</span>
+    <div className="app-card-muted flex h-10 items-center justify-between gap-3 px-3 text-xs">
+      <span className="text-[var(--color-text-dim)]">WhatsApp</span>
+      <span className="flex min-w-0 items-center gap-2">
+        <span className={`h-2 w-2 rounded-full ${COLOR[status]}`} />
+        <span className="truncate text-[var(--color-text)]">{LABEL[status]}</span>
+      </span>
     </div>
   );
 }

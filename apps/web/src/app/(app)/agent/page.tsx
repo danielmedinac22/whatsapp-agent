@@ -10,13 +10,10 @@ export default async function AgentPage() {
   ]);
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-6 p-6">
-      <header>
-        <h1 className="text-xl font-semibold">Agente</h1>
-        <p className="text-sm text-[var(--color-text-dim)]">
-          Comportamiento del agente conversacional cuando un contacto está en
-          modo agente o tras un follow-up de Shopify.
-        </p>
+    <div className="app-page max-w-5xl space-y-3">
+      <header className="max-w-3xl">
+        <h1 className="app-title">Agente</h1>
+        <p className="app-subtitle app-muted mt-1">Modelo, prompt y automatizaciones</p>
       </header>
       <AgentForm
         initial={
