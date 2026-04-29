@@ -57,14 +57,14 @@
 
 @layer components {
   .app-shell {
-    @apply grid min-h-screen grid-cols-1 lg:grid-cols-[248px_1fr];
+    @apply grid min-h-screen grid-cols-1 lg:h-screen lg:grid-cols-[248px_1fr] lg:overflow-hidden;
   }
 
   .app-sidebar {
     background:
       linear-gradient(180deg, rgba(12, 25, 34, 0.98), rgba(8, 18, 25, 0.98)),
       var(--color-panel);
-    @apply relative flex flex-col border-b px-3 py-3 lg:h-screen lg:border-b-0 lg:border-r lg:px-3 lg:py-4;
+    @apply relative flex flex-col border-b px-3 py-3 lg:h-screen lg:overflow-y-auto lg:border-b-0 lg:border-r lg:px-3 lg:py-4;
   }
 
   .app-sidebar::after {
@@ -74,7 +74,7 @@
   }
 
   .app-main {
-    @apply min-h-screen;
+    @apply min-h-screen lg:h-screen lg:min-h-0 lg:overflow-y-auto;
   }
 
   .app-page {
