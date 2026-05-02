@@ -1,4 +1,4 @@
-import { eq, and, isNull, gte, lte, sql } from "@wa/db";
+import { eq, and, isNull, gte, lte, sql, like } from "@wa/db";
 import {
   agentSettings,
   contacts,
@@ -37,12 +37,18 @@ async function findShopifyMatch(input: MatchInput): Promise<{
   const lo = new Date(center.getTime() - input.windowDays * 86_400_000);
   const hi = new Date(center.getTime() + input.windowDays * 86_400_000);
 
+  // Phones may differ by country-code prefix between Dropi (raw, e.g. "59467118")
+  // and Shopify (normalized with code, e.g. "50259467118"). Match by the last 8
+  // digits — enough to disambiguate within a small order set.
+  const suffix = phone.replace(/\D/g, "").slice(-8);
+  if (!suffix) return null;
+
   const candidates = await db
     .select()
     .from(shopifyOrders)
     .where(
       and(
-        eq(shopifyOrders.customerPhone, phone),
+        like(shopifyOrders.customerPhone, `%${suffix}`),
         gte(shopifyOrders.receivedAt, lo),
         lte(shopifyOrders.receivedAt, hi),
       ),

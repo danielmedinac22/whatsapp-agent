@@ -19,8 +19,11 @@ interface RawOrder {
 }
 
 interface ListOrdersResponse {
-  // shape from /orders/myorders/v2 — varies; we keep it permissive.
-  isOk?: boolean;
+  isSuccess?: boolean;
+  status?: number;
+  count?: number | null;
+  objects?: RawOrder[];
+  // legacy/permissive fallbacks
   data?: RawOrder[] | { orders?: RawOrder[]; data?: RawOrder[] };
   total?: number;
 }
@@ -35,6 +38,7 @@ function pickStr(o: Record<string, unknown>, ...keys: string[]): string | null {
 }
 
 function extractOrders(resp: ListOrdersResponse): RawOrder[] {
+  if (Array.isArray(resp.objects)) return resp.objects;
   const d = resp.data;
   if (!d) return [];
   if (Array.isArray(d)) return d;
@@ -53,8 +57,17 @@ function toRow(raw: RawOrder): DropiOrderRow {
     "tracking_number",
     "guia",
     "numero_guia",
+    "guide",
+    "guia_number",
   );
-  const carrier = pickStr(o, "carrier", "transportadora", "courier");
+  // Dropi sometimes nests carrier under transporter / supplier-like objects.
+  let carrier = pickStr(o, "carrier", "transportadora", "courier");
+  if (!carrier) {
+    const t = (o.transporter ?? o.transportadora_obj) as
+      | { name?: string }
+      | undefined;
+    if (t?.name) carrier = t.name;
+  }
   const phone = pickStr(
     o,
     "customer_phone",
@@ -62,13 +75,10 @@ function toRow(raw: RawOrder): DropiOrderRow {
     "telefono",
     "client_phone",
   );
-  const name = pickStr(
-    o,
-    "customer_name",
-    "client_name",
-    "nombre_cliente",
-    "name",
-  );
+  const first = pickStr(o, "name", "customer_name", "client_name");
+  const last = pickStr(o, "surname", "last_name", "apellido");
+  const name =
+    [first, last].filter(Boolean).join(" ").trim() || first || last || null;
   const createdAt = pickStr(o, "created_at", "fecha_creado", "createdAt");
   return {
     id: Number(o.id),
