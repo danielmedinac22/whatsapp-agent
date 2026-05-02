@@ -230,15 +230,27 @@ async function attemptLogin(
   }
 
   // Paso 2 — login real
+  const loginPayload = {
+    ...basePayload,
+    otp: null,
+    with_cdc: false,
+  };
   const loginRes = await dropiPost(
     `${baseUrl}/login`,
-    {
-      ...basePayload,
-      otp: null,
-      with_cdc: false,
-    },
+    loginPayload,
     extraHeaders,
   );
+  if (Object.keys(extraHeaders).length > 0) {
+    // Estamos en el segundo intento (post-verify). Log verboso para depurar.
+    logger.info(
+      {
+        status: loginRes.status,
+        bodyPreview: loginRes.text.slice(0, 600),
+        sentExtraHeaderKeys: Object.keys(extraHeaders),
+      },
+      "dropi.login (post-verify) response",
+    );
+  }
   if (!loginRes.ok) {
     throw new Error(
       `dropi login failed: ${loginRes.status} ${loginRes.text.slice(0, 200)}`,
@@ -483,7 +495,13 @@ export async function submitDropi2FACode(
       : {};
     if (cookieHeader) {
       logger.info(
-        { cookies: verifyRes.setCookies.length },
+        {
+          cookieCount: verifyRes.setCookies.length,
+          cookieNames: verifyRes.setCookies
+            .map((c) => c.split("=")[0])
+            .filter(Boolean),
+          cookieHeader: cookieHeader.slice(0, 300),
+        },
         "dropi.2fa.verify set cookies — propagating to second /login",
       );
     }
