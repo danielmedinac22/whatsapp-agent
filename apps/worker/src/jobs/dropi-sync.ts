@@ -10,6 +10,7 @@ import { db } from "../db";
 import { logger } from "../lib/logger";
 import { listAllOrders, type DropiOrderRow } from "../dropi/orders";
 import { normalizeDropiStatus } from "../dropi/normalize";
+import { maybeNotifyDropiStatus } from "../dropi/notify";
 import { nameSimilarity, normalizePhone } from "../lib/match";
 import { DROPI_SYNC_QUEUE, getBoss } from "./queue";
 
@@ -222,24 +223,28 @@ export async function runDropiSync(opts?: {
 
   let upserted = 0;
   let matched = 0;
+  let notified = 0;
   let errors = 0;
   for (const row of rows) {
     try {
       const id = await upsertDropiOrder(row, windowDays);
       upserted++;
       const [r] = await db
-        .select({ shopifyOrderRowId: dropiOrders.shopifyOrderRowId })
+        .select()
         .from(dropiOrders)
         .where(eq(dropiOrders.id, id))
         .limit(1);
-      if (r?.shopifyOrderRowId) matched++;
+      if (!r) continue;
+      if (r.shopifyOrderRowId) matched++;
+      const n = await maybeNotifyDropiStatus(r, s);
+      if (n.notified) notified++;
     } catch (err) {
       logger.error({ err, dropiOrderId: row.id }, "dropi sync: upsert failed");
       errors++;
     }
   }
   logger.info(
-    { fetched: rows.length, upserted, matched, errors, windowDays },
+    { fetched: rows.length, upserted, matched, notified, errors, windowDays },
     "dropi sync complete",
   );
   return { fetched: rows.length, upserted, matched, errors };
