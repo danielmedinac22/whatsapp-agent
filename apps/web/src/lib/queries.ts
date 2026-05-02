@@ -10,12 +10,23 @@ import {
   asc,
   desc,
   eq,
+  inArray,
   sql,
 } from "@wa/db";
+
+export type DropiSummary = {
+  status: typeof dropiOrders.$inferSelect.status;
+  hasNovedad: boolean;
+  guideNumber: string | null;
+  carrier: string | null;
+  guidePdfPath: string | null;
+  updatedAt: Date;
+};
 
 export type ConversationListItem = {
   conversation: typeof conversations.$inferSelect;
   contact: typeof contacts.$inferSelect;
+  dropi: DropiSummary | null;
 };
 
 export async function listConversations(): Promise<ConversationListItem[]> {
@@ -32,7 +43,42 @@ export async function listConversations(): Promise<ConversationListItem[]> {
       ),
     )
     .limit(200);
-  return rows;
+
+  const contactIds = rows.map((r) => r.contact.id);
+  if (contactIds.length === 0) {
+    return rows.map((r) => ({ ...r, dropi: null }));
+  }
+
+  // Fetch all dropi orders for these contacts, ordered so the most recent
+  // wins when we collapse to one summary per contact.
+  const dropiRows = await db
+    .select()
+    .from(dropiOrders)
+    .where(inArray(dropiOrders.contactId, contactIds))
+    .orderBy(desc(dropiOrders.updatedAt));
+
+  const byContact = new Map<string, DropiSummary>();
+  for (const o of dropiRows) {
+    if (!o.contactId) continue;
+    const cur = byContact.get(o.contactId);
+    if (!cur) {
+      byContact.set(o.contactId, {
+        status: o.status,
+        hasNovedad: o.status === "novedad",
+        guideNumber: o.guideNumber,
+        carrier: o.carrier,
+        guidePdfPath: o.guidePdfPath,
+        updatedAt: o.updatedAt,
+      });
+    } else if (o.status === "novedad") {
+      cur.hasNovedad = true;
+    }
+  }
+
+  return rows.map((r) => ({
+    ...r,
+    dropi: byContact.get(r.contact.id) ?? null,
+  }));
 }
 
 export async function getConversationById(id: string) {

@@ -3,13 +3,17 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  AlertTriangle,
   Bot,
   CheckCircle2,
   CircleDashed,
+  FileText,
   HelpCircle,
   MessageSquareText,
+  Package,
   Send,
   Sparkles,
+  Truck,
   XCircle,
 } from "lucide-react";
 
@@ -18,6 +22,19 @@ export type ConfirmationStatus =
   | "pending"
   | "confirmed"
   | "not_confirmed";
+
+export type DropiStatus =
+  | "unknown"
+  | "pendiente_confirmacion"
+  | "pendiente"
+  | "guia_generada"
+  | "preparado_transportadora"
+  | "recolectado"
+  | "en_transito"
+  | "con_mensajero"
+  | "entregado"
+  | "novedad"
+  | "anulada";
 
 export type ChatItem = {
   id: string;
@@ -30,9 +47,19 @@ export type ChatItem = {
   confirmationStatus: ConfirmationStatus;
   confirmationSource: "auto" | "manual" | null;
   lastAt: string;
+  dropiStatus: DropiStatus | null;
+  dropiHasNovedad: boolean;
+  dropiGuide: string | null;
+  dropiCarrier: string | null;
+  dropiPdfUrl: string | null;
 };
 
-type FilterKey = "all" | "pending" | "confirmed" | "not_confirmed";
+type FilterKey =
+  | "all"
+  | "pending"
+  | "confirmed"
+  | "not_confirmed"
+  | "needs_attention";
 
 const STATUS_META: Record<
   ConfirmationStatus,
@@ -60,6 +87,67 @@ const STATUS_META: Record<
   },
 };
 
+const DROPI_META: Record<
+  DropiStatus,
+  { label: string; classes: string; icon: typeof CheckCircle2 }
+> = {
+  unknown: {
+    label: "—",
+    classes: "border-[var(--color-border)] text-[var(--color-text-soft)]",
+    icon: HelpCircle,
+  },
+  pendiente_confirmacion: {
+    label: "por confirmar",
+    classes: "border-amber-400/30 bg-amber-500/10 text-amber-200",
+    icon: CircleDashed,
+  },
+  pendiente: {
+    label: "pendiente",
+    classes: "border-amber-400/30 bg-amber-500/10 text-amber-200",
+    icon: CircleDashed,
+  },
+  guia_generada: {
+    label: "guía",
+    classes: "border-sky-400/30 bg-sky-500/10 text-sky-200",
+    icon: FileText,
+  },
+  preparado_transportadora: {
+    label: "preparado",
+    classes: "border-sky-400/30 bg-sky-500/10 text-sky-200",
+    icon: Package,
+  },
+  recolectado: {
+    label: "recolectado",
+    classes: "border-sky-400/30 bg-sky-500/10 text-sky-200",
+    icon: Package,
+  },
+  en_transito: {
+    label: "en tránsito",
+    classes: "border-sky-400/30 bg-sky-500/10 text-sky-200",
+    icon: Truck,
+  },
+  con_mensajero: {
+    label: "con mensajero",
+    classes: "border-sky-400/30 bg-sky-500/10 text-sky-200",
+    icon: Truck,
+  },
+  entregado: {
+    label: "entregado",
+    classes: "border-emerald-400/30 bg-emerald-500/10 text-emerald-200",
+    icon: CheckCircle2,
+  },
+  novedad: {
+    label: "novedad",
+    classes: "border-red-400/30 bg-red-500/10 text-red-200",
+    icon: AlertTriangle,
+  },
+  anulada: {
+    label: "anulada",
+    classes: "border-[var(--color-border)] text-[var(--color-text-soft)]",
+    icon: XCircle,
+  },
+};
+
 export function InboxClient({ initial }: { initial: ChatItem[] }) {
   const router = useRouter();
   const [items, setItems] = useState<ChatItem[]>(initial);
@@ -76,11 +164,16 @@ export function InboxClient({ initial }: { initial: ChatItem[] }) {
   const notConfirmedCount = items.filter(
     (item) => item.confirmationStatus === "not_confirmed",
   ).length;
+  const needsAttentionCount = items.filter(
+    (item) => !item.agentMode && item.unread > 0,
+  ).length;
 
   const visibleItems =
     filter === "all"
       ? items
-      : items.filter((item) => item.confirmationStatus === filter);
+      : filter === "needs_attention"
+        ? items.filter((item) => !item.agentMode && item.unread > 0)
+        : items.filter((item) => item.confirmationStatus === filter);
 
   useEffect(() => {
     const es = new EventSource("/api/events");
@@ -120,14 +213,28 @@ export function InboxClient({ initial }: { initial: ChatItem[] }) {
             Conversaciones en vivo
           </p>
         </div>
-        <div className="grid gap-2 sm:grid-cols-4">
-          <SummaryCard label="Conversaciones" value={String(items.length)} />
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+          <SummaryCard
+            label="Conversaciones"
+            value={String(items.length)}
+            active={filter === "all"}
+            onClick={() => setFilter("all")}
+          />
           <SummaryCard label="Sin leer" value={String(unreadCount)} />
           <SummaryCard label="Modo agente" value={String(automatedCount)} />
           <SummaryCard
             label="Por confirmar"
             value={String(pendingCount)}
             accent={pendingCount > 0 ? "text-amber-200" : undefined}
+            active={filter === "pending"}
+            onClick={() => setFilter("pending")}
+          />
+          <SummaryCard
+            label="Necesita atención"
+            value={String(needsAttentionCount)}
+            accent={needsAttentionCount > 0 ? "text-red-200" : undefined}
+            active={filter === "needs_attention"}
+            onClick={() => setFilter("needs_attention")}
           />
         </div>
       </header>
@@ -170,6 +277,13 @@ export function InboxClient({ initial }: { initial: ChatItem[] }) {
               count={notConfirmedCount}
               tone="red"
             />
+            <FilterPill
+              active={filter === "needs_attention"}
+              onClick={() => setFilter("needs_attention")}
+              label="Atención"
+              count={needsAttentionCount}
+              tone="red"
+            />
           </div>
           <ul className="flex-1 overflow-y-auto p-2">
           {visibleItems.length === 0 && (
@@ -179,7 +293,9 @@ export function InboxClient({ initial }: { initial: ChatItem[] }) {
                 : "Sin resultados con este filtro."}
             </li>
           )}
-          {visibleItems.map((it) => (
+          {visibleItems.map((it) => {
+            const needsAttention = !it.agentMode && it.unread > 0;
+            return (
             <li
               key={it.id}
               onClick={() => setSelected(it)}
@@ -187,7 +303,7 @@ export function InboxClient({ initial }: { initial: ChatItem[] }) {
                 selected?.id === it.id
                   ? "border-[rgba(110,231,183,0.3)] bg-[rgba(18,42,53,0.92)]"
                   : "border-transparent bg-transparent hover:border-[var(--color-border)] hover:bg-[rgba(18,35,48,0.68)]"
-              }`}
+              } ${needsAttention ? "border-l-2 border-l-red-400/60" : ""}`}
             >
               <div className="flex items-center justify-between">
                 <p className="truncate font-medium text-[var(--color-text)]">
@@ -215,6 +331,15 @@ export function InboxClient({ initial }: { initial: ChatItem[] }) {
                     </span>
                   )}
                   <ConfirmationChip status={it.confirmationStatus} />
+                  {it.dropiStatus && it.dropiStatus !== "unknown" && (
+                    <DropiChip status={it.dropiStatus} />
+                  )}
+                  {it.dropiHasNovedad && it.dropiStatus !== "novedad" && (
+                    <span className="inline-flex items-center gap-1 rounded-md border border-red-400/30 bg-red-500/10 px-2 py-0.5 text-[10px] uppercase text-red-200">
+                      <AlertTriangle className="h-3 w-3" />
+                      novedad
+                    </span>
+                  )}
                 </div>
                 <span
                   className="text-[11px] text-[var(--color-text-soft)]"
@@ -227,7 +352,8 @@ export function InboxClient({ initial }: { initial: ChatItem[] }) {
                 </span>
               </div>
             </li>
-          ))}
+            );
+          })}
         </ul>
         </aside>
 
@@ -358,6 +484,27 @@ function ConversationPane({ chat }: { chat: ChatItem }) {
             <span className="h-2 w-2 rounded-full bg-[var(--color-accent)]" />
             {chat.agentMode ? "Automatización activa" : "Respuesta manual"}
           </span>
+          {chat.dropiStatus && chat.dropiStatus !== "unknown" && (
+            <DropiChip status={chat.dropiStatus} />
+          )}
+          {chat.dropiGuide && (
+            <span className="inline-flex h-7 items-center gap-2 rounded-md border border-[var(--color-border)] bg-[rgba(8,21,30,0.72)] px-2">
+              <Package className="h-3.5 w-3.5" />
+              {chat.dropiGuide}
+              {chat.dropiCarrier ? ` · ${chat.dropiCarrier}` : ""}
+            </span>
+          )}
+          {chat.dropiPdfUrl && (
+            <a
+              href={chat.dropiPdfUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex h-7 items-center gap-2 rounded-md border border-sky-400/30 bg-sky-500/10 px-2 text-sky-200 hover:bg-sky-500/20"
+            >
+              <FileText className="h-3.5 w-3.5" />
+              PDF guía
+            </a>
+          )}
         </div>
       </div>
 
@@ -425,13 +572,27 @@ function SummaryCard({
   label,
   value,
   accent,
+  active,
+  onClick,
 }: {
   label: string;
   value: string;
   accent?: string;
+  active?: boolean;
+  onClick?: () => void;
 }) {
-  return (
-    <div className="app-card min-w-[132px] px-3 py-2">
+  const clickable = typeof onClick === "function";
+  const className = `app-card min-w-[132px] px-3 py-2 text-left transition ${
+    clickable ? "cursor-pointer" : ""
+  } ${
+    active
+      ? "border-[rgba(110,231,183,0.4)] bg-[rgba(18,42,53,0.92)]"
+      : clickable
+        ? "hover:border-[var(--color-border)] hover:bg-[rgba(18,35,48,0.68)]"
+        : ""
+  }`;
+  const inner = (
+    <>
       <p className="text-[11px] uppercase text-[var(--color-text-soft)]">
         {label}
       </p>
@@ -440,8 +601,16 @@ function SummaryCard({
       >
         {value}
       </p>
-    </div>
+    </>
   );
+  if (clickable) {
+    return (
+      <button type="button" onClick={onClick} className={className}>
+        {inner}
+      </button>
+    );
+  }
+  return <div className={className}>{inner}</div>;
 }
 
 function FilterPill({
@@ -478,6 +647,19 @@ function FilterPill({
         {count}
       </span>
     </button>
+  );
+}
+
+function DropiChip({ status }: { status: DropiStatus }) {
+  const meta = DROPI_META[status];
+  const Icon = meta.icon;
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] uppercase ${meta.classes}`}
+    >
+      <Icon className="h-3 w-3" />
+      {meta.label}
+    </span>
   );
 }
 
