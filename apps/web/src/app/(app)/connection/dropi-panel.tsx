@@ -166,6 +166,14 @@ export function DropiPanel() {
   };
 
   const tryAutoLogin = async () => {
+    if (!snap?.adminPhone) {
+      setMsg({
+        kind: "err",
+        text:
+          "Guarda primero el teléfono admin para 2FA — el auto-login te escribirá ahí cuando Dropi pida código.",
+      });
+      return;
+    }
     setBusy(true);
     setMsg(null);
     try {
