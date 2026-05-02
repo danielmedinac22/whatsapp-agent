@@ -28,6 +28,7 @@ import {
   startDropiSyncWorker,
 } from "./jobs/dropi-sync";
 import { startDropiConfirmWorker } from "./jobs/dropi-confirm";
+import { ensureDropiTemplates } from "./dropi/seed-templates";
 import {
   scheduleDropiPoll,
   startDropiPollWorker,
@@ -85,5 +86,8 @@ serve({ fetch: app.fetch, port }, (info) => {
   );
   scheduleDropiPoll().catch((err) =>
     logger.error({ err }, "dropi poll scheduling failed"),
+  );
+  ensureDropiTemplates().catch((err) =>
+    logger.error({ err }, "ensureDropiTemplates failed"),
   );
 });

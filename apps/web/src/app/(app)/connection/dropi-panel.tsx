@@ -9,6 +9,7 @@ type DropiState = {
   hasBearer: boolean;
   hasPassword: boolean;
   tokenExpiresAt: string | null;
+  assetsBaseUrl: string | null;
   connectedAt: string | null;
   updatedAt: string | null;
 } | null;
@@ -19,6 +20,7 @@ export function DropiPanel() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [bearer, setBearer] = useState("");
+  const [assetsBaseUrl, setAssetsBaseUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(
     null,
@@ -30,6 +32,7 @@ export function DropiPanel() {
       const j = (await r.json()) as DropiState;
       setSnap(j);
       if (j?.email) setEmail(j.email);
+      if (j?.assetsBaseUrl) setAssetsBaseUrl(j.assetsBaseUrl);
     }
   };
 
@@ -55,6 +58,9 @@ export function DropiPanel() {
       if (email.trim()) body.email = email.trim();
       if (password.trim()) body.password = password.trim();
       if (bearer.trim()) body.bearerToken = bearer.trim();
+      if (assetsBaseUrl.trim() && assetsBaseUrl !== snap?.assetsBaseUrl) {
+        body.assetsBaseUrl = assetsBaseUrl.trim();
+      }
       const r = await fetch("/api/dropi/connection", {
         method: "PUT",
         headers: { "content-type": "application/json" },
@@ -205,6 +211,20 @@ export function DropiPanel() {
             placeholder="eyJ0eXA…"
             value={bearer}
             onChange={(e) => setBearer(e.target.value)}
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </label>
+
+        <label className="space-y-1 text-sm">
+          <span className="text-[11px] uppercase text-[var(--color-text-soft)]">
+            Base URL de assets (CDN de Dropi para PDFs de guías)
+          </span>
+          <input
+            className="app-input w-full"
+            placeholder="https://d2ob47cxeawi8a.cloudfront.net"
+            value={assetsBaseUrl}
+            onChange={(e) => setAssetsBaseUrl(e.target.value)}
             autoComplete="off"
             spellCheck={false}
           />

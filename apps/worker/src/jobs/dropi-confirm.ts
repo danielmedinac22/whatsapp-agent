@@ -111,6 +111,64 @@ async function handleDropiConfirm({ shopifyOrderRowId }: DropiConfirmPayload) {
   );
 }
 
+/**
+ * Synchronous confirm by dropi_orders.id (UUID).
+ * Used by the manual "Confirmar en Dropi" button in /pedidos.
+ * Returns the new status or throws.
+ */
+export async function confirmDropiOrderById(
+  dropiRowId: string,
+): Promise<{ ok: true; dryRun: boolean; alreadyDone: boolean }> {
+  const s = await getSettings();
+  if (!s?.dropiEnabled) {
+    throw new Error("Integración Dropi deshabilitada (toggle en /agente)");
+  }
+  const [match] = await db
+    .select()
+    .from(dropiOrders)
+    .where(eq(dropiOrders.id, dropiRowId))
+    .limit(1);
+  if (!match) throw new Error("Pedido Dropi no encontrado");
+
+  if (match.confirmPutAt) {
+    return { ok: true, dryRun: false, alreadyDone: true };
+  }
+
+  if (s.dropiDryRun) {
+    await db
+      .update(dropiOrders)
+      .set({ confirmDryRunAt: new Date(), updatedAt: new Date() })
+      .where(eq(dropiOrders.id, match.id));
+    logger.info(
+      { dropiOrderId: match.dropiOrderId },
+      "dropi confirm (manual): DRY RUN",
+    );
+    return { ok: true, dryRun: true, alreadyDone: false };
+  }
+
+  try {
+    await confirmOrder(match.dropiOrderId);
+  } catch (err) {
+    logger.error(
+      { err, dropiOrderId: match.dropiOrderId },
+      "dropi confirm (manual): PUT failed",
+    );
+    throw err;
+  }
+
+  await db
+    .update(dropiOrders)
+    .set({
+      confirmPutAt: new Date(),
+      status: "pendiente",
+      rawStatus: "PENDIENTE",
+      updatedAt: new Date(),
+    })
+    .where(eq(dropiOrders.id, match.id));
+
+  return { ok: true, dryRun: false, alreadyDone: false };
+}
+
 export async function enqueueDropiConfirm(
   shopifyOrderRowId: string,
 ): Promise<string | null> {

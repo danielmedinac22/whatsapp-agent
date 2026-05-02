@@ -10,8 +10,12 @@ import {
   upsertDropiConnection,
 } from "../dropi/config";
 import { enqueueDropiSyncNow, runDropiSync } from "../jobs/dropi-sync";
-import { enqueueDropiConfirm } from "../jobs/dropi-confirm";
+import {
+  confirmDropiOrderById,
+  enqueueDropiConfirm,
+} from "../jobs/dropi-confirm";
 import { enqueueDropiPollNow } from "../jobs/dropi-poll";
+import { DropiHttpError } from "../dropi/client";
 
 export const dropi = new Hono();
 
@@ -25,6 +29,7 @@ dropi.get("/connection", async (c) => {
     hasBearer: Boolean(row.bearerToken),
     hasPassword: Boolean(row.password),
     tokenExpiresAt: row.tokenExpiresAt,
+    assetsBaseUrl: row.assetsBaseUrl,
     connectedAt: row.connectedAt,
     updatedAt: row.updatedAt,
   });
@@ -43,6 +48,9 @@ dropi.put("/connection", async (c) => {
     // reset derived metadata; getValidDropiAuth will rederive from JWT.
     patch.userId = null;
     patch.tokenExpiresAt = null;
+  }
+  if (v.assetsBaseUrl !== undefined) {
+    patch.assetsBaseUrl = v.assetsBaseUrl;
   }
   patch.connectedAt = new Date();
   await upsertDropiConnection(patch);
@@ -142,6 +150,25 @@ dropi.get("/orders", async (c) => {
     ? rows.filter((r) => r.dropi.matchConfidence === "low")
     : rows;
   return c.json(filtered);
+});
+
+/**
+ * Manual confirmation triggered from /pedidos UI.
+ * Takes the dropi_orders.id (UUID, our internal row id) and runs the PUT
+ * synchronously so the UI can show success/failure right away.
+ */
+dropi.post("/orders/:id/confirm", async (c) => {
+  const id = c.req.param("id");
+  try {
+    const r = await confirmDropiOrderById(id);
+    return c.json(r);
+  } catch (err) {
+    const status = err instanceof DropiHttpError ? err.status : 500;
+    return c.json(
+      { ok: false, error: err instanceof Error ? err.message : String(err) },
+      status >= 400 && status < 600 ? (status as 400) : 500,
+    );
+  }
 });
 
 dropi.post("/orders/:id/link", async (c) => {

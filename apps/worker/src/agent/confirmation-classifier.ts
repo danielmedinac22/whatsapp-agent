@@ -1,9 +1,8 @@
 import { generateText } from "ai";
-import { and, conversations, desc, eq, inArray, messages, shopifyOrders } from "@wa/db";
+import { conversations, desc, eq, messages } from "@wa/db";
 import { db } from "../db";
 import { events } from "../lib/events";
 import { logger } from "../lib/logger";
-import { enqueueDropiConfirm } from "../jobs/dropi-confirm";
 import { openrouter } from "./openrouter";
 
 const CLASSIFIER_MODEL = "anthropic/claude-haiku-4.5";
@@ -94,35 +93,7 @@ async function runClassifier(conversationId: string, contactId: string) {
     .where(eq(conversations.id, conversationId));
 
   events.emitEvent({ type: "conversation.updated", conversationId });
-
-  if (status === "confirmed") {
-    try {
-      const orders = await db
-        .select({ id: shopifyOrders.id })
-        .from(shopifyOrders)
-        .where(
-          and(
-            eq(shopifyOrders.contactId, contactId),
-            inArray(shopifyOrders.status, [
-              "received",
-              "followup_scheduled",
-              "followup_sent",
-            ]),
-          ),
-        );
-      for (const o of orders) {
-        await enqueueDropiConfirm(o.id);
-      }
-      if (orders.length > 0) {
-        logger.info(
-          { contactId, count: orders.length },
-          "dropi confirm enqueued after auto-confirmation",
-        );
-      }
-    } catch (err) {
-      logger.error({ err, contactId }, "failed to enqueue dropi confirm");
-    }
-  }
+  void contactId;
 }
 
 export function scheduleConfirmationClassify(input: {

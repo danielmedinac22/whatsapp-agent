@@ -15,6 +15,7 @@ import { normalizeDropiStatus } from "../dropi/normalize";
 import { renderTemplate } from "../lib/template";
 import { extractOrderVariables } from "../shopify/extract";
 import { enqueueOutbound } from "./outbound";
+import { getDropiConnection } from "../dropi/config";
 import { DROPI_POLL_QUEUE, getBoss } from "./queue";
 
 type DropiStatus = DropiOrder["status"];
@@ -92,6 +93,13 @@ async function notifyCustomer(args: {
     }
   }
 
+  const conn = await getDropiConnection();
+  const assetsBase = (conn?.assetsBaseUrl ?? "").replace(/\/$/, "");
+  const pdfGuia =
+    assetsBase && order.guidePdfPath
+      ? `${assetsBase}/${order.guidePdfPath.replace(/^\//, "")}`
+      : "";
+
   const vars: Record<string, string | number | null | undefined> = {
     ...shopifyVars,
     nombre:
@@ -100,6 +108,7 @@ async function notifyCustomer(args: {
     guia: order.guideNumber ?? "",
     transportadora: order.carrier ?? "",
     estado: newStatus,
+    pdf_guia: pdfGuia,
   };
 
   const text = renderTemplate(templateBody, vars);
@@ -146,6 +155,8 @@ async function processRow(
       status: newStatus,
       rawStatus: row.status,
       guideNumber: row.guide_number,
+      guidePdfPath: row.guide_pdf_path,
+      guidePdfFile: row.guide_pdf_file,
       carrier: row.carrier,
       rawPayload: row.raw,
       lastPolledAt: new Date(),

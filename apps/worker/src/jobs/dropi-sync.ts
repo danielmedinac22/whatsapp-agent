@@ -150,6 +150,8 @@ async function upsertDropiOrder(row: DropiOrderRow, windowDays: number) {
     customerPhone: phone,
     customerName: row.customer_name,
     guideNumber: row.guide_number,
+    guidePdfPath: row.guide_pdf_path,
+    guidePdfFile: row.guide_pdf_file,
     carrier: row.carrier,
     updatedAt: new Date(),
   };

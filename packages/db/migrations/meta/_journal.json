@@ -50,6 +50,13 @@
       "when": 1777681079386,
       "tag": "0006_dropi_integration",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1777686828428,
+      "tag": "0007_dropi_pdf_assets",
+      "breakpoints": true
     }
   ]
 }

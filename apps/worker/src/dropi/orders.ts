@@ -11,6 +11,10 @@ export interface DropiOrderRow {
   customer_phone: string | null;
   /** Shopify order number from Dropi's payload (when available). */
   shop_order_number: string | null;
+  /** Relative S3 path to the PDF guide (e.g. "guatemala/guias/forza/ORDEN-...PDF"). */
+  guide_pdf_path: string | null;
+  /** Filename of the PDF (e.g. "ORDEN-...PDF"). */
+  guide_pdf_file: string | null;
   created_at: string | null;
   raw: Record<string, unknown>;
 }
@@ -97,6 +101,8 @@ function toRow(raw: RawOrder): DropiOrderRow {
     "shop_order_id",
     "external_order_number",
   );
+  const pdfPath = pickStr(o, "guia_urls3", "guide_url_s3", "guia_url_s3");
+  const pdfFile = pickStr(o, "sticker", "guia_file", "guide_file");
   return {
     id: Number(o.id),
     status: statusRaw,
@@ -105,6 +111,8 @@ function toRow(raw: RawOrder): DropiOrderRow {
     customer_name: name,
     customer_phone: phone,
     shop_order_number: shopOrderNumber,
+    guide_pdf_path: pdfPath,
+    guide_pdf_file: pdfFile,
     created_at: createdAt,
     raw,
   };

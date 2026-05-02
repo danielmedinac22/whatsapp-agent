@@ -66,6 +66,13 @@ export const TEMPLATE_VARIABLES: readonly TemplateVariable[] = [
     description: "Estado actual del pedido en Dropi",
     example: "en_transito",
   },
+  {
+    key: "pdf_guia",
+    label: "PDF de la guía",
+    description: "Link público al PDF de la guía (CloudFront de Dropi)",
+    example:
+      "https://d2ob47cxeawi8a.cloudfront.net/guatemala/guias/forza/ORDEN-633022-GUIA-FD32562013.pdf",
+  },
 ] as const;
 
 export const TEMPLATE_VARIABLE_KEYS: readonly string[] = TEMPLATE_VARIABLES.map(

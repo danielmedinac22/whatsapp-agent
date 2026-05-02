@@ -57,6 +57,7 @@ export const dropiConnectionInput = z.object({
   email: z.string().email().nullable().optional(),
   password: z.string().min(1).nullable().optional(),
   bearerToken: z.string().min(20).nullable().optional(),
+  assetsBaseUrl: z.string().url().optional(),
 });
 export type DropiConnectionInput = z.infer<typeof dropiConnectionInput>;
 

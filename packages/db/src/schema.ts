@@ -393,6 +393,9 @@ export const dropiConnection = pgTable("dropi_connection", {
   userId: integer("user_id"),
   bearerToken: text("bearer_token"),
   tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }),
+  assetsBaseUrl: text("assets_base_url")
+    .notNull()
+    .default("https://d2ob47cxeawi8a.cloudfront.net"),
   connectedAt: timestamp("connected_at", { withTimezone: true }),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
@@ -414,6 +417,8 @@ export const dropiOrders = pgTable(
     customerPhone: text("customer_phone"),
     customerName: text("customer_name"),
     guideNumber: text("guide_number"),
+    guidePdfPath: text("guide_pdf_path"),
+    guidePdfFile: text("guide_pdf_file"),
     carrier: text("carrier"),
     status: dropiStatus("status").notNull().default("unknown"),
     rawStatus: text("raw_status"),
