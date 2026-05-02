@@ -9,6 +9,8 @@ export interface DropiOrderRow {
   carrier: string | null;
   customer_name: string | null;
   customer_phone: string | null;
+  /** Shopify order number from Dropi's payload (when available). */
+  shop_order_number: string | null;
   created_at: string | null;
   raw: Record<string, unknown>;
 }
@@ -53,6 +55,7 @@ function toRow(raw: RawOrder): DropiOrderRow {
     pickStr(o, "status", "status_name", "estado", "order_status") ?? "";
   const guide = pickStr(
     o,
+    "shipping_guide",
     "guide_number",
     "tracking_number",
     "guia",
@@ -60,13 +63,21 @@ function toRow(raw: RawOrder): DropiOrderRow {
     "guide",
     "guia_number",
   );
-  // Dropi sometimes nests carrier under transporter / supplier-like objects.
+  // Dropi nests carrier under distribution_company / shipping_company / transporter.
   let carrier = pickStr(o, "carrier", "transportadora", "courier");
   if (!carrier) {
-    const t = (o.transporter ?? o.transportadora_obj) as
-      | { name?: string }
-      | undefined;
-    if (t?.name) carrier = t.name;
+    for (const key of [
+      "distribution_company",
+      "shipping_company",
+      "transporter",
+      "transportadora_obj",
+    ]) {
+      const t = o[key] as { name?: string } | null | undefined;
+      if (t?.name) {
+        carrier = t.name;
+        break;
+      }
+    }
   }
   const phone = pickStr(
     o,
@@ -80,6 +91,12 @@ function toRow(raw: RawOrder): DropiOrderRow {
   const name =
     [first, last].filter(Boolean).join(" ").trim() || first || last || null;
   const createdAt = pickStr(o, "created_at", "fecha_creado", "createdAt");
+  const shopOrderNumber = pickStr(
+    o,
+    "shop_order_number",
+    "shop_order_id",
+    "external_order_number",
+  );
   return {
     id: Number(o.id),
     status: statusRaw,
@@ -87,6 +104,7 @@ function toRow(raw: RawOrder): DropiOrderRow {
     carrier,
     customer_name: name,
     customer_phone: phone,
+    shop_order_number: shopOrderNumber,
     created_at: createdAt,
     raw,
   };

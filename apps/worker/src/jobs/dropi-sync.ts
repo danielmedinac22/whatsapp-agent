@@ -22,8 +22,21 @@ function fmtDate(d: Date): string {
 interface MatchInput {
   customerPhone: string | null;
   customerName: string | null;
+  shopOrderNumber: string | null;
   createdAt: Date | null;
   windowDays: number;
+}
+
+async function findShopifyByOrderNumber(
+  shopOrderNumber: string,
+): Promise<{ shopifyOrderRowId: string; contactId: string | null } | null> {
+  const [row] = await db
+    .select({ id: shopifyOrders.id, contactId: shopifyOrders.contactId })
+    .from(shopifyOrders)
+    .where(eq(shopifyOrders.orderId, shopOrderNumber))
+    .limit(1);
+  if (!row) return null;
+  return { shopifyOrderRowId: row.id, contactId: row.contactId ?? null };
 }
 
 async function findShopifyMatch(input: MatchInput): Promise<{
@@ -31,6 +44,14 @@ async function findShopifyMatch(input: MatchInput): Promise<{
   contactId: string | null;
   confidence: "high" | "low";
 } | null> {
+  // 1. Prefer exact match by Shopify order number when Dropi exposes it.
+  if (input.shopOrderNumber) {
+    const direct = await findShopifyByOrderNumber(input.shopOrderNumber);
+    if (direct) {
+      return { ...direct, confidence: "high" };
+    }
+  }
+
   const phone = normalizePhone(input.customerPhone);
   if (!phone) return null;
   const center = input.createdAt ?? new Date();
@@ -116,6 +137,7 @@ async function upsertDropiOrder(row: DropiOrderRow, windowDays: number) {
     match = await findShopifyMatch({
       customerPhone: phone,
       customerName: row.customer_name,
+      shopOrderNumber: row.shop_order_number,
       createdAt,
       windowDays,
     });

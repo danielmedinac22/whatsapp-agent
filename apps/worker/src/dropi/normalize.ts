@@ -18,21 +18,29 @@ const STATUS_MAP: Record<string, DropiStatusEnum> = {
   pendiente: "pendiente",
   "guia generada": "guia_generada",
   "guía generada": "guia_generada",
+  guia_generada: "guia_generada",
 
-  // pre-pickup
+  // pre-pickup / warehouse
   "preparado para transportadora": "preparado_transportadora",
   "pendiente por recoleccion": "preparado_transportadora",
   "pendiente por recolección": "preparado_transportadora",
+  "en bodega origen": "preparado_transportadora",
+  "en bodega": "preparado_transportadora",
 
   // shipping pipeline
   recolectado: "recolectado",
   "en transito": "en_transito",
   "en tránsito": "en_transito",
+  "en ruta": "en_transito",
   "con mensajero": "con_mensajero",
+  "en reparto": "con_mensajero",
+  "en entrega": "con_mensajero",
   entregado: "entregado",
 
   // exceptions
   novedad: "novedad",
+  "incidencia en ruta": "novedad",
+  incidencia: "novedad",
   anulada: "anulada",
   anulado: "anulada",
   cancelado: "anulada",
