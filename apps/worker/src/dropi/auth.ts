@@ -162,13 +162,6 @@ async function dropiPost(
   return { ok: res.ok, status: res.status, json, text, setCookies };
 }
 
-function cookiesToHeader(setCookies: string[]): string {
-  // Set-Cookie format: "name=value; Path=/; HttpOnly". Take just "name=value".
-  return setCookies
-    .map((c) => c.split(";")[0]?.trim())
-    .filter((s): s is string => Boolean(s))
-    .join("; ");
-}
 
 async function persistAutoLoginError(message: string): Promise<void> {
   try {
@@ -199,6 +192,7 @@ async function attemptLogin(
   email: string,
   password: string,
   ipAddress: string,
+  otp: string | null = null,
   extraHeaders: Record<string, string> = {},
 ): Promise<LoginAttemptResult> {
   const basePayload = {
@@ -229,10 +223,11 @@ async function attemptLogin(
     );
   }
 
-  // Paso 2 — login real
+  // Paso 2 — login real. Si llamamos con `otp` no-null, es el segundo
+  // login post-verify y Dropi nos devuelve el JWT DROPI directamente.
   const loginPayload = {
     ...basePayload,
-    otp: null,
+    otp,
     with_cdc: false,
   };
   const loginRes = await dropiPost(
@@ -240,15 +235,13 @@ async function attemptLogin(
     loginPayload,
     extraHeaders,
   );
-  if (Object.keys(extraHeaders).length > 0) {
-    // Estamos en el segundo intento (post-verify). Log verboso para depurar.
+  if (otp) {
     logger.info(
       {
         status: loginRes.status,
-        bodyPreview: loginRes.text.slice(0, 600),
-        sentExtraHeaderKeys: Object.keys(extraHeaders),
+        bodyPreview: loginRes.text.slice(0, 400),
       },
-      "dropi.login (post-verify) response",
+      "dropi.login (with otp) response",
     );
   }
   if (!loginRes.ok) {
@@ -480,7 +473,9 @@ export async function submitDropi2FACode(
     }
   }
 
-  // Si no, hacer otro /login (la secuencia del browser sugiere esto).
+  // Si no vino el JWT en el verify, hacer el segundo /login pasando
+  // el código OTP en el campo `otp`. Esa es la secuencia exacta del
+  // browser y es lo que dispara la emisión del JWT DROPI.
   if (!dropiJwt) {
     if (!conn.email || !conn.password) {
       return {
@@ -489,22 +484,6 @@ export async function submitDropi2FACode(
       };
     }
     const ipAddress = await resolvePublicIp();
-    const cookieHeader = cookiesToHeader(verifyRes.setCookies);
-    const extraHeaders: Record<string, string> = cookieHeader
-      ? { cookie: cookieHeader }
-      : {};
-    if (cookieHeader) {
-      logger.info(
-        {
-          cookieCount: verifyRes.setCookies.length,
-          cookieNames: verifyRes.setCookies
-            .map((c) => c.split("=")[0])
-            .filter(Boolean),
-          cookieHeader: cookieHeader.slice(0, 300),
-        },
-        "dropi.2fa.verify set cookies — propagating to second /login",
-      );
-    }
     let second: LoginAttemptResult;
     try {
       second = await attemptLogin(
@@ -512,7 +491,7 @@ export async function submitDropi2FACode(
         conn.email,
         conn.password,
         ipAddress,
-        extraHeaders,
+        code,
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -521,7 +500,7 @@ export async function submitDropi2FACode(
     }
     if (second.kind !== "ok" || !second.auth) {
       const msg =
-        "verify ok pero el segundo /login no devolvió un JWT DROPI (puede que el código sea inválido o el dispositivo no quedó marcado como confiable)";
+        "verify ok pero el segundo /login (con otp) no devolvió un JWT DROPI";
       await persistAutoLoginError(msg);
       return { ok: false, error: msg };
     }
