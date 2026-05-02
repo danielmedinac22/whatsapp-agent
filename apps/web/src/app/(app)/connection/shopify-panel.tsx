@@ -181,7 +181,10 @@ export function ShopifyPanel() {
                   placeholder="mitienda.myshopify.com"
                   value={domain}
                   onChange={(e) => setDomain(e.target.value)}
+                  name="shopify-shop-domain"
                   autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
                   spellCheck={false}
                 />
               </label>
@@ -200,7 +203,10 @@ export function ShopifyPanel() {
                   type="password"
                   value={token}
                   onChange={(e) => setToken(e.target.value)}
-                  autoComplete="off"
+                  name="shopify-admin-token"
+                  autoComplete="new-password"
+                  data-1p-ignore
+                  data-lpignore="true"
                   spellCheck={false}
                 />
               </label>

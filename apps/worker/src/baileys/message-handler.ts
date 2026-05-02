@@ -11,6 +11,7 @@ import { logger } from "../lib/logger";
 import { events } from "../lib/events";
 import { onAgentInbound } from "../agent/runner";
 import { scheduleConfirmationClassify } from "../agent/confirmation-classifier";
+import { escalateToHuman } from "../agent/escalation";
 import { handleInboundConfirmation } from "../jobs/confirmation-ack";
 import { tryHandleDropi2FAInbound } from "../dropi/2fa-inbound";
 import { resolveIdentity } from "./jid-resolver";
@@ -54,8 +55,8 @@ export async function onMessages(
 
     const direction = m.key.fromMe ? "out" : "in";
     const body = extractText(m);
-    if (!body && !m.message?.imageMessage && !m.message?.audioMessage)
-      continue;
+    const hasAudio = Boolean(m.message?.audioMessage);
+    if (!body && !m.message?.imageMessage && !hasAudio) continue;
 
     const identity = await resolveIdentity(sock, m.key.remoteJid);
     const contact = await upsertContactByIdentity(identity, {
@@ -113,6 +114,15 @@ export async function onMessages(
         return false;
       });
       if (handled2fa) continue;
+
+      // Audio inbound → el agente IA no procesa audio, escalamos a humano
+      // y cortamos el resto del pipeline (no clasificar, no ack, no agente).
+      if (hasAudio) {
+        await escalateToHuman({ contact, reason: "audio_message" }).catch(
+          (err) => logger.error({ err }, "audio escalation failed"),
+        );
+        continue;
+      }
 
       scheduleConfirmationClassify({
         conversationId: conv.id,

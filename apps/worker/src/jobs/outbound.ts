@@ -24,7 +24,8 @@ interface EnqueueInput {
     | "manual"
     | "confirmation_ack"
     | "dropi_status"
-    | "dropi_2fa";
+    | "dropi_2fa"
+    | "escalation";
   sourceRef?: string | null;
   dedupKey: string;
   conversationId?: string | null;

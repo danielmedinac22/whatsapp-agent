@@ -63,6 +63,7 @@ export const outboundSource = pgEnum("outbound_source", [
   "confirmation_ack",
   "dropi_status",
   "dropi_2fa",
+  "escalation",
 ]);
 
 export const outboundErrorKind = pgEnum("outbound_error_kind", [
