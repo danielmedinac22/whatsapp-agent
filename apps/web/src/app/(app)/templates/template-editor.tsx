@@ -4,6 +4,8 @@ import { useRef, useState, useTransition } from "react";
 import {
   TEMPLATE_VARIABLES,
   TEMPLATE_VARIABLE_EXAMPLES,
+  templateTypeValues,
+  type TemplateType,
 } from "@wa/shared";
 
 type TemplateRow = {
@@ -11,6 +13,19 @@ type TemplateRow = {
   name: string;
   body: string;
   variables: string[];
+  type: TemplateType;
+};
+
+const TYPE_LABELS: Record<TemplateType, string> = {
+  general: "General",
+  followup: "Follow-up Shopify",
+  remarketing: "Remarketing",
+  confirmation_ack: "Acuse de confirmación",
+  dropi_guia_generada: "Dropi · guía generada",
+  dropi_recolectado: "Dropi · recolectado",
+  dropi_en_transito: "Dropi · en tránsito",
+  dropi_con_mensajero: "Dropi · con mensajero",
+  dropi_entregado: "Dropi · entregado",
 };
 
 type Props = {
@@ -59,6 +74,7 @@ export function TemplateEditor({
 }: Props) {
   const [name, setName] = useState("");
   const [body, setBody] = useState("");
+  const [type, setType] = useState<TemplateType>("general");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -69,12 +85,14 @@ export function TemplateEditor({
     setEditingId(null);
     setName("");
     setBody("");
+    setType("general");
   }
 
   function startEditing(t: TemplateRow) {
     setEditingId(t.id);
     setName(t.name);
     setBody(t.body);
+    setType(t.type);
     if (typeof window !== "undefined") {
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
@@ -102,6 +120,7 @@ export function TemplateEditor({
     if (isEditing) formData.set("id", editingId!);
     formData.set("name", name);
     formData.set("body", body);
+    formData.set("type", type);
     startTransition(async () => {
       if (isEditing) await updateAction(formData);
       else await createAction(formData);
@@ -136,17 +155,35 @@ export function TemplateEditor({
           )}
         </div>
 
-        <div>
-          <label className="text-xs uppercase text-[var(--color-text-soft)]">
-            Nombre
-          </label>
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-            className="app-input mt-2"
-            placeholder="confirmacion_pedido"
-          />
+        <div className="grid gap-3 md:grid-cols-2">
+          <div>
+            <label className="text-xs uppercase text-[var(--color-text-soft)]">
+              Nombre
+            </label>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              className="app-input mt-2"
+              placeholder="confirmacion_pedido"
+            />
+          </div>
+          <div>
+            <label className="text-xs uppercase text-[var(--color-text-soft)]">
+              Tipo
+            </label>
+            <select
+              value={type}
+              onChange={(e) => setType(e.target.value as TemplateType)}
+              className="app-select mt-2"
+            >
+              {templateTypeValues.map((t) => (
+                <option key={t} value={t}>
+                  {TYPE_LABELS[t]}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div>
@@ -264,7 +301,12 @@ export function TemplateEditor({
           <div key={t.id} className="app-card space-y-2 p-4">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="font-medium">{t.name}</p>
+                <div className="flex items-center gap-2">
+                  <p className="font-medium">{t.name}</p>
+                  <span className="rounded-full border border-[var(--color-border)] px-2 py-0.5 text-[10px] uppercase tracking-wide text-[var(--color-text-soft)]">
+                    {TYPE_LABELS[t.type]}
+                  </span>
+                </div>
                 {t.variables.length > 0 && (
                   <p className="mt-1 text-xs text-[var(--color-text-dim)]">
                     variables: {t.variables.join(", ")}

@@ -1,0 +1,161 @@
+import { Hono } from "hono";
+import { and, eq, inArray } from "@wa/db";
+import { conversations, contacts, dropiOrders, shopifyOrders } from "@wa/db";
+import { dropiConnectionInput } from "@wa/shared";
+import { db } from "../db";
+import { logger } from "../lib/logger";
+import {
+  getDropiConnection,
+  invalidateDropiConnectionCache,
+  upsertDropiConnection,
+} from "../dropi/config";
+import { enqueueDropiSyncNow, runDropiSync } from "../jobs/dropi-sync";
+import { enqueueDropiConfirm } from "../jobs/dropi-confirm";
+import { enqueueDropiPollNow } from "../jobs/dropi-poll";
+
+export const dropi = new Hono();
+
+dropi.get("/connection", async (c) => {
+  const row = await getDropiConnection();
+  if (!row) return c.json(null);
+  return c.json({
+    apiBaseUrl: row.apiBaseUrl,
+    email: row.email,
+    userId: row.userId,
+    hasBearer: Boolean(row.bearerToken),
+    hasPassword: Boolean(row.password),
+    tokenExpiresAt: row.tokenExpiresAt,
+    connectedAt: row.connectedAt,
+    updatedAt: row.updatedAt,
+  });
+});
+
+dropi.put("/connection", async (c) => {
+  const parsed = dropiConnectionInput.safeParse(await c.req.json());
+  if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
+  const v = parsed.data;
+  const patch: Parameters<typeof upsertDropiConnection>[0] = {};
+  if (v.apiBaseUrl !== undefined) patch.apiBaseUrl = v.apiBaseUrl;
+  if (v.email !== undefined) patch.email = v.email ?? null;
+  if (v.password !== undefined) patch.password = v.password ?? null;
+  if (v.bearerToken !== undefined) {
+    patch.bearerToken = v.bearerToken ?? null;
+    // reset derived metadata; getValidDropiAuth will rederive from JWT.
+    patch.userId = null;
+    patch.tokenExpiresAt = null;
+  }
+  patch.connectedAt = new Date();
+  await upsertDropiConnection(patch);
+  return c.json({ ok: true });
+});
+
+dropi.delete("/connection", async (c) => {
+  await upsertDropiConnection({
+    email: null,
+    password: null,
+    bearerToken: null,
+    userId: null,
+    tokenExpiresAt: null,
+    connectedAt: null,
+  });
+  invalidateDropiConnectionCache();
+  return c.json({ ok: true });
+});
+
+dropi.post("/sync/run", async (c) => {
+  try {
+    const result = await runDropiSync();
+    return c.json({ ok: true, ...result });
+  } catch (err) {
+    logger.error({ err }, "manual dropi sync failed");
+    return c.json(
+      { ok: false, error: err instanceof Error ? err.message : String(err) },
+      500,
+    );
+  }
+});
+
+dropi.post("/sync/enqueue", async (c) => {
+  const id = await enqueueDropiSyncNow();
+  return c.json({ ok: true, jobId: id });
+});
+
+dropi.post("/poll/enqueue", async (c) => {
+  const id = await enqueueDropiPollNow();
+  return c.json({ ok: true, jobId: id });
+});
+
+/**
+ * Triggered by web after a manual confirmation in the inbox.
+ * Looks up active Shopify orders for the contact and enqueues a
+ * dropi-confirm for each.
+ */
+dropi.post("/confirm-by-conversation", async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as {
+    conversationId?: string;
+  };
+  if (!body.conversationId) {
+    return c.json({ error: "conversationId required" }, 400);
+  }
+  const [conv] = await db
+    .select({ contactId: conversations.contactId })
+    .from(conversations)
+    .where(eq(conversations.id, body.conversationId))
+    .limit(1);
+  if (!conv) return c.json({ error: "conversation not found" }, 404);
+
+  const orders = await db
+    .select({ id: shopifyOrders.id })
+    .from(shopifyOrders)
+    .where(
+      and(
+        eq(shopifyOrders.contactId, conv.contactId),
+        inArray(shopifyOrders.status, [
+          "received",
+          "followup_scheduled",
+          "followup_sent",
+        ]),
+      ),
+    );
+  for (const o of orders) {
+    await enqueueDropiConfirm(o.id);
+  }
+  return c.json({ ok: true, enqueued: orders.length });
+});
+
+/**
+ * List dropi orders (for UI). Optional filter for low-confidence matches.
+ */
+dropi.get("/orders", async (c) => {
+  const onlyLow = c.req.query("onlyLow") === "1";
+  const rows = await db
+    .select({
+      dropi: dropiOrders,
+      shopify: shopifyOrders,
+      contact: contacts,
+    })
+    .from(dropiOrders)
+    .leftJoin(shopifyOrders, eq(dropiOrders.shopifyOrderRowId, shopifyOrders.id))
+    .leftJoin(contacts, eq(dropiOrders.contactId, contacts.id))
+    .limit(200);
+  const filtered = onlyLow
+    ? rows.filter((r) => r.dropi.matchConfidence === "low")
+    : rows;
+  return c.json(filtered);
+});
+
+dropi.post("/orders/:id/link", async (c) => {
+  const id = c.req.param("id");
+  const body = (await c.req.json().catch(() => ({}))) as {
+    shopifyOrderRowId?: string | null;
+  };
+  await db
+    .update(dropiOrders)
+    .set({
+      shopifyOrderRowId: body.shopifyOrderRowId ?? null,
+      matchConfidence: "manual",
+      updatedAt: new Date(),
+    })
+    .where(eq(dropiOrders.id, id));
+  return c.json({ ok: true });
+});

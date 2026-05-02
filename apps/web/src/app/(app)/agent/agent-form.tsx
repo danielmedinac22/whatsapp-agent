@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+import type { TemplateType } from "@wa/shared";
+
 type Initial = {
   systemPrompt: string;
   model: string;
@@ -12,7 +14,19 @@ type Initial = {
   remarketingTemplateId: string | null;
   confirmationAckTemplateId: string | null;
   activateAgentOnConfirm: boolean;
+  dropiEnabled: boolean;
+  dropiDryRun: boolean;
+  dropiPollIntervalMin: number;
+  dropiSyncIntervalMin: number;
+  dropiMatchWindowDays: number;
+  dropiTemplateGuiaId: string | null;
+  dropiTemplateRecolectadoId: string | null;
+  dropiTemplateEnTransitoId: string | null;
+  dropiTemplateConMensajeroId: string | null;
+  dropiTemplateEntregadoId: string | null;
 };
+
+type TemplateOption = { id: string; name: string; type: TemplateType };
 
 const MODELS = [
   "anthropic/claude-sonnet-4.6",
@@ -28,8 +42,10 @@ export function AgentForm({
   templates,
 }: {
   initial: Initial;
-  templates: { id: string; name: string }[];
+  templates: TemplateOption[];
 }) {
+  const tplFor = (...types: TemplateType[]) =>
+    templates.filter((t) => types.includes(t.type) || t.type === "general");
   const [v, setV] = useState<Initial>(initial);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -134,20 +150,11 @@ export function AgentForm({
       </div>
 
       <Field label="Plantilla de follow-up">
-        <select
-          value={v.followupTemplateId ?? ""}
-          onChange={(e) =>
-            setV({ ...v, followupTemplateId: e.target.value || null })
-          }
-          className="app-select"
-        >
-          <option value="">— ninguna —</option>
-          {templates.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
-            </option>
-          ))}
-        </select>
+        <TemplateSelect
+          value={v.followupTemplateId}
+          onChange={(id) => setV({ ...v, followupTemplateId: id })}
+          options={tplFor("followup")}
+        />
       </Field>
 
       <div className="grid gap-3 lg:grid-cols-2">
@@ -168,38 +175,20 @@ export function AgentForm({
         </Field>
 
         <Field label="Plantilla de remarketing">
-          <select
-            value={v.remarketingTemplateId ?? ""}
-            onChange={(e) =>
-              setV({ ...v, remarketingTemplateId: e.target.value || null })
-            }
-            className="app-select"
-          >
-            <option value="">— ninguna —</option>
-            {templates.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
+          <TemplateSelect
+            value={v.remarketingTemplateId}
+            onChange={(id) => setV({ ...v, remarketingTemplateId: id })}
+            options={tplFor("remarketing")}
+          />
         </Field>
       </div>
 
       <Field label="Plantilla de acuse al confirmar">
-        <select
-          value={v.confirmationAckTemplateId ?? ""}
-          onChange={(e) =>
-            setV({ ...v, confirmationAckTemplateId: e.target.value || null })
-          }
-          className="app-select"
-        >
-          <option value="">— ninguna —</option>
-          {templates.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
-            </option>
-          ))}
-        </select>
+        <TemplateSelect
+          value={v.confirmationAckTemplateId}
+          onChange={(id) => setV({ ...v, confirmationAckTemplateId: id })}
+          options={tplFor("confirmation_ack")}
+        />
       </Field>
 
       <label className="flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[rgba(8,21,30,0.75)] px-3 py-2 text-sm">
@@ -212,6 +201,113 @@ export function AgentForm({
         />
         Activar agente automáticamente cuando el cliente responde al pedido
       </label>
+
+      <fieldset className="space-y-3 rounded-lg border border-[var(--color-border)] bg-[rgba(8,21,30,0.5)] p-4">
+        <legend className="px-1 text-xs uppercase text-[var(--color-text-soft)]">
+          Seguimiento Dropi
+        </legend>
+
+        <div className="grid gap-2 md:grid-cols-2">
+          <label className="flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[rgba(8,21,30,0.75)] px-3 py-2 text-sm">
+            <input
+              type="checkbox"
+              checked={v.dropiEnabled}
+              onChange={(e) => setV({ ...v, dropiEnabled: e.target.checked })}
+            />
+            Activar integración Dropi
+          </label>
+          <label className="flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[rgba(8,21,30,0.75)] px-3 py-2 text-sm">
+            <input
+              type="checkbox"
+              checked={v.dropiDryRun}
+              onChange={(e) => setV({ ...v, dropiDryRun: e.target.checked })}
+            />
+            Dry-run (no envía PUT a Dropi, sólo registra)
+          </label>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-3">
+          <Field label={`Polling cada ${v.dropiPollIntervalMin} min`}>
+            <input
+              type="range"
+              min={1}
+              max={60}
+              step={1}
+              value={v.dropiPollIntervalMin}
+              onChange={(e) =>
+                setV({ ...v, dropiPollIntervalMin: Number(e.target.value) })
+              }
+              className="w-full"
+            />
+          </Field>
+          <Field label={`Sync cada ${v.dropiSyncIntervalMin} min`}>
+            <input
+              type="range"
+              min={5}
+              max={120}
+              step={5}
+              value={v.dropiSyncIntervalMin}
+              onChange={(e) =>
+                setV({ ...v, dropiSyncIntervalMin: Number(e.target.value) })
+              }
+              className="w-full"
+            />
+          </Field>
+          <Field label={`Ventana de match (±${v.dropiMatchWindowDays}d)`}>
+            <input
+              type="range"
+              min={1}
+              max={30}
+              step={1}
+              value={v.dropiMatchWindowDays}
+              onChange={(e) =>
+                setV({ ...v, dropiMatchWindowDays: Number(e.target.value) })
+              }
+              className="w-full"
+            />
+          </Field>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2">
+          <Field label="Plantilla · guía generada">
+            <TemplateSelect
+              value={v.dropiTemplateGuiaId}
+              onChange={(id) => setV({ ...v, dropiTemplateGuiaId: id })}
+              options={tplFor("dropi_guia_generada")}
+            />
+          </Field>
+          <Field label="Plantilla · recolectado">
+            <TemplateSelect
+              value={v.dropiTemplateRecolectadoId}
+              onChange={(id) => setV({ ...v, dropiTemplateRecolectadoId: id })}
+              options={tplFor("dropi_recolectado")}
+            />
+          </Field>
+          <Field label="Plantilla · en tránsito">
+            <TemplateSelect
+              value={v.dropiTemplateEnTransitoId}
+              onChange={(id) => setV({ ...v, dropiTemplateEnTransitoId: id })}
+              options={tplFor("dropi_en_transito")}
+            />
+          </Field>
+          <Field label="Plantilla · con mensajero">
+            <TemplateSelect
+              value={v.dropiTemplateConMensajeroId}
+              onChange={(id) =>
+                setV({ ...v, dropiTemplateConMensajeroId: id })
+              }
+              options={tplFor("dropi_con_mensajero")}
+            />
+          </Field>
+          <Field label="Plantilla · entregado">
+            <TemplateSelect
+              value={v.dropiTemplateEntregadoId}
+              onChange={(id) => setV({ ...v, dropiTemplateEntregadoId: id })}
+              options={tplFor("dropi_entregado")}
+            />
+          </Field>
+        </div>
+      </fieldset>
 
       <div className="flex items-center justify-end gap-3">
         {saved && (
@@ -239,6 +335,31 @@ function Field({
       </label>
       {children}
     </div>
+  );
+}
+
+function TemplateSelect({
+  value,
+  onChange,
+  options,
+}: {
+  value: string | null;
+  onChange: (id: string | null) => void;
+  options: TemplateOption[];
+}) {
+  return (
+    <select
+      value={value ?? ""}
+      onChange={(e) => onChange(e.target.value || null)}
+      className="app-select"
+    >
+      <option value="">— ninguna —</option>
+      {options.map((t) => (
+        <option key={t.id} value={t.id}>
+          {t.name}
+        </option>
+      ))}
+    </select>
   );
 }
 

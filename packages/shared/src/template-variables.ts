@@ -48,6 +48,24 @@ export const TEMPLATE_VARIABLES: readonly TemplateVariable[] = [
     description: "ID del pedido en Shopify",
     example: "shop-12345",
   },
+  {
+    key: "guia",
+    label: "Guía",
+    description: "Número de guía de Dropi",
+    example: "ABC123456",
+  },
+  {
+    key: "transportadora",
+    label: "Transportadora",
+    description: "Carrier asignado por Dropi (Forja / Gintracom)",
+    example: "Forja",
+  },
+  {
+    key: "estado",
+    label: "Estado",
+    description: "Estado actual del pedido en Dropi",
+    example: "en_transito",
+  },
 ] as const;
 
 export const TEMPLATE_VARIABLE_KEYS: readonly string[] = TEMPLATE_VARIABLES.map(

@@ -18,10 +18,20 @@ import { events } from "./routes/events";
 import { agent } from "./routes/agent";
 import { shopify } from "./routes/shopify";
 import { shopifyConn } from "./routes/shopify-connection";
+import { dropi } from "./routes/dropi";
 import { autoStart } from "./baileys/session";
 import { startFollowupWorker } from "./jobs/followup";
 import { startOutboundWorker } from "./jobs/outbound";
 import { startRemarketingWorker } from "./jobs/remarketing";
+import {
+  scheduleDropiSync,
+  startDropiSyncWorker,
+} from "./jobs/dropi-sync";
+import { startDropiConfirmWorker } from "./jobs/dropi-confirm";
+import {
+  scheduleDropiPoll,
+  startDropiPollWorker,
+} from "./jobs/dropi-poll";
 
 const app = new Hono();
 
@@ -43,6 +53,7 @@ app.route("/api/wa", wa);
 app.route("/api/events", events);
 app.route("/api/agent", agent);
 app.route("/api/shopify", shopifyConn);
+app.route("/api/dropi", dropi);
 
 const port = Number(process.env.PORT ?? 3001);
 
@@ -59,5 +70,20 @@ serve({ fetch: app.fetch, port }, (info) => {
   );
   startOutboundWorker().catch((err) =>
     logger.error({ err }, "outbound worker failed to start"),
+  );
+  startDropiSyncWorker().catch((err) =>
+    logger.error({ err }, "dropi sync worker failed to start"),
+  );
+  scheduleDropiSync().catch((err) =>
+    logger.error({ err }, "dropi sync scheduling failed"),
+  );
+  startDropiConfirmWorker().catch((err) =>
+    logger.error({ err }, "dropi confirm worker failed to start"),
+  );
+  startDropiPollWorker().catch((err) =>
+    logger.error({ err }, "dropi poll worker failed to start"),
+  );
+  scheduleDropiPoll().catch((err) =>
+    logger.error({ err }, "dropi poll scheduling failed"),
   );
 });

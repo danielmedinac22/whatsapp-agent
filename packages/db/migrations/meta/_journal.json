@@ -43,6 +43,13 @@
       "when": 1777467016527,
       "tag": "0005_watery_pretty_boy",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1777681079386,
+      "tag": "0006_dropi_integration",
+      "breakpoints": true
     }
   ]
 }

@@ -6,6 +6,7 @@ import {
   templates,
   agentSettings,
   shopifyOrders,
+  dropiOrders,
   asc,
   desc,
   eq,
@@ -104,6 +105,21 @@ export async function listShopifyOrders(limit = 50) {
   return db
     .select()
     .from(shopifyOrders)
+    .orderBy(desc(shopifyOrders.receivedAt))
+    .limit(limit);
+}
+
+export async function listShopifyOrdersWithDropi(limit = 200) {
+  return db
+    .select({
+      shopify: shopifyOrders,
+      dropi: dropiOrders,
+    })
+    .from(shopifyOrders)
+    .leftJoin(
+      dropiOrders,
+      eq(dropiOrders.shopifyOrderRowId, shopifyOrders.id),
+    )
     .orderBy(desc(shopifyOrders.receivedAt))
     .limit(limit);
 }

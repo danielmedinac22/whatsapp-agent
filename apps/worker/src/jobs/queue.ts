@@ -7,6 +7,9 @@ let starting: Promise<PgBoss> | null = null;
 export const FOLLOWUP_QUEUE = "shopify-followup";
 export const REMARKETING_QUEUE = "shopify-remarketing";
 export const OUTBOUND_QUEUE = "outbound-send";
+export const DROPI_SYNC_QUEUE = "dropi-sync";
+export const DROPI_CONFIRM_QUEUE = "dropi-confirm";
+export const DROPI_POLL_QUEUE = "dropi-poll";
 
 export async function getBoss(): Promise<PgBoss> {
   if (boss) return boss;
@@ -22,6 +25,9 @@ export async function getBoss(): Promise<PgBoss> {
     await b.createQueue(FOLLOWUP_QUEUE);
     await b.createQueue(REMARKETING_QUEUE);
     await b.createQueue(OUTBOUND_QUEUE);
+    await b.createQueue(DROPI_SYNC_QUEUE);
+    await b.createQueue(DROPI_CONFIRM_QUEUE);
+    await b.createQueue(DROPI_POLL_QUEUE);
     boss = b;
     starting = null;
     return b;

@@ -30,5 +30,11 @@ export async function POST(
       conversationId: id,
     }),
   }).catch(() => {});
+  if (status === "confirmed") {
+    workerFetch(`/api/dropi/confirm-by-conversation`, {
+      method: "POST",
+      body: JSON.stringify({ conversationId: id }),
+    }).catch(() => {});
+  }
   return Response.json({ ok: true });
 }

@@ -61,6 +61,7 @@ export const outboundSource = pgEnum("outbound_source", [
   "agent",
   "manual",
   "confirmation_ack",
+  "dropi_status",
 ]);
 
 export const outboundErrorKind = pgEnum("outbound_error_kind", [
@@ -77,6 +78,38 @@ export const confirmationStatus = pgEnum("confirmation_status", [
 
 export const confirmationSource = pgEnum("confirmation_source", [
   "auto",
+  "manual",
+]);
+
+export const dropiStatus = pgEnum("dropi_status", [
+  "unknown",
+  "pendiente_confirmacion",
+  "pendiente",
+  "guia_generada",
+  "preparado_transportadora",
+  "recolectado",
+  "en_transito",
+  "con_mensajero",
+  "entregado",
+  "novedad",
+  "anulada",
+]);
+
+export const templateType = pgEnum("template_type", [
+  "general",
+  "followup",
+  "remarketing",
+  "confirmation_ack",
+  "dropi_guia_generada",
+  "dropi_recolectado",
+  "dropi_en_transito",
+  "dropi_con_mensajero",
+  "dropi_entregado",
+]);
+
+export const dropiMatchConfidence = pgEnum("dropi_match_confidence", [
+  "high",
+  "low",
   "manual",
 ]);
 
@@ -217,6 +250,7 @@ export const templates = pgTable(
     name: text("name").notNull(),
     body: text("body").notNull(),
     variables: jsonb("variables").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    type: templateType("type").notNull().default("general"),
     createdBy: uuid("created_by").references(() => users.id, {
       onDelete: "set null",
     }),
@@ -259,6 +293,30 @@ export const agentSettings = pgTable("agent_settings", {
     .notNull()
     .default(true),
   memoryWindow: integer("memory_window").notNull().default(30),
+  dropiEnabled: boolean("dropi_enabled").notNull().default(false),
+  dropiDryRun: boolean("dropi_dry_run").notNull().default(true),
+  dropiPollIntervalMin: integer("dropi_poll_interval_min").notNull().default(10),
+  dropiSyncIntervalMin: integer("dropi_sync_interval_min").notNull().default(15),
+  dropiMatchWindowDays: integer("dropi_match_window_days").notNull().default(5),
+  dropiTemplateGuiaId: uuid("dropi_template_guia_id").references(
+    () => templates.id,
+    { onDelete: "set null" },
+  ),
+  dropiTemplateRecolectadoId: uuid("dropi_template_recolectado_id").references(
+    () => templates.id,
+    { onDelete: "set null" },
+  ),
+  dropiTemplateEnTransitoId: uuid("dropi_template_en_transito_id").references(
+    () => templates.id,
+    { onDelete: "set null" },
+  ),
+  dropiTemplateConMensajeroId: uuid(
+    "dropi_template_con_mensajero_id",
+  ).references(() => templates.id, { onDelete: "set null" }),
+  dropiTemplateEntregadoId: uuid("dropi_template_entregado_id").references(
+    () => templates.id,
+    { onDelete: "set null" },
+  ),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -318,6 +376,67 @@ export const shopifyOrders = pgTable(
     uniqueIndex("shopify_orders_order_id_idx").on(t.orderId),
     index("shopify_orders_phone_idx").on(t.customerPhone),
     index("shopify_orders_status_idx").on(t.status),
+  ],
+);
+
+// ────────────────────────────────────────────────────────────────────────────
+// dropi connection (singleton row, id=1) + orders mapping
+// ────────────────────────────────────────────────────────────────────────────
+
+export const dropiConnection = pgTable("dropi_connection", {
+  id: integer("id").primaryKey().default(1),
+  apiBaseUrl: text("api_base_url")
+    .notNull()
+    .default("https://api.dropi.gt/api"),
+  email: text("email"),
+  password: text("password"),
+  userId: integer("user_id"),
+  bearerToken: text("bearer_token"),
+  tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }),
+  connectedAt: timestamp("connected_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const dropiOrders = pgTable(
+  "dropi_orders",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    dropiOrderId: integer("dropi_order_id").notNull(),
+    shopifyOrderRowId: uuid("shopify_order_row_id").references(
+      () => shopifyOrders.id,
+      { onDelete: "set null" },
+    ),
+    contactId: uuid("contact_id").references(() => contacts.id, {
+      onDelete: "set null",
+    }),
+    customerPhone: text("customer_phone"),
+    customerName: text("customer_name"),
+    guideNumber: text("guide_number"),
+    carrier: text("carrier"),
+    status: dropiStatus("status").notNull().default("unknown"),
+    rawStatus: text("raw_status"),
+    rawPayload: jsonb("raw_payload"),
+    matchConfidence: dropiMatchConfidence("match_confidence"),
+    confirmPutAt: timestamp("confirm_put_at", { withTimezone: true }),
+    confirmDryRunAt: timestamp("confirm_dry_run_at", { withTimezone: true }),
+    lastPolledAt: timestamp("last_polled_at", { withTimezone: true }),
+    lastNotifiedStatus: dropiStatus("last_notified_status"),
+    lastNotifiedAt: timestamp("last_notified_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("dropi_orders_id_idx").on(t.dropiOrderId),
+    index("dropi_orders_phone_idx").on(t.customerPhone),
+    index("dropi_orders_status_idx").on(t.status),
+    index("dropi_orders_shopify_idx").on(t.shopifyOrderRowId),
+    index("dropi_orders_contact_idx").on(t.contactId),
   ],
 );
 
@@ -411,3 +530,7 @@ export type OutboundMessage = typeof outboundMessages.$inferSelect;
 export type NewOutboundMessage = typeof outboundMessages.$inferInsert;
 export type ShopifyConnection = typeof shopifyConnection.$inferSelect;
 export type NewShopifyConnection = typeof shopifyConnection.$inferInsert;
+export type DropiConnection = typeof dropiConnection.$inferSelect;
+export type NewDropiConnection = typeof dropiConnection.$inferInsert;
+export type DropiOrder = typeof dropiOrders.$inferSelect;
+export type NewDropiOrder = typeof dropiOrders.$inferInsert;

@@ -2,6 +2,7 @@ import { revalidatePath } from "next/cache";
 import { db, templates, eq } from "@/lib/db";
 import { listTemplates } from "@/lib/queries";
 import { auth } from "@/auth";
+import { templateTypeValues, type TemplateType } from "@wa/shared";
 import { TemplateEditor } from "./template-editor";
 
 export const dynamic = "force-dynamic";
@@ -14,12 +15,19 @@ function extractVariables(body: string): string[] {
   return [...set];
 }
 
+function parseType(input: string): TemplateType {
+  return (templateTypeValues as readonly string[]).includes(input)
+    ? (input as TemplateType)
+    : "general";
+}
+
 async function createTemplate(formData: FormData) {
   "use server";
   const session = await auth();
   if (!session) return;
   const name = String(formData.get("name") ?? "").trim();
   const body = String(formData.get("body") ?? "").trim();
+  const type = parseType(String(formData.get("type") ?? "general"));
   if (!name || !body) return;
   await db
     .insert(templates)
@@ -27,6 +35,7 @@ async function createTemplate(formData: FormData) {
       name,
       body,
       variables: extractVariables(body),
+      type,
       createdBy: session.user.id,
     })
     .onConflictDoNothing({ target: templates.name });
@@ -40,6 +49,7 @@ async function updateTemplate(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   const name = String(formData.get("name") ?? "").trim();
   const body = String(formData.get("body") ?? "").trim();
+  const type = parseType(String(formData.get("type") ?? "general"));
   if (!id || !name || !body) return;
   await db
     .update(templates)
@@ -47,6 +57,7 @@ async function updateTemplate(formData: FormData) {
       name,
       body,
       variables: extractVariables(body),
+      type,
       updatedAt: new Date(),
     })
     .where(eq(templates.id, id));
@@ -80,6 +91,7 @@ export default async function TemplatesPage() {
           name: t.name,
           body: t.body,
           variables: t.variables,
+          type: t.type,
         }))}
         createAction={createTemplate}
         updateAction={updateTemplate}
