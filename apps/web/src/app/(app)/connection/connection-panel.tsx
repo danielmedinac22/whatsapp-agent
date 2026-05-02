@@ -4,12 +4,19 @@ import { useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
 import type { WaConnectionStatus } from "@wa/shared";
 
-type Snapshot = { status: WaConnectionStatus; qr: string | null };
+type Snapshot = {
+  status: WaConnectionStatus;
+  qr: string | null;
+  phone?: string | null;
+  name?: string | null;
+};
 
 export function ConnectionPanel() {
   const [snap, setSnap] = useState<Snapshot>({
     status: "disconnected",
     qr: null,
+    phone: null,
+    name: null,
   });
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -81,32 +88,35 @@ export function ConnectionPanel() {
           <div>
             <h2 className="text-xl font-semibold">Conexión de WhatsApp</h2>
             <p className="mt-1 text-sm leading-5 text-[var(--color-text-dim)]">
-              Estado:{" "}
-              <span className="font-medium text-[var(--color-text)]">
-                {labelFor(snap.status)}
-              </span>
+              Sesión activa para recibir y enviar mensajes desde el inbox.
             </p>
           </div>
 
-          <div className="grid gap-2 md:grid-cols-3">
-            <StatusTile
-              label="Estado"
-              value={labelFor(snap.status)}
-              accent={snap.status === "connected" ? "text-emerald-300" : "text-amber-200"}
-            />
-            <StatusTile
-              label="Sesión"
-              value={snap.status === "connected" ? "Activa" : "Pendiente"}
-            />
-            <StatusTile
-              label="Acción"
-              value={snap.status === "connected" ? "Monitorear" : "Escanear QR"}
-            />
-          </div>
-
-          {snap.status === "connected" && (
-            <div className="rounded-lg border border-emerald-400/18 bg-emerald-500/10 p-3 text-sm">
-              Tu WhatsApp está conectado y listo para recibir y enviar mensajes.
+          {snap.status === "connected" ? (
+            <div className="rounded-lg border border-emerald-400/25 bg-emerald-500/10 p-4">
+              <div className="flex items-center gap-3">
+                <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500/25 text-emerald-200">
+                  ✓
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs uppercase tracking-wide text-emerald-300/80">
+                    Conectado
+                  </p>
+                  <p className="truncate text-sm font-semibold text-[var(--color-text)]">
+                    {snap.name || "WhatsApp"}
+                  </p>
+                  {snap.phone && (
+                    <p className="truncate text-xs text-[var(--color-text-dim)]">
+                      +{snap.phone}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-amber-400/30 bg-amber-500/10 p-3 text-sm text-amber-100">
+              Estado: {labelFor(snap.status)}. Genera el QR y escanéalo desde
+              tu teléfono para vincular el dispositivo.
             </div>
           )}
 
@@ -150,27 +160,6 @@ export function ConnectionPanel() {
           )}
         </div>
       </div>
-    </div>
-  );
-}
-
-function StatusTile({
-  label,
-  value,
-  accent,
-}: {
-  label: string;
-  value: string;
-  accent?: string;
-}) {
-  return (
-    <div className="rounded-lg border border-[var(--color-border)] bg-[rgba(8,21,30,0.72)] px-3 py-2">
-      <p className="text-[11px] uppercase text-[var(--color-text-soft)]">
-        {label}
-      </p>
-      <p className={`mt-1 text-sm font-semibold text-[var(--color-text)] ${accent ?? ""}`}>
-        {value}
-      </p>
     </div>
   );
 }

@@ -30,6 +30,7 @@ export function DropiPanel() {
   const [adminPhone, setAdminPhone] = useState("");
   const [otpCode, setOtpCode] = useState("");
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(
     null,
   );
@@ -92,6 +93,7 @@ export function DropiPanel() {
       setMsg({ kind: "ok", text: "guardado" });
       setPassword("");
       setBearer("");
+      setEditing(false);
       await load();
     } catch (err) {
       setMsg({
@@ -214,6 +216,7 @@ export function DropiPanel() {
       setEmail("");
       setPassword("");
       setBearer("");
+      setEditing(false);
       setMsg({ kind: "ok", text: "desconectado" });
     } finally {
       setBusy(false);
@@ -238,11 +241,41 @@ export function DropiPanel() {
           </p>
         </div>
 
-        {loaded && snap?.hasBearer && (
-          <div className="rounded-lg border border-emerald-400/18 bg-emerald-500/10 p-3 text-sm">
-            Token activo
-            {snap.userId ? ` · user ${snap.userId}` : null}
-            {tokenExpiresLabel ? ` · expira ${tokenExpiresLabel}` : null}
+        {loaded && snap?.hasBearer && !editing && (
+          <div className="rounded-lg border border-emerald-400/25 bg-emerald-500/10 p-4">
+            <div className="flex items-start gap-3">
+              <span className="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500/25 text-emerald-200">
+                ✓
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs uppercase tracking-wide text-emerald-300/80">
+                  Conectado
+                </p>
+                <p className="truncate text-sm font-semibold text-[var(--color-text)]">
+                  {snap.email ?? "—"}
+                </p>
+                <div className="mt-2 grid gap-x-6 gap-y-1 text-xs text-[var(--color-text-dim)] sm:grid-cols-2">
+                  {snap.userId !== null && (
+                    <DetailRow label="User ID" value={String(snap.userId)} />
+                  )}
+                  {tokenExpiresLabel && (
+                    <DetailRow label="Token expira" value={tokenExpiresLabel} />
+                  )}
+                  {snap.adminPhone && (
+                    <DetailRow label="Admin 2FA" value={`+${snap.adminPhone}`} />
+                  )}
+                  {snap.lastAutoLoginAt && (
+                    <DetailRow
+                      label="Último auto-login"
+                      value={new Date(snap.lastAutoLoginAt).toLocaleString()}
+                    />
+                  )}
+                  {snap.assetsBaseUrl && (
+                    <DetailRow label="CDN" value={snap.assetsBaseUrl} />
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
         )}
         {loaded && !snap?.hasBearer && (
@@ -259,14 +292,6 @@ export function DropiPanel() {
               : null}
           </div>
         )}
-        {loaded &&
-          snap?.lastAutoLoginAt &&
-          !snap.lastAutoLoginError && (
-            <div className="text-xs text-[var(--color-text-dim)]">
-              Auto-login: último éxito{" "}
-              {new Date(snap.lastAutoLoginAt).toLocaleString()}
-            </div>
-          )}
 
         {loaded && snap?.has2faPending && (
           <div className="space-y-2 rounded-lg border border-orange-400/30 bg-orange-500/10 p-3 text-sm text-orange-100">
@@ -298,6 +323,8 @@ export function DropiPanel() {
           </div>
         )}
 
+        {loaded && (!snap?.hasBearer || editing) && (
+        <>
         <div className="grid gap-3 md:grid-cols-2">
           <label className="space-y-1 text-sm">
             <span className="text-[11px] uppercase text-[var(--color-text-soft)]">
@@ -381,18 +408,6 @@ export function DropiPanel() {
           />
         </label>
 
-        {msg && (
-          <div
-            className={`rounded-lg border p-3 text-sm ${
-              msg.kind === "ok"
-                ? "border-emerald-400/18 bg-emerald-500/10"
-                : "border-red-500/25 bg-red-950/20 text-red-100"
-            }`}
-          >
-            {msg.text}
-          </div>
-        )}
-
         <div className="flex flex-wrap gap-3">
           <button
             onClick={save}
@@ -418,14 +433,57 @@ export function DropiPanel() {
           >
             Probar auto-login
           </button>
-          <button
-            onClick={runSync}
-            disabled={busy || !snap?.hasBearer}
-            className="app-button-secondary"
+          {editing && (
+            <button
+              onClick={() => {
+                setEditing(false);
+                setPassword("");
+                setBearer("");
+                setEmail(snap?.email ?? "");
+                setAssetsBaseUrl(snap?.assetsBaseUrl ?? "");
+                setAdminPhone(snap?.adminPhone ?? "");
+                setMsg(null);
+              }}
+              className="app-button-secondary"
+              disabled={busy}
+            >
+              Cancelar
+            </button>
+          )}
+        </div>
+        </>
+        )}
+
+        {msg && (
+          <div
+            className={`rounded-lg border p-3 text-sm ${
+              msg.kind === "ok"
+                ? "border-emerald-400/18 bg-emerald-500/10"
+                : "border-red-500/25 bg-red-950/20 text-red-100"
+            }`}
           >
-            Probar sync
-          </button>
-          {snap?.hasBearer && (
+            {msg.text}
+          </div>
+        )}
+
+        {loaded && snap?.hasBearer && !editing && (
+          <div className="flex flex-wrap gap-3">
+            <button
+              onClick={() => {
+                setEditing(true);
+                setMsg(null);
+              }}
+              className="app-button-secondary"
+            >
+              Editar
+            </button>
+            <button
+              onClick={runSync}
+              disabled={busy}
+              className="app-button-secondary"
+            >
+              Probar sync
+            </button>
             <button
               onClick={disconnect}
               disabled={busy}
@@ -433,9 +491,20 @@ export function DropiPanel() {
             >
               Desconectar
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
+    </div>
+  );
+}
+
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline gap-2">
+      <span className="text-[10px] uppercase tracking-wide text-[var(--color-text-soft)]">
+        {label}
+      </span>
+      <span className="truncate text-[var(--color-text)]">{value}</span>
     </div>
   );
 }

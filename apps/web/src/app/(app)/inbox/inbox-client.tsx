@@ -241,49 +241,24 @@ export function InboxClient({ initial }: { initial: ChatItem[] }) {
 
       <div className="grid min-h-0 flex-1 gap-3 xl:grid-cols-[336px_1fr]">
         <aside className="app-card flex min-h-[520px] flex-col overflow-hidden">
-          <div className="flex items-center justify-between border-b border-[var(--color-border)] px-3 py-2.5">
-            <div>
-              <p className="text-sm font-semibold">Conversaciones</p>
+          <div className="flex items-center justify-between gap-2 border-b border-[var(--color-border)] px-3 py-2.5">
+            <p className="text-sm font-semibold">Conversaciones</p>
+            <div className="flex items-center gap-2">
+              <select
+                value={filter}
+                onChange={(e) => setFilter(e.target.value as FilterKey)}
+                className="h-7 rounded-md border border-[var(--color-border)] bg-[rgba(8,21,30,0.72)] px-2 text-xs text-[var(--color-text-dim)] outline-none transition hover:border-[rgba(110,231,183,0.3)] focus:border-[rgba(110,231,183,0.5)]"
+              >
+                <option value="all">Todas ({items.length})</option>
+                <option value="pending">Pendientes ({pendingCount})</option>
+                <option value="confirmed">Confirmadas ({confirmedCount})</option>
+                <option value="not_confirmed">No conf. ({notConfirmedCount})</option>
+                <option value="needs_attention">Atención ({needsAttentionCount})</option>
+              </select>
+              <span className="rounded-md border border-[var(--color-border)] bg-[rgba(8,21,30,0.72)] px-2 py-1 text-xs text-[var(--color-text-dim)]">
+                {visibleItems.length}/{items.length}
+              </span>
             </div>
-            <span className="rounded-md border border-[var(--color-border)] bg-[rgba(8,21,30,0.72)] px-2 py-1 text-xs text-[var(--color-text-dim)]">
-              {visibleItems.length}/{items.length}
-            </span>
-          </div>
-          <div className="flex flex-wrap gap-1 border-b border-[var(--color-border)] px-2 py-2">
-            <FilterPill
-              active={filter === "all"}
-              onClick={() => setFilter("all")}
-              label="Todas"
-              count={items.length}
-            />
-            <FilterPill
-              active={filter === "pending"}
-              onClick={() => setFilter("pending")}
-              label="Pendientes"
-              count={pendingCount}
-              tone="amber"
-            />
-            <FilterPill
-              active={filter === "confirmed"}
-              onClick={() => setFilter("confirmed")}
-              label="Confirmadas"
-              count={confirmedCount}
-              tone="emerald"
-            />
-            <FilterPill
-              active={filter === "not_confirmed"}
-              onClick={() => setFilter("not_confirmed")}
-              label="No conf."
-              count={notConfirmedCount}
-              tone="red"
-            />
-            <FilterPill
-              active={filter === "needs_attention"}
-              onClick={() => setFilter("needs_attention")}
-              label="Atención"
-              count={needsAttentionCount}
-              tone="red"
-            />
           </div>
           <ul className="flex-1 overflow-y-auto p-2">
           {visibleItems.length === 0 && (
@@ -299,10 +274,10 @@ export function InboxClient({ initial }: { initial: ChatItem[] }) {
             <li
               key={it.id}
               onClick={() => setSelected(it)}
-              className={`mb-1 cursor-pointer rounded-lg border px-3 py-2.5 transition ${
+              className={`mb-2 cursor-pointer rounded-lg border px-3 py-2.5 transition ${
                 selected?.id === it.id
-                  ? "border-[rgba(110,231,183,0.3)] bg-[rgba(18,42,53,0.92)]"
-                  : "border-transparent bg-transparent hover:border-[var(--color-border)] hover:bg-[rgba(18,35,48,0.68)]"
+                  ? "border-[rgba(110,231,183,0.35)] bg-[rgba(18,42,53,0.92)] shadow-[0_6px_18px_rgba(3,10,16,0.45)]"
+                  : "border-[var(--color-border)] bg-[rgba(12,26,36,0.55)] shadow-[0_2px_8px_rgba(3,10,16,0.3)] hover:border-[rgba(110,231,183,0.2)] hover:bg-[rgba(18,35,48,0.78)]"
               } ${needsAttention ? "border-l-2 border-l-red-400/60" : ""}`}
             >
               <div className="flex items-center justify-between">
@@ -321,9 +296,11 @@ export function InboxClient({ initial }: { initial: ChatItem[] }) {
               <div className="mt-2 flex items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-1">
                   {it.agentMode ? (
-                    <span className="inline-flex items-center gap-1 rounded-md border border-emerald-400/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] uppercase text-emerald-200">
+                    <span
+                      title="Agente IA activo"
+                      className="inline-flex h-5 w-5 items-center justify-center rounded-md border border-emerald-400/20 bg-emerald-500/10 text-emerald-200"
+                    >
                       <Sparkles className="h-3 w-3" />
-                      agente
                     </span>
                   ) : (
                     <span className="text-[10px] uppercase text-[var(--color-text-soft)]">
@@ -611,43 +588,6 @@ function SummaryCard({
     );
   }
   return <div className={className}>{inner}</div>;
-}
-
-function FilterPill({
-  active,
-  onClick,
-  label,
-  count,
-  tone,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-  count: number;
-  tone?: "amber" | "emerald" | "red";
-}) {
-  const toneClass =
-    tone === "amber"
-      ? "border-amber-400/30 text-amber-200"
-      : tone === "emerald"
-        ? "border-emerald-400/30 text-emerald-200"
-        : tone === "red"
-          ? "border-red-400/30 text-red-200"
-          : "border-[var(--color-border)] text-[var(--color-text-dim)]";
-  const activeClass = active
-    ? "bg-[rgba(18,42,53,0.92)]"
-    : "bg-transparent hover:bg-[rgba(18,35,48,0.68)]";
-  return (
-    <button
-      onClick={onClick}
-      className={`inline-flex h-7 items-center gap-1.5 rounded-md border px-2 text-[11px] uppercase transition ${toneClass} ${activeClass}`}
-    >
-      <span>{label}</span>
-      <span className="rounded bg-[rgba(8,21,30,0.72)] px-1 text-[10px]">
-        {count}
-      </span>
-    </button>
-  );
 }
 
 function DropiChip({ status }: { status: DropiStatus }) {

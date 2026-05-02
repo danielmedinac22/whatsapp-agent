@@ -20,8 +20,16 @@ let currentQr: string | null = null;
 let status: WaConnectionStatus = "disconnected";
 let starting = false;
 
-export function getStatus(): { status: WaConnectionStatus; qr: string | null } {
-  return { status, qr: currentQr };
+export function getStatus(): {
+  status: WaConnectionStatus;
+  qr: string | null;
+  phone: string | null;
+  name: string | null;
+} {
+  const user = sock?.user;
+  const phone = user?.id?.split(":")[0]?.split("@")[0] ?? null;
+  const name = user?.name ?? null;
+  return { status, qr: currentQr, phone, name };
 }
 
 export function getSocket(): WASocket | null {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import type { TemplateType } from "@wa/shared";
 
@@ -37,6 +37,12 @@ const MODELS = [
   "meta-llama/llama-3.3-70b-instruct",
 ];
 
+const QUICK_MODELS = [
+  { slug: "anthropic/claude-sonnet-4.6", label: "Sonnet 4.6" },
+  { slug: "anthropic/claude-haiku-4.5", label: "Haiku 4.5" },
+  { slug: "openai/gpt-4o-mini", label: "GPT-4o mini" },
+];
+
 export function AgentForm({
   initial,
   templates,
@@ -47,331 +53,487 @@ export function AgentForm({
   const tplFor = (...types: TemplateType[]) =>
     templates.filter((t) => types.includes(t.type) || t.type === "general");
   const [v, setV] = useState<Initial>(initial);
+  const [baseline, setBaseline] = useState<Initial>(initial);
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [savingPrompt, setSavingPrompt] = useState(false);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
 
-  const save = async () => {
+  const dirty = useMemo(
+    () => JSON.stringify(v) !== JSON.stringify(baseline),
+    [v, baseline],
+  );
+  const promptDirty = v.systemPrompt !== baseline.systemPrompt;
+
+  const persist = async (state: Initial) => {
+    const r = await fetch("/api/agent/settings", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(state),
+    });
+    if (!r.ok) {
+      alert("Error al guardar");
+      return false;
+    }
+    setBaseline(state);
+    setSavedAt(Date.now());
+    return true;
+  };
+
+  const saveAll = async () => {
     setSaving(true);
-    setSaved(false);
     try {
-      const r = await fetch("/api/agent/settings", {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(v),
-      });
-      if (r.ok) setSaved(true);
-      else alert("Error al guardar");
+      await persist(v);
     } finally {
       setSaving(false);
-      setTimeout(() => setSaved(false), 2000);
     }
   };
 
+  const savePrompt = async () => {
+    setSavingPrompt(true);
+    try {
+      // Persist current full state — only the prompt has changed locally
+      await persist({ ...baseline, systemPrompt: v.systemPrompt });
+    } finally {
+      setSavingPrompt(false);
+    }
+  };
+
+  const discard = () => setV(baseline);
+
   return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        save();
-      }}
-      className="app-card space-y-4 p-4"
-    >
-      <div className="grid gap-2 rounded-lg border border-[var(--color-border)] bg-[rgba(8,21,30,0.75)] p-3 md:grid-cols-3">
-        <Metric label="Modelo" value={v.model.split("/").pop() ?? v.model} />
-        <Metric label="Debounce" value={`${Math.round(v.debounceMs / 1000)}s`} />
-        <Metric
-          label="Auto activación"
-          value={v.activateAgentOnConfirm ? "Encendida" : "Apagada"}
-        />
-      </div>
+    <div className="space-y-4 pb-24">
+      {/* System prompt — own card with amber accent */}
+      <section className="app-card overflow-hidden">
+        <div className="flex items-start justify-between gap-3 border-b border-[var(--color-border)] px-4 py-3">
+          <div>
+            <h2 className="text-base font-semibold">Prompt del sistema</h2>
+            <p className="mt-1 text-xs text-[var(--color-text-dim)]">
+              Define el rol, tono y reglas del agente. Se envía como mensaje
+              system en cada conversación.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {promptDirty && (
+              <span className="text-[11px] text-amber-200">sin guardar</span>
+            )}
+            <button
+              type="button"
+              onClick={savePrompt}
+              disabled={savingPrompt || !promptDirty}
+              className="app-button"
+            >
+              {savingPrompt ? "Guardando…" : "Guardar prompt"}
+            </button>
+          </div>
+        </div>
+        <div className="bg-[rgba(40,28,8,0.35)] p-4">
+          <textarea
+            value={v.systemPrompt}
+            onChange={(e) => setV({ ...v, systemPrompt: e.target.value })}
+            rows={12}
+            placeholder="Eres un asistente de servicio al cliente…"
+            className="block w-full resize-y rounded-md border border-amber-400/20 bg-[rgba(20,14,4,0.55)] p-3 font-mono text-sm leading-relaxed text-amber-50 outline-none transition focus:border-amber-300/40"
+          />
+          <div className="mt-2 flex justify-between text-[11px] text-[var(--color-text-dim)]">
+            <span>{v.systemPrompt.length.toLocaleString()} caracteres</span>
+            <span>máximo 8.000</span>
+          </div>
+        </div>
+      </section>
 
-      <Field label="Prompt del sistema">
-        <textarea
-          value={v.systemPrompt}
-          onChange={(e) => setV({ ...v, systemPrompt: e.target.value })}
-          rows={8}
-          className="app-textarea"
-          placeholder="Eres un asistente de servicio al cliente…"
-        />
-      </Field>
-
-      <Field label="Modelo (OpenRouter)">
-        <select
-          value={v.model}
-          onChange={(e) => setV({ ...v, model: e.target.value })}
-          className="app-select"
-        >
-          {MODELS.map((m) => (
-            <option key={m} value={m}>
-              {m}
-            </option>
-          ))}
-          {!MODELS.includes(v.model) && (
-            <option value={v.model}>{v.model} (custom)</option>
-          )}
-        </select>
+      {/* Model */}
+      <section className="app-card p-4">
+        <h2 className="text-base font-semibold">Modelo de IA</h2>
+        <p className="mt-1 text-xs text-[var(--color-text-dim)]">
+          Slug de OpenRouter. Escribe para autocompletar o usa un acceso
+          rápido.
+        </p>
         <input
+          list="agent-models"
           value={v.model}
           onChange={(e) => setV({ ...v, model: e.target.value })}
-          className="app-input mt-3 text-xs"
-          placeholder="o pega un slug custom de openrouter.ai/models"
+          className="app-input mt-3 w-full"
+          placeholder="anthropic/claude-sonnet-4.6"
+          spellCheck={false}
+          autoComplete="off"
         />
-      </Field>
+        <datalist id="agent-models">
+          {MODELS.map((m) => (
+            <option key={m} value={m} />
+          ))}
+        </datalist>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {QUICK_MODELS.map((m) => {
+            const active = v.model === m.slug;
+            return (
+              <button
+                key={m.slug}
+                type="button"
+                onClick={() => setV({ ...v, model: m.slug })}
+                className={`rounded-md border px-2.5 py-1 text-xs transition ${
+                  active
+                    ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-200"
+                    : "border-[var(--color-border)] text-[var(--color-text-dim)] hover:border-emerald-400/30"
+                }`}
+              >
+                {m.label}
+              </button>
+            );
+          })}
+        </div>
+      </section>
 
-      <div className="grid gap-3 lg:grid-cols-2">
-        <Field label={`Desfase / debounce (${v.debounceMs} ms)`}>
-          <input
-            type="range"
+      {/* Behaviour & timing */}
+      <section className="app-card p-4">
+        <h2 className="text-base font-semibold">Comportamiento y tiempos</h2>
+        <p className="mt-1 text-xs text-[var(--color-text-dim)]">
+          Cuándo responde el agente y cuándo dispara campañas.
+        </p>
+        <div className="mt-3 grid gap-3 md:grid-cols-3">
+          <NumberField
+            label="Debounce de respuesta"
+            unit="segundos"
             min={0}
-            max={60000}
-            step={500}
-            value={v.debounceMs}
-            onChange={(e) =>
-              setV({ ...v, debounceMs: Number(e.target.value) })
-            }
-            className="w-full"
+            max={120}
+            step={1}
+            value={Math.round(v.debounceMs / 1000)}
+            onChange={(n) => setV({ ...v, debounceMs: n * 1000 })}
+            help="Espera para agrupar mensajes consecutivos del cliente."
           />
-        </Field>
-
-        <Field
-          label={`Follow-up Shopify (${Math.round(v.followupDelayMs / 60000)} min)`}
-        >
-          <input
-            type="range"
-            min={60_000}
-            max={60 * 60_000}
-            step={60_000}
-            value={v.followupDelayMs}
-            onChange={(e) =>
-              setV({ ...v, followupDelayMs: Number(e.target.value) })
-            }
-            className="w-full"
+          <NumberField
+            label="Follow-up Shopify"
+            unit="minutos"
+            min={1}
+            max={60}
+            step={1}
+            value={Math.round(v.followupDelayMs / 60000)}
+            onChange={(n) => setV({ ...v, followupDelayMs: n * 60000 })}
+            help="Tiempo desde el primer contacto sin compra."
           />
-        </Field>
-      </div>
+          <NumberField
+            label="Remarketing"
+            unit="horas"
+            min={1}
+            max={48}
+            step={1}
+            value={Math.round(v.remarketingDelayMs / 3_600_000)}
+            onChange={(n) => setV({ ...v, remarketingDelayMs: n * 3_600_000 })}
+            help="Tras carrito abandonado."
+          />
+        </div>
+        <ToggleRow
+          className="mt-4"
+          label="Auto-activar agente al confirmar"
+          help="Cuando el cliente confirma el pedido, el agente toma la conversación."
+          checked={v.activateAgentOnConfirm}
+          onChange={(b) => setV({ ...v, activateAgentOnConfirm: b })}
+        />
+      </section>
 
-      <Field label="Plantilla de follow-up">
-        <TemplateSelect
+      {/* Templates */}
+      <section className="app-card overflow-hidden">
+        <div className="border-b border-[var(--color-border)] px-4 py-3">
+          <h2 className="text-base font-semibold">Plantillas</h2>
+          <p className="mt-1 text-xs text-[var(--color-text-dim)]">
+            Mensajes que el sistema envía automáticamente en cada momento.
+          </p>
+        </div>
+        <TemplateRow
+          label="Follow-up Shopify"
+          help="Tras el delay configurado arriba si el cliente no responde."
           value={v.followupTemplateId}
           onChange={(id) => setV({ ...v, followupTemplateId: id })}
           options={tplFor("followup")}
         />
-      </Field>
-
-      <div className="grid gap-3 lg:grid-cols-2">
-        <Field
-          label={`Remarketing (${(v.remarketingDelayMs / 3_600_000).toFixed(1)} h)`}
-        >
-          <input
-            type="range"
-            min={60 * 60_000}
-            max={24 * 60 * 60_000}
-            step={30 * 60_000}
-            value={v.remarketingDelayMs}
-            onChange={(e) =>
-              setV({ ...v, remarketingDelayMs: Number(e.target.value) })
-            }
-            className="w-full"
-          />
-        </Field>
-
-        <Field label="Plantilla de remarketing">
-          <TemplateSelect
-            value={v.remarketingTemplateId}
-            onChange={(id) => setV({ ...v, remarketingTemplateId: id })}
-            options={tplFor("remarketing")}
-          />
-        </Field>
-      </div>
-
-      <Field label="Plantilla de acuse al confirmar">
-        <TemplateSelect
+        <TemplateRow
+          label="Remarketing"
+          help="Carrito abandonado / segunda ronda."
+          value={v.remarketingTemplateId}
+          onChange={(id) => setV({ ...v, remarketingTemplateId: id })}
+          options={tplFor("remarketing")}
+        />
+        <TemplateRow
+          label="Acuse al confirmar"
+          help="Confirmación inmediata que recibe el cliente."
           value={v.confirmationAckTemplateId}
           onChange={(id) => setV({ ...v, confirmationAckTemplateId: id })}
           options={tplFor("confirmation_ack")}
+          last
         />
-      </Field>
+      </section>
 
-      <label className="flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[rgba(8,21,30,0.75)] px-3 py-2 text-sm">
-        <input
-          type="checkbox"
-          checked={v.activateAgentOnConfirm}
-          onChange={(e) =>
-            setV({ ...v, activateAgentOnConfirm: e.target.checked })
-          }
-        />
-        Activar agente automáticamente cuando el cliente responde al pedido
-      </label>
-
-      <fieldset className="space-y-3 rounded-lg border border-[var(--color-border)] bg-[rgba(8,21,30,0.5)] p-4">
-        <legend className="px-1 text-xs uppercase text-[var(--color-text-soft)]">
-          Seguimiento Dropi
-        </legend>
-
-        <div className="grid gap-2 md:grid-cols-2">
-          <label className="flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[rgba(8,21,30,0.75)] px-3 py-2 text-sm">
-            <input
-              type="checkbox"
-              checked={v.dropiEnabled}
-              onChange={(e) => setV({ ...v, dropiEnabled: e.target.checked })}
-            />
-            Activar integración Dropi
-          </label>
-          <label className="flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[rgba(8,21,30,0.75)] px-3 py-2 text-sm">
-            <input
-              type="checkbox"
-              checked={v.dropiDryRun}
-              onChange={(e) => setV({ ...v, dropiDryRun: e.target.checked })}
-            />
-            Dry-run (no envía PUT a Dropi, sólo registra)
-          </label>
+      {/* Dropi */}
+      <section className="app-card overflow-hidden">
+        <div className="border-b border-[var(--color-border)] px-4 py-3">
+          <h2 className="text-base font-semibold">Seguimiento Dropi</h2>
+          <p className="mt-1 text-xs text-[var(--color-text-dim)]">
+            Sincronización de pedidos y notificaciones por estado de guía.
+          </p>
         </div>
-
-        <div className="grid gap-3 md:grid-cols-3">
-          <Field label={`Polling cada ${v.dropiPollIntervalMin} min`}>
-            <input
-              type="range"
+        <div className="space-y-3 px-4 py-3">
+          <ToggleRow
+            label="Activar integración"
+            checked={v.dropiEnabled}
+            onChange={(b) => setV({ ...v, dropiEnabled: b })}
+          />
+          <ToggleRow
+            label="Dry-run"
+            help="No envía PUT a Dropi — solo registra lo que haría."
+            checked={v.dropiDryRun}
+            onChange={(b) => setV({ ...v, dropiDryRun: b })}
+          />
+          <div className="grid gap-3 pt-1 md:grid-cols-3">
+            <NumberField
+              label="Polling"
+              unit="min"
+              min={1}
+              max={120}
+              step={1}
+              value={v.dropiPollIntervalMin}
+              onChange={(n) => setV({ ...v, dropiPollIntervalMin: n })}
+            />
+            <NumberField
+              label="Sync"
+              unit="min"
+              min={1}
+              max={240}
+              step={1}
+              value={v.dropiSyncIntervalMin}
+              onChange={(n) => setV({ ...v, dropiSyncIntervalMin: n })}
+            />
+            <NumberField
+              label="Ventana de match"
+              unit="días"
               min={1}
               max={60}
               step={1}
-              value={v.dropiPollIntervalMin}
-              onChange={(e) =>
-                setV({ ...v, dropiPollIntervalMin: Number(e.target.value) })
-              }
-              className="w-full"
-            />
-          </Field>
-          <Field label={`Sync cada ${v.dropiSyncIntervalMin} min`}>
-            <input
-              type="range"
-              min={5}
-              max={120}
-              step={5}
-              value={v.dropiSyncIntervalMin}
-              onChange={(e) =>
-                setV({ ...v, dropiSyncIntervalMin: Number(e.target.value) })
-              }
-              className="w-full"
-            />
-          </Field>
-          <Field label={`Ventana de match (±${v.dropiMatchWindowDays}d)`}>
-            <input
-              type="range"
-              min={1}
-              max={30}
-              step={1}
               value={v.dropiMatchWindowDays}
-              onChange={(e) =>
-                setV({ ...v, dropiMatchWindowDays: Number(e.target.value) })
-              }
-              className="w-full"
+              onChange={(n) => setV({ ...v, dropiMatchWindowDays: n })}
             />
-          </Field>
+          </div>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-2">
-          <Field label="Plantilla · guía generada">
-            <TemplateSelect
-              value={v.dropiTemplateGuiaId}
-              onChange={(id) => setV({ ...v, dropiTemplateGuiaId: id })}
-              options={tplFor("dropi_guia_generada")}
-            />
-          </Field>
-          <Field label="Plantilla · recolectado">
-            <TemplateSelect
-              value={v.dropiTemplateRecolectadoId}
-              onChange={(id) => setV({ ...v, dropiTemplateRecolectadoId: id })}
-              options={tplFor("dropi_recolectado")}
-            />
-          </Field>
-          <Field label="Plantilla · en tránsito">
-            <TemplateSelect
-              value={v.dropiTemplateEnTransitoId}
-              onChange={(id) => setV({ ...v, dropiTemplateEnTransitoId: id })}
-              options={tplFor("dropi_en_transito")}
-            />
-          </Field>
-          <Field label="Plantilla · con mensajero">
-            <TemplateSelect
-              value={v.dropiTemplateConMensajeroId}
-              onChange={(id) =>
-                setV({ ...v, dropiTemplateConMensajeroId: id })
-              }
-              options={tplFor("dropi_con_mensajero")}
-            />
-          </Field>
-          <Field label="Plantilla · entregado">
-            <TemplateSelect
-              value={v.dropiTemplateEntregadoId}
-              onChange={(id) => setV({ ...v, dropiTemplateEntregadoId: id })}
-              options={tplFor("dropi_entregado")}
-            />
-          </Field>
+        <div className="border-t border-[var(--color-border)] px-4 py-2 text-[11px] uppercase text-[var(--color-text-soft)]">
+          Plantillas por estado
         </div>
-      </fieldset>
+        <TemplateRow
+          label="Guía generada"
+          value={v.dropiTemplateGuiaId}
+          onChange={(id) => setV({ ...v, dropiTemplateGuiaId: id })}
+          options={tplFor("dropi_guia_generada")}
+        />
+        <TemplateRow
+          label="Recolectado"
+          value={v.dropiTemplateRecolectadoId}
+          onChange={(id) => setV({ ...v, dropiTemplateRecolectadoId: id })}
+          options={tplFor("dropi_recolectado")}
+        />
+        <TemplateRow
+          label="En tránsito"
+          value={v.dropiTemplateEnTransitoId}
+          onChange={(id) => setV({ ...v, dropiTemplateEnTransitoId: id })}
+          options={tplFor("dropi_en_transito")}
+        />
+        <TemplateRow
+          label="Con mensajero"
+          value={v.dropiTemplateConMensajeroId}
+          onChange={(id) => setV({ ...v, dropiTemplateConMensajeroId: id })}
+          options={tplFor("dropi_con_mensajero")}
+        />
+        <TemplateRow
+          label="Entregado"
+          value={v.dropiTemplateEntregadoId}
+          onChange={(id) => setV({ ...v, dropiTemplateEntregadoId: id })}
+          options={tplFor("dropi_entregado")}
+          last
+        />
+      </section>
 
-      <div className="flex items-center justify-end gap-3">
-        {saved && (
-          <span className="text-sm text-[var(--color-accent)]">Guardado</span>
-        )}
-        <button type="submit" disabled={saving} className="app-button">
-          {saving ? "Guardando…" : "Guardar"}
-        </button>
-      </div>
-    </form>
-  );
-}
+      {/* Sticky save bar */}
+      {dirty && (
+        <div className="fixed bottom-4 left-1/2 z-30 w-[min(720px,calc(100%-2rem))] -translate-x-1/2 rounded-xl border border-emerald-400/30 bg-[rgba(8,21,30,0.96)] px-4 py-3 shadow-[0_18px_40px_rgba(3,10,16,0.6)] backdrop-blur">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm text-[var(--color-text)]">
+              Tienes cambios sin guardar
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={discard}
+                disabled={saving}
+                className="app-button-secondary"
+              >
+                Descartar
+              </button>
+              <button
+                type="button"
+                onClick={saveAll}
+                disabled={saving}
+                className="app-button"
+              >
+                {saving ? "Guardando…" : "Guardar configuración"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="space-y-2">
-      <label className="text-xs uppercase text-[var(--color-text-soft)]">
-        {label}
-      </label>
-      {children}
+      {!dirty && savedAt && Date.now() - savedAt < 2500 && (
+        <div className="fixed bottom-4 left-1/2 z-30 -translate-x-1/2 rounded-md border border-emerald-400/30 bg-emerald-500/15 px-3 py-1.5 text-xs text-emerald-100 shadow-lg">
+          Guardado
+        </div>
+      )}
     </div>
   );
 }
 
-function TemplateSelect({
+function NumberField({
+  label,
+  unit,
+  min,
+  max,
+  step,
   value,
   onChange,
-  options,
+  help,
 }: {
-  value: string | null;
-  onChange: (id: string | null) => void;
-  options: TemplateOption[];
+  label: string;
+  unit: string;
+  min: number;
+  max: number;
+  step: number;
+  value: number;
+  onChange: (n: number) => void;
+  help?: string;
 }) {
   return (
-    <select
-      value={value ?? ""}
-      onChange={(e) => onChange(e.target.value || null)}
-      className="app-select"
-    >
-      <option value="">— ninguna —</option>
-      {options.map((t) => (
-        <option key={t.id} value={t.id}>
-          {t.name}
-        </option>
-      ))}
-    </select>
+    <div className="space-y-1">
+      <label className="text-[11px] uppercase text-[var(--color-text-soft)]">
+        {label}
+      </label>
+      <div className="flex items-center gap-2">
+        <input
+          type="number"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          onChange={(e) => {
+            const n = Number(e.target.value);
+            if (Number.isFinite(n)) onChange(Math.max(min, Math.min(max, n)));
+          }}
+          className="app-input w-24 text-sm tabular-nums"
+        />
+        <span className="text-xs text-[var(--color-text-dim)]">{unit}</span>
+      </div>
+      {help && (
+        <p className="text-[11px] leading-snug text-[var(--color-text-dim)]">
+          {help}
+        </p>
+      )}
+    </div>
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function ToggleRow({
+  label,
+  help,
+  checked,
+  onChange,
+  className,
+}: {
+  label: string;
+  help?: string;
+  checked: boolean;
+  onChange: (b: boolean) => void;
+  className?: string;
+}) {
   return (
-    <div className="rounded-lg border border-[var(--color-border)] bg-[rgba(12,27,38,0.76)] px-3 py-2">
-      <p className="text-[11px] uppercase text-[var(--color-text-soft)]">
-        {label}
-      </p>
-      <p className="mt-1 truncate text-sm font-semibold text-[var(--color-text)]">
-        {value}
-      </p>
+    <label
+      className={`flex cursor-pointer items-start justify-between gap-4 rounded-lg border border-[var(--color-border)] bg-[rgba(8,21,30,0.55)] px-3 py-2.5 ${className ?? ""}`}
+    >
+      <div>
+        <p className="text-sm text-[var(--color-text)]">{label}</p>
+        {help && (
+          <p className="mt-0.5 text-[11px] text-[var(--color-text-dim)]">
+            {help}
+          </p>
+        )}
+      </div>
+      <Switch checked={checked} onChange={onChange} />
+    </label>
+  );
+}
+
+function Switch({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: (b: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition ${
+        checked
+          ? "bg-emerald-500/70"
+          : "bg-[rgba(255,255,255,0.12)]"
+      }`}
+    >
+      <span
+        className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition ${
+          checked ? "translate-x-4" : "translate-x-0.5"
+        }`}
+      />
+    </button>
+  );
+}
+
+function TemplateRow({
+  label,
+  help,
+  value,
+  onChange,
+  options,
+  last,
+}: {
+  label: string;
+  help?: string;
+  value: string | null;
+  onChange: (id: string | null) => void;
+  options: TemplateOption[];
+  last?: boolean;
+}) {
+  return (
+    <div
+      className={`flex items-center justify-between gap-3 px-4 py-3 ${
+        last ? "" : "border-b border-[var(--color-border)]"
+      }`}
+    >
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm text-[var(--color-text)]">{label}</p>
+        {help && (
+          <p className="mt-0.5 truncate text-[11px] text-[var(--color-text-dim)]">
+            {help}
+          </p>
+        )}
+      </div>
+      <select
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value || null)}
+        className="app-select w-[260px] max-w-[55%] flex-shrink-0"
+      >
+        <option value="">— ninguna —</option>
+        {options.map((t) => (
+          <option key={t.id} value={t.id}>
+            {t.name}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }
