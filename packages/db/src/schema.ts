@@ -400,6 +400,8 @@ export const dropiConnection = pgTable("dropi_connection", {
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
+  lastAutoLoginAt: timestamp("last_auto_login_at", { withTimezone: true }),
+  lastAutoLoginError: text("last_auto_login_error"),
 });
 
 export const dropiOrders = pgTable(

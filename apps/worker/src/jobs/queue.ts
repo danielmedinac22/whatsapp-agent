@@ -10,6 +10,7 @@ export const OUTBOUND_QUEUE = "outbound-send";
 export const DROPI_SYNC_QUEUE = "dropi-sync";
 export const DROPI_CONFIRM_QUEUE = "dropi-confirm";
 export const DROPI_POLL_QUEUE = "dropi-poll";
+export const DROPI_AUTH_REFRESH_QUEUE = "dropi-auth-refresh";
 
 export async function getBoss(): Promise<PgBoss> {
   if (boss) return boss;
@@ -28,6 +29,7 @@ export async function getBoss(): Promise<PgBoss> {
     await b.createQueue(DROPI_SYNC_QUEUE);
     await b.createQueue(DROPI_CONFIRM_QUEUE);
     await b.createQueue(DROPI_POLL_QUEUE);
+    await b.createQueue(DROPI_AUTH_REFRESH_QUEUE);
     boss = b;
     starting = null;
     return b;

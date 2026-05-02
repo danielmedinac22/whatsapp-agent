@@ -33,6 +33,10 @@ import {
   scheduleDropiPoll,
   startDropiPollWorker,
 } from "./jobs/dropi-poll";
+import {
+  scheduleDropiAuthRefresh,
+  startDropiAuthRefreshWorker,
+} from "./jobs/dropi-auth-refresh";
 
 const app = new Hono();
 
@@ -86,6 +90,12 @@ serve({ fetch: app.fetch, port }, (info) => {
   );
   scheduleDropiPoll().catch((err) =>
     logger.error({ err }, "dropi poll scheduling failed"),
+  );
+  startDropiAuthRefreshWorker().catch((err) =>
+    logger.error({ err }, "dropi auth refresh worker failed to start"),
+  );
+  scheduleDropiAuthRefresh().catch((err) =>
+    logger.error({ err }, "dropi auth refresh scheduling failed"),
   );
   ensureDropiTemplates().catch((err) =>
     logger.error({ err }, "ensureDropiTemplates failed"),

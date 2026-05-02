@@ -12,6 +12,8 @@ type DropiState = {
   assetsBaseUrl: string | null;
   connectedAt: string | null;
   updatedAt: string | null;
+  lastAutoLoginAt: string | null;
+  lastAutoLoginError: string | null;
 } | null;
 
 export function DropiPanel() {
@@ -119,6 +121,37 @@ export function DropiPanel() {
     }
   };
 
+  const tryAutoLogin = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await fetch("/api/dropi/connection/refresh", {
+        method: "POST",
+      });
+      const j = (await r.json()) as {
+        ok?: boolean;
+        userId?: number;
+        error?: string;
+      };
+      if (!r.ok || !j.ok) {
+        setMsg({ kind: "err", text: j.error ?? "auto-login falló" });
+        return;
+      }
+      setMsg({
+        kind: "ok",
+        text: `auto-login ok · user ${j.userId}`,
+      });
+      await load();
+    } catch (err) {
+      setMsg({
+        kind: "err",
+        text: err instanceof Error ? err.message : "error",
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const disconnect = async () => {
     if (!confirm("¿Desconectar Dropi? Se perderá el token y las credenciales."))
       return;
@@ -162,10 +195,26 @@ export function DropiPanel() {
         )}
         {loaded && !snap?.hasBearer && (
           <div className="rounded-lg border border-amber-400/30 bg-amber-500/10 p-3 text-sm text-amber-100">
-            Sin token activo. Pega un bearer manual mientras no esté cableado el
-            login automático.
+            Sin token activo. Guarda email + password y pulsa &laquo;Probar
+            auto-login&raquo;, o pega un bearer manual.
           </div>
         )}
+        {loaded && snap?.lastAutoLoginError && (
+          <div className="rounded-lg border border-red-500/25 bg-red-950/20 p-3 text-sm text-red-100">
+            Último auto-login falló: {snap.lastAutoLoginError}
+            {snap.lastAutoLoginAt
+              ? ` (${new Date(snap.lastAutoLoginAt).toLocaleString()})`
+              : null}
+          </div>
+        )}
+        {loaded &&
+          snap?.lastAutoLoginAt &&
+          !snap.lastAutoLoginError && (
+            <div className="text-xs text-[var(--color-text-dim)]">
+              Auto-login: último éxito{" "}
+              {new Date(snap.lastAutoLoginAt).toLocaleString()}
+            </div>
+          )}
 
         <div className="grid gap-3 md:grid-cols-2">
           <label className="space-y-1 text-sm">
@@ -249,6 +298,16 @@ export function DropiPanel() {
             className="app-button"
           >
             {busy ? "Guardando…" : "Guardar"}
+          </button>
+          <button
+            onClick={tryAutoLogin}
+            disabled={
+              busy || !(snap?.email || email) || !(snap?.hasPassword || password)
+            }
+            className="app-button-secondary"
+            title="Hace login con email+password y guarda un nuevo bearer"
+          >
+            Probar auto-login
           </button>
           <button
             onClick={runSync}

@@ -32,7 +32,26 @@ dropi.get("/connection", async (c) => {
     assetsBaseUrl: row.assetsBaseUrl,
     connectedAt: row.connectedAt,
     updatedAt: row.updatedAt,
+    lastAutoLoginAt: row.lastAutoLoginAt,
+    lastAutoLoginError: row.lastAutoLoginError,
   });
+});
+
+dropi.post("/connection/refresh", async (c) => {
+  try {
+    const { refreshDropiAuth } = await import("../dropi/auth");
+    const auth = await refreshDropiAuth();
+    return c.json({
+      ok: true,
+      userId: auth.userId,
+    });
+  } catch (err) {
+    logger.error({ err }, "manual dropi auto-login failed");
+    return c.json(
+      { ok: false, error: err instanceof Error ? err.message : String(err) },
+      500,
+    );
+  }
 });
 
 dropi.put("/connection", async (c) => {
