@@ -12,6 +12,7 @@ import { events } from "../lib/events";
 import { onAgentInbound } from "../agent/runner";
 import { scheduleConfirmationClassify } from "../agent/confirmation-classifier";
 import { handleInboundConfirmation } from "../jobs/confirmation-ack";
+import { tryHandleDropi2FAInbound } from "../dropi/2fa-inbound";
 import { resolveIdentity } from "./jid-resolver";
 import { upsertContactByIdentity } from "./contact-upsert";
 
@@ -102,6 +103,17 @@ export async function onMessages(
     });
 
     if (direction === "in") {
+      // Interceptor 2FA Dropi: si es del admin y trae código, canjea
+      // sin pasar por confirmation-ack ni el agente.
+      const handled2fa = await tryHandleDropi2FAInbound({
+        contact,
+        body,
+      }).catch((err) => {
+        logger.error({ err }, "dropi 2fa interceptor failed");
+        return false;
+      });
+      if (handled2fa) continue;
+
       scheduleConfirmationClassify({
         conversationId: conv.id,
         contactId: contact.id,

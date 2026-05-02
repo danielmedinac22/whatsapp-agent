@@ -34,24 +34,56 @@ dropi.get("/connection", async (c) => {
     updatedAt: row.updatedAt,
     lastAutoLoginAt: row.lastAutoLoginAt,
     lastAutoLoginError: row.lastAutoLoginError,
+    adminPhone: row.adminPhone,
+    pending2faExpiresAt: row.pending2faExpiresAt,
+    pending2faRequestedAt: row.pending2faRequestedAt,
+    has2faPending: Boolean(
+      row.pending2faToken &&
+        row.pending2faExpiresAt &&
+        row.pending2faExpiresAt.getTime() > Date.now(),
+    ),
   });
 });
 
 dropi.post("/connection/refresh", async (c) => {
+  const { refreshDropiAuth, Dropi2FAPendingError } = await import(
+    "../dropi/auth"
+  );
   try {
-    const { refreshDropiAuth } = await import("../dropi/auth");
     const auth = await refreshDropiAuth();
-    return c.json({
-      ok: true,
-      userId: auth.userId,
-    });
+    return c.json({ ok: true, userId: auth.userId });
   } catch (err) {
+    if (err instanceof Dropi2FAPendingError) {
+      return c.json({
+        ok: false,
+        pending2fa: true,
+        error:
+          "Dropi pidió código 2FA. Revisa WhatsApp o pega el código en el panel.",
+      });
+    }
     logger.error({ err }, "manual dropi auto-login failed");
     return c.json(
       { ok: false, error: err instanceof Error ? err.message : String(err) },
       500,
     );
   }
+});
+
+dropi.post("/connection/2fa/submit", async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { code?: string };
+  const code = (body.code ?? "").trim();
+  if (!/^\d{4,8}$/.test(code)) {
+    return c.json(
+      { ok: false, error: "código inválido (esperado 4-8 dígitos)" },
+      400,
+    );
+  }
+  const { submitDropi2FACode } = await import("../dropi/auth");
+  const result = await submitDropi2FACode(code);
+  if (!result.ok) {
+    return c.json({ ok: false, error: result.error }, 400);
+  }
+  return c.json({ ok: true, userId: result.auth.userId });
 });
 
 dropi.put("/connection", async (c) => {
@@ -70,6 +102,9 @@ dropi.put("/connection", async (c) => {
   }
   if (v.assetsBaseUrl !== undefined) {
     patch.assetsBaseUrl = v.assetsBaseUrl;
+  }
+  if (v.adminPhone !== undefined) {
+    patch.adminPhone = v.adminPhone ?? null;
   }
   patch.connectedAt = new Date();
   await upsertDropiConnection(patch);

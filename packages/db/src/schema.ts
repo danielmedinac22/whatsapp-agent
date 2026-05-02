@@ -62,6 +62,7 @@ export const outboundSource = pgEnum("outbound_source", [
   "manual",
   "confirmation_ack",
   "dropi_status",
+  "dropi_2fa",
 ]);
 
 export const outboundErrorKind = pgEnum("outbound_error_kind", [
@@ -402,6 +403,14 @@ export const dropiConnection = pgTable("dropi_connection", {
     .defaultNow(),
   lastAutoLoginAt: timestamp("last_auto_login_at", { withTimezone: true }),
   lastAutoLoginError: text("last_auto_login_error"),
+  adminPhone: text("admin_phone"),
+  pending2faToken: text("pending_2fa_token"),
+  pending2faExpiresAt: timestamp("pending_2fa_expires_at", {
+    withTimezone: true,
+  }),
+  pending2faRequestedAt: timestamp("pending_2fa_requested_at", {
+    withTimezone: true,
+  }),
 });
 
 export const dropiOrders = pgTable(

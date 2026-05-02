@@ -1,0 +1,1 @@
+ALTER TYPE "public"."outbound_source" ADD VALUE 'dropi_2fa';

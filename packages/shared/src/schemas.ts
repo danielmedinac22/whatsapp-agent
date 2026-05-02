@@ -58,6 +58,11 @@ export const dropiConnectionInput = z.object({
   password: z.string().min(1).nullable().optional(),
   bearerToken: z.string().min(20).nullable().optional(),
   assetsBaseUrl: z.string().url().optional(),
+  adminPhone: z
+    .string()
+    .regex(/^\+?\d{8,15}$/)
+    .nullable()
+    .optional(),
 });
 export type DropiConnectionInput = z.infer<typeof dropiConnectionInput>;
 

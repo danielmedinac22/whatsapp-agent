@@ -1,13 +1,20 @@
 import { logger } from "../lib/logger";
 import { getDropiConnection } from "../dropi/config";
-import { refreshDropiAuth } from "../dropi/auth";
+import { Dropi2FAPendingError, refreshDropiAuth } from "../dropi/auth";
 import { DROPI_AUTH_REFRESH_QUEUE, getBoss } from "./queue";
+
+/**
+ * Si al token le quedan más de este tiempo, no refresca todavía. Da margen
+ * para que el admin responda al ping de WhatsApp con el código 2FA antes
+ * de que el token expire del todo.
+ */
+const REFRESH_THRESHOLD_MS = 90 * 60 * 1000; // 90 min
 
 export async function runDropiAuthRefresh(): Promise<{
   skipped: boolean;
   reason?: string;
   userId?: number;
-  expiresAt?: string | null;
+  pending2fa?: boolean;
 }> {
   const conn = await getDropiConnection();
   if (!conn?.email || !conn?.password) {
@@ -16,12 +23,35 @@ export async function runDropiAuthRefresh(): Promise<{
       reason: "no email/password configured (manual bearer mode)",
     };
   }
-  const auth = await refreshDropiAuth();
-  return {
-    skipped: false,
-    userId: auth.userId,
-    expiresAt: null,
-  };
+
+  // Si ya hay un challenge 2FA pendiente y no expirado, esperar al admin.
+  if (
+    conn.pending2faToken &&
+    conn.pending2faExpiresAt &&
+    conn.pending2faExpiresAt.getTime() > Date.now()
+  ) {
+    return { skipped: true, reason: "2FA challenge still pending" };
+  }
+
+  // Si el token actual aún tiene > 90 min de vida, esperar.
+  const exp = conn.tokenExpiresAt?.getTime() ?? 0;
+  const remaining = exp - Date.now();
+  if (conn.bearerToken && remaining > REFRESH_THRESHOLD_MS) {
+    return {
+      skipped: true,
+      reason: `token still valid (${Math.round(remaining / 60000)} min remaining)`,
+    };
+  }
+
+  try {
+    const auth = await refreshDropiAuth();
+    return { skipped: false, userId: auth.userId };
+  } catch (err) {
+    if (err instanceof Dropi2FAPendingError) {
+      return { skipped: false, pending2fa: true };
+    }
+    throw err;
+  }
 }
 
 export async function startDropiAuthRefreshWorker(): Promise<void> {
@@ -35,6 +65,11 @@ export async function startDropiAuthRefreshWorker(): Promise<void> {
           logger.info(
             { reason: result.reason, jobId: job?.id },
             "dropi.auth.refresh skipped",
+          );
+        } else if (result.pending2fa) {
+          logger.info(
+            { jobId: job?.id },
+            "dropi.auth.refresh awaiting 2FA OTP from admin",
           );
         } else {
           logger.info(
@@ -57,9 +92,12 @@ export async function startDropiAuthRefreshWorker(): Promise<void> {
 
 export async function scheduleDropiAuthRefresh(): Promise<void> {
   const boss = await getBoss();
-  // Cada 6 horas, en el minuto 0 (00:00, 06:00, 12:00, 18:00).
-  await boss.schedule(DROPI_AUTH_REFRESH_QUEUE, "0 */6 * * *", {});
-  logger.info({ cron: "0 */6 * * *" }, "dropi auth refresh scheduled");
+  // Cada 30 min: el handler decide si refresca según vida del token (>90 min
+  // de vida → skip). Más frecuente que el viejo cron de 6h pero igual de barato:
+  // sin trabajo si el token está vivo.
+  const cron = "*/30 * * * *";
+  await boss.schedule(DROPI_AUTH_REFRESH_QUEUE, cron, {});
+  logger.info({ cron }, "dropi auth refresh scheduled");
 }
 
 export async function enqueueDropiAuthRefreshNow(): Promise<string | null> {

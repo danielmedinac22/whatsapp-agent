@@ -14,6 +14,10 @@ type DropiState = {
   updatedAt: string | null;
   lastAutoLoginAt: string | null;
   lastAutoLoginError: string | null;
+  adminPhone: string | null;
+  pending2faExpiresAt: string | null;
+  pending2faRequestedAt: string | null;
+  has2faPending: boolean;
 } | null;
 
 export function DropiPanel() {
@@ -23,6 +27,8 @@ export function DropiPanel() {
   const [password, setPassword] = useState("");
   const [bearer, setBearer] = useState("");
   const [assetsBaseUrl, setAssetsBaseUrl] = useState("");
+  const [adminPhone, setAdminPhone] = useState("");
+  const [otpCode, setOtpCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(
     null,
@@ -35,6 +41,7 @@ export function DropiPanel() {
       setSnap(j);
       if (j?.email) setEmail(j.email);
       if (j?.assetsBaseUrl) setAssetsBaseUrl(j.assetsBaseUrl);
+      if (j?.adminPhone) setAdminPhone(j.adminPhone);
     }
   };
 
@@ -63,6 +70,9 @@ export function DropiPanel() {
       if (assetsBaseUrl.trim() && assetsBaseUrl !== snap?.assetsBaseUrl) {
         body.assetsBaseUrl = assetsBaseUrl.trim();
       }
+      if (adminPhone.trim() !== (snap?.adminPhone ?? "")) {
+        body.adminPhone = adminPhone.trim() || null;
+      }
       const r = await fetch("/api/dropi/connection", {
         method: "PUT",
         headers: { "content-type": "application/json" },
@@ -88,6 +98,40 @@ export function DropiPanel() {
         kind: "err",
         text: err instanceof Error ? err.message : "error",
       });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitOtp = async () => {
+    const code = otpCode.trim();
+    if (!/^\d{4,8}$/.test(code)) {
+      setMsg({ kind: "err", text: "código inválido (4-8 dígitos)" });
+      return;
+    }
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await fetch("/api/dropi/connection/2fa/submit", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ code }),
+      });
+      const j = (await r.json()) as {
+        ok?: boolean;
+        userId?: number;
+        error?: string;
+      };
+      if (!r.ok || !j.ok) {
+        setMsg({ kind: "err", text: j.error ?? "verify falló" });
+        return;
+      }
+      setMsg({
+        kind: "ok",
+        text: `token Dropi renovado · user ${j.userId}`,
+      });
+      setOtpCode("");
+      await load();
     } finally {
       setBusy(false);
     }
@@ -216,6 +260,36 @@ export function DropiPanel() {
             </div>
           )}
 
+        {loaded && snap?.has2faPending && (
+          <div className="space-y-2 rounded-lg border border-orange-400/30 bg-orange-500/10 p-3 text-sm text-orange-100">
+            <div className="font-semibold">🔐 Dropi pidió código 2FA</div>
+            <div className="text-xs">
+              Te lo pedimos por WhatsApp{snap.adminPhone ? ` al ${snap.adminPhone}` : ""}
+              . También puedes pegarlo aquí:
+              {snap.pending2faExpiresAt
+                ? ` (vence ${new Date(snap.pending2faExpiresAt).toLocaleTimeString()})`
+                : ""}
+            </div>
+            <div className="flex gap-2">
+              <input
+                className="app-input flex-1"
+                placeholder="código de 6 dígitos"
+                value={otpCode}
+                onChange={(e) => setOtpCode(e.target.value)}
+                inputMode="numeric"
+                autoComplete="one-time-code"
+              />
+              <button
+                onClick={submitOtp}
+                disabled={busy || !/^\d{4,8}$/.test(otpCode.trim())}
+                className="app-button"
+              >
+                Enviar OTP
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="grid gap-3 md:grid-cols-2">
           <label className="space-y-1 text-sm">
             <span className="text-[11px] uppercase text-[var(--color-text-soft)]">
@@ -267,6 +341,26 @@ export function DropiPanel() {
 
         <label className="space-y-1 text-sm">
           <span className="text-[11px] uppercase text-[var(--color-text-soft)]">
+            Teléfono admin para 2FA (E.164 sin +, ej. 573167405767)
+          </span>
+          <input
+            className="app-input w-full"
+            placeholder="573167405767"
+            value={adminPhone}
+            onChange={(e) => setAdminPhone(e.target.value)}
+            inputMode="numeric"
+            autoComplete="off"
+            spellCheck={false}
+          />
+          <span className="block text-[11px] text-[var(--color-text-dim)]">
+            Cuando Dropi pida código 2FA, te escribimos a este número y al
+            responder con el código de Google Authenticator se renueva el
+            token automáticamente.
+          </span>
+        </label>
+
+        <label className="space-y-1 text-sm">
+          <span className="text-[11px] uppercase text-[var(--color-text-soft)]">
             Base URL de assets (CDN de Dropi para PDFs de guías)
           </span>
           <input
@@ -294,7 +388,14 @@ export function DropiPanel() {
         <div className="flex flex-wrap gap-3">
           <button
             onClick={save}
-            disabled={busy || (!email && !password && !bearer)}
+            disabled={
+              busy ||
+              (!email &&
+                !password &&
+                !bearer &&
+                adminPhone.trim() === (snap?.adminPhone ?? "") &&
+                assetsBaseUrl.trim() === (snap?.assetsBaseUrl ?? ""))
+            }
             className="app-button"
           >
             {busy ? "Guardando…" : "Guardar"}

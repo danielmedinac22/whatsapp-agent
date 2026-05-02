@@ -6,11 +6,20 @@ import {
 } from "./config";
 import { DROPI_DEFAULT_HEADERS } from "./headers";
 
-const REFRESH_BUFFER_MS = 30 * 60 * 1000;
+/**
+ * Buffer pequeño para evitar usar un token que vaya a expirar a mitad de
+ * un request. NO refresca proactivamente — eso lo hace `dropi-auth-refresh`
+ * cron con anticipación (~90 min antes) para tener margen de pedirte el
+ * código por WhatsApp y que respondas.
+ */
+const REFRESH_BUFFER_MS = 60 * 1000;
 
 interface JwtClaims {
   exp?: number;
+  iat?: number;
   sub?: number | string;
+  aud?: string;
+  token_type?: string;
 }
 
 function decodeJwt(token: string): JwtClaims | null {
@@ -30,6 +39,19 @@ export interface DropiAuth {
   baseUrl: string;
   token: string;
   userId: number;
+}
+
+/**
+ * Indica que el login se quedó esperando un código 2FA. El cron / quien lo
+ * disparó debe esperar a que el admin envíe el código por WhatsApp o lo pegue
+ * en la UI. NO destruye el bearer actual: hasta que llegue el código, los
+ * jobs siguen usando el token vigente.
+ */
+export class Dropi2FAPendingError extends Error {
+  constructor(message = "Dropi 2FA pending — waiting for OTP from admin") {
+    super(message);
+    this.name = "Dropi2FAPendingError";
+  }
 }
 
 let cachedPublicIp: string | null = null;
@@ -56,23 +78,55 @@ async function resolvePublicIp(): Promise<string> {
   return "";
 }
 
-function extractToken(res: unknown): string | null {
-  if (!res || typeof res !== "object") return null;
-  const r = res as Record<string, unknown>;
-  if (typeof r.token === "string") return r.token;
-  if (typeof r.access_token === "string") return r.access_token;
-  if (r.data && typeof r.data === "object") {
-    const d = r.data as Record<string, unknown>;
-    if (typeof d.token === "string") return d.token;
-    if (typeof d.access_token === "string") return d.access_token;
+/**
+ * Busca recursivamente cualquier JWT con `aud=DROPI` en una respuesta
+ * arbitraria. Necesario porque distintos endpoints (login / verify) pueden
+ * devolver el JWT bajo claves distintas.
+ */
+function findDropiJwt(obj: unknown): string | null {
+  if (typeof obj === "string") {
+    const parts = obj.split(".");
+    if (parts.length === 3 && obj.startsWith("eyJ")) {
+      const claims = decodeJwt(obj);
+      if (claims?.aud === "DROPI") return obj;
+    }
+    return null;
+  }
+  if (obj && typeof obj === "object") {
+    for (const v of Object.values(obj as Record<string, unknown>)) {
+      const found = findDropiJwt(v);
+      if (found) return found;
+    }
   }
   return null;
 }
 
-async function dropiLoginPost(
+function findAnyJwt(obj: unknown): string | null {
+  if (typeof obj === "string") {
+    const parts = obj.split(".");
+    if (parts.length === 3 && obj.startsWith("eyJ")) return obj;
+    return null;
+  }
+  if (obj && typeof obj === "object") {
+    for (const v of Object.values(obj as Record<string, unknown>)) {
+      const found = findAnyJwt(v);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+interface DropiResponse {
+  ok: boolean;
+  status: number;
+  json: unknown;
+  text: string;
+}
+
+async function dropiPost(
   url: string,
   body: unknown,
-): Promise<{ ok: boolean; status: number; json: unknown; text: string }> {
+): Promise<DropiResponse> {
   const res = await fetch(url, {
     method: "POST",
     headers: {
@@ -91,30 +145,39 @@ async function dropiLoginPost(
   return { ok: res.ok, status: res.status, json, text };
 }
 
-/**
- * Login Dropi: replica el flujo del navegador de app.dropi.gt.
- * 1. POST /beforeLoginUnknownDevice (best-effort, registra dispositivo).
- * 2. POST /login → devuelve JWT.
- * 3. Decodifica JWT para extraer exp/sub y persiste en dropi_connection.
- *
- * TODO: cifrar password en reposo (hoy en plaintext en dropi_connection.password).
- */
-async function loginAndPersist(): Promise<DropiAuth> {
-  const conn = await getDropiConnection();
-  if (!conn) {
-    throw new Error("dropi_connection not configured");
-  }
-  if (!conn.email || !conn.password) {
-    throw new Error(
-      "Dropi auto-login requires email + password in dropi_connection",
+async function persistAutoLoginError(message: string): Promise<void> {
+  try {
+    await upsertDropiConnection({
+      lastAutoLoginAt: new Date(),
+      lastAutoLoginError: message.slice(0, 1000),
+    });
+    invalidateDropiConnectionCache();
+  } catch (err) {
+    logger.error(
+      { err: String(err) },
+      "failed to persist dropi auto-login error",
     );
   }
-  const baseUrl = conn.apiBaseUrl;
-  const ipAddress = await resolvePublicIp();
+}
 
+interface LoginAttemptResult {
+  kind: "ok" | "2fa";
+  /** present when kind === "ok" */
+  auth?: DropiAuth;
+  /** present when kind === "2fa" */
+  challengeToken?: string;
+  challengeExpiresAt?: Date | null;
+}
+
+async function attemptLogin(
+  baseUrl: string,
+  email: string,
+  password: string,
+  ipAddress: string,
+): Promise<LoginAttemptResult> {
   const basePayload = {
-    email: conn.email,
-    password: conn.password,
+    email,
+    password,
     white_brand_id: 1,
     brand: "",
     ipAddress,
@@ -122,7 +185,7 @@ async function loginAndPersist(): Promise<DropiAuth> {
 
   // Paso 1 — best-effort. No fatal si falla.
   try {
-    const before = await dropiLoginPost(
+    const before = await dropiPost(
       `${baseUrl}/beforeLoginUnknownDevice`,
       basePayload,
     );
@@ -140,29 +203,55 @@ async function loginAndPersist(): Promise<DropiAuth> {
   }
 
   // Paso 2 — login real
-  const loginRes = await dropiLoginPost(`${baseUrl}/login`, {
+  const loginRes = await dropiPost(`${baseUrl}/login`, {
     ...basePayload,
     otp: null,
     with_cdc: false,
   });
   if (!loginRes.ok) {
-    const err = new Error(
+    throw new Error(
       `dropi login failed: ${loginRes.status} ${loginRes.text.slice(0, 200)}`,
     );
-    await persistAutoLoginError(err.message);
-    throw err;
   }
 
-  const token = extractToken(loginRes.json);
-  if (!token) {
-    const snippet = loginRes.text.slice(0, 300);
-    const err = new Error(
-      `dropi login response did not contain a JWT (body=${snippet})`,
-    );
-    await persistAutoLoginError(err.message);
-    throw err;
+  // ¿Vino el JWT DROPI directamente?
+  const dropiJwt = findDropiJwt(loginRes.json);
+  if (dropiJwt) {
+    return { kind: "ok", auth: jwtToAuth(baseUrl, dropiJwt) };
   }
 
+  // ¿Es un challenge 2FA?
+  const body = (loginRes.json ?? {}) as { message?: string; token?: string };
+  if (body.message === "2fa" && typeof body.token === "string") {
+    const claims = decodeJwt(body.token);
+    const expiresAt = claims?.exp ? new Date(claims.exp * 1000) : null;
+    return {
+      kind: "2fa",
+      challengeToken: body.token,
+      challengeExpiresAt: expiresAt,
+    };
+  }
+
+  throw new Error(
+    `dropi login response did not contain a DROPI JWT nor a 2FA challenge (body=${loginRes.text.slice(0, 300)})`,
+  );
+}
+
+function jwtToAuth(baseUrl: string, token: string): DropiAuth {
+  const claims = decodeJwt(token);
+  const userId =
+    typeof claims?.sub === "number"
+      ? claims.sub
+      : claims?.sub
+        ? Number(claims.sub)
+        : null;
+  if (!userId) {
+    throw new Error("dropi JWT missing sub claim");
+  }
+  return { baseUrl, token, userId };
+}
+
+async function persistDropiToken(token: string): Promise<DropiAuth> {
   const claims = decodeJwt(token);
   const expiresAt = claims?.exp ? new Date(claims.exp * 1000) : null;
   const userId =
@@ -172,39 +261,181 @@ async function loginAndPersist(): Promise<DropiAuth> {
         ? Number(claims.sub)
         : null;
   if (!userId) {
-    const err = new Error("dropi login JWT missing sub claim");
-    await persistAutoLoginError(err.message);
-    throw err;
+    throw new Error("dropi JWT missing sub claim");
   }
-
   await upsertDropiConnection({
     bearerToken: token,
     tokenExpiresAt: expiresAt,
     userId,
     lastAutoLoginAt: new Date(),
     lastAutoLoginError: null,
+    pending2faToken: null,
+    pending2faExpiresAt: null,
+    pending2faRequestedAt: null,
   });
   invalidateDropiConnectionCache();
-  logger.info(
-    { userId, expiresAt: expiresAt?.toISOString() },
-    "dropi.auto-login ok",
-  );
-  return { baseUrl, token, userId };
+  const conn = await getDropiConnection();
+  return { baseUrl: conn?.apiBaseUrl ?? "https://api.dropi.gt/api", token, userId };
 }
 
-async function persistAutoLoginError(message: string): Promise<void> {
-  try {
-    await upsertDropiConnection({
-      lastAutoLoginAt: new Date(),
-      lastAutoLoginError: message.slice(0, 1000),
-    });
-    invalidateDropiConnectionCache();
-  } catch (err) {
-    logger.error(
-      { err: String(err) },
-      "failed to persist dropi auto-login error",
+/**
+ * Login Dropi: replica el flujo del navegador de app.dropi.gt.
+ * Soporta 2FA con código de Google Authenticator: si la cuenta tiene 2FA
+ * activado, persiste el challenge token y dispara un ping por WhatsApp al
+ * admin_phone configurado. El token vigente (si lo hay) NO se borra: el
+ * sync sigue funcionando hasta que llegue el código y se canjee.
+ */
+async function loginAndPersist(): Promise<DropiAuth> {
+  const conn = await getDropiConnection();
+  if (!conn) {
+    throw new Error("dropi_connection not configured");
+  }
+  if (!conn.email || !conn.password) {
+    throw new Error(
+      "Dropi auto-login requires email + password in dropi_connection",
     );
   }
+  const baseUrl = conn.apiBaseUrl;
+  const ipAddress = await resolvePublicIp();
+
+  let result: LoginAttemptResult;
+  try {
+    result = await attemptLogin(baseUrl, conn.email, conn.password, ipAddress);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    await persistAutoLoginError(msg);
+    throw err;
+  }
+
+  if (result.kind === "ok" && result.auth) {
+    await persistDropiToken(result.auth.token);
+    logger.info(
+      { userId: result.auth.userId },
+      "dropi.auto-login ok (no 2FA)",
+    );
+    return result.auth;
+  }
+
+  // 2FA pendiente — persiste challenge + dispara ping a admin
+  if (result.kind === "2fa" && result.challengeToken) {
+    await upsertDropiConnection({
+      pending2faToken: result.challengeToken,
+      pending2faExpiresAt: result.challengeExpiresAt ?? null,
+      pending2faRequestedAt: new Date(),
+      lastAutoLoginAt: new Date(),
+      lastAutoLoginError: "2FA pending — waiting for OTP from admin",
+    });
+    invalidateDropiConnectionCache();
+
+    if (conn.adminPhone) {
+      // Import dinámico para evitar ciclo (outbound importa pg-boss).
+      const { enqueueOutbound } = await import("../jobs/outbound");
+      const expiresLabel = result.challengeExpiresAt
+        ? result.challengeExpiresAt.toLocaleTimeString("es-CO", {
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+        : "10 min";
+      const body =
+        `🔐 *Dropi pide código 2FA*\n\n` +
+        `Abre Google Authenticator y respóndeme con el código de 6 dígitos.\n\n` +
+        `_Válido hasta ~${expiresLabel}._`;
+      const jid = `${conn.adminPhone.replace(/\D/g, "")}@s.whatsapp.net`;
+      await enqueueOutbound({
+        jid,
+        body,
+        source: "dropi_2fa",
+        dedupKey: `dropi-2fa-${Date.now()}`,
+      }).catch((err) => {
+        logger.error({ err: String(err) }, "dropi.2fa ping enqueue failed");
+      });
+      logger.info({ adminPhone: conn.adminPhone }, "dropi.2fa ping sent");
+    } else {
+      logger.warn(
+        "dropi.2fa challenge received but no admin_phone configured",
+      );
+    }
+    throw new Dropi2FAPendingError();
+  }
+
+  throw new Error("dropi login: unexpected attempt result");
+}
+
+/**
+ * Canjea el código OTP por el JWT real de Dropi.
+ * Llamado desde el interceptor de inbound de WhatsApp y desde el endpoint
+ * de UI como fallback manual.
+ */
+export async function submitDropi2FACode(
+  code: string,
+): Promise<{ ok: true; auth: DropiAuth } | { ok: false; error: string }> {
+  const conn = await getDropiConnection();
+  if (!conn) return { ok: false, error: "dropi_connection not configured" };
+  if (!conn.pending2faToken) {
+    return { ok: false, error: "no hay challenge 2FA pendiente" };
+  }
+  if (
+    conn.pending2faExpiresAt &&
+    conn.pending2faExpiresAt.getTime() < Date.now()
+  ) {
+    return {
+      ok: false,
+      error: "el challenge 2FA expiró — espera el siguiente intento",
+    };
+  }
+  const baseUrl = conn.apiBaseUrl;
+
+  // Paso 1 — verify
+  const verifyRes = await dropiPost(`${baseUrl}/auth/2fa/verify`, {
+    token: conn.pending2faToken,
+    code,
+  });
+  if (!verifyRes.ok) {
+    const msg = `verify falló: ${verifyRes.status} ${verifyRes.text.slice(0, 200)}`;
+    await persistAutoLoginError(msg);
+    return { ok: false, error: msg };
+  }
+
+  // ¿La respuesta de verify trae el JWT DROPI directamente?
+  let dropiJwt = findDropiJwt(verifyRes.json);
+
+  // Si no, hacer otro /login (la secuencia del browser sugiere esto).
+  if (!dropiJwt) {
+    if (!conn.email || !conn.password) {
+      return {
+        ok: false,
+        error: "verify ok pero falta email/password para re-login",
+      };
+    }
+    const ipAddress = await resolvePublicIp();
+    let second: LoginAttemptResult;
+    try {
+      second = await attemptLogin(baseUrl, conn.email, conn.password, ipAddress);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      await persistAutoLoginError(msg);
+      return { ok: false, error: msg };
+    }
+    if (second.kind !== "ok" || !second.auth) {
+      const msg =
+        "verify ok pero el segundo /login no devolvió un JWT DROPI (puede que el código sea inválido)";
+      await persistAutoLoginError(msg);
+      return { ok: false, error: msg };
+    }
+    dropiJwt = second.auth.token;
+  }
+
+  // Si por alguna razón el JWT que recibimos no es DROPI, fallar duro.
+  const claims = decodeJwt(dropiJwt);
+  if (claims?.aud !== "DROPI") {
+    const msg = `el JWT recibido tiene aud=${claims?.aud}, esperado DROPI`;
+    await persistAutoLoginError(msg);
+    return { ok: false, error: msg };
+  }
+
+  const auth = await persistDropiToken(dropiJwt);
+  logger.info({ userId: auth.userId }, "dropi.2fa verify ok");
+  return { ok: true, auth };
 }
 
 export async function refreshDropiAuth(): Promise<DropiAuth> {
@@ -253,3 +484,6 @@ export async function getValidDropiAuth(): Promise<DropiAuth> {
   logger.info("dropi token missing/expired — attempting login refresh");
   return loginAndPersist();
 }
+
+// keep unused import silenced
+void findAnyJwt;
