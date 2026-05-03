@@ -28,19 +28,31 @@ type Initial = {
 
 type TemplateOption = { id: string; name: string; type: TemplateType };
 
-const MODELS = [
-  "anthropic/claude-sonnet-4.6",
-  "anthropic/claude-haiku-4.5",
-  "openai/gpt-4o-mini",
-  "openai/gpt-4.1",
-  "google/gemini-2.5-flash",
-  "meta-llama/llama-3.3-70b-instruct",
+type ModelOption = { slug: string; label: string; group: "Anthropic" | "OpenAI" | "Google" };
+
+const MODEL_OPTIONS: ModelOption[] = [
+  // Anthropic
+  { slug: "anthropic/claude-opus-4.7", label: "Claude Opus 4.7", group: "Anthropic" },
+  { slug: "anthropic/claude-sonnet-4.6", label: "Claude Sonnet 4.6", group: "Anthropic" },
+  { slug: "anthropic/claude-haiku-4.5", label: "Claude Haiku 4.5", group: "Anthropic" },
+  // OpenAI
+  { slug: "openai/gpt-5.5-pro", label: "GPT-5.5 Pro", group: "OpenAI" },
+  { slug: "openai/gpt-5.5", label: "GPT-5.5", group: "OpenAI" },
+  { slug: "openai/gpt-5.4", label: "GPT-5.4", group: "OpenAI" },
+  { slug: "openai/gpt-5.4-mini", label: "GPT-5.4 mini", group: "OpenAI" },
+  { slug: "openai/gpt-5.4-nano", label: "GPT-5.4 nano", group: "OpenAI" },
+  // Google
+  { slug: "google/gemini-3.1-pro-preview", label: "Gemini 3.1 Pro", group: "Google" },
+  { slug: "google/gemini-3.1-flash-lite-preview", label: "Gemini 3.1 Flash Lite", group: "Google" },
+  { slug: "google/gemini-2.5-pro", label: "Gemini 2.5 Pro", group: "Google" },
+  { slug: "google/gemini-2.5-flash", label: "Gemini 2.5 Flash", group: "Google" },
 ];
 
 const QUICK_MODELS = [
   { slug: "anthropic/claude-sonnet-4.6", label: "Sonnet 4.6" },
   { slug: "anthropic/claude-haiku-4.5", label: "Haiku 4.5" },
-  { slug: "openai/gpt-4o-mini", label: "GPT-4o mini" },
+  { slug: "openai/gpt-5.4-mini", label: "GPT-5.4 mini" },
+  { slug: "google/gemini-3.1-flash-lite-preview", label: "Gemini 3.1 Flash Lite" },
 ];
 
 export function AgentForm({
@@ -158,8 +170,8 @@ export function AgentForm({
           autoComplete="off"
         />
         <datalist id="agent-models">
-          {MODELS.map((m) => (
-            <option key={m} value={m} />
+          {MODEL_OPTIONS.map((m) => (
+            <option key={m.slug} value={m.slug} label={`${m.label} · ${m.group}`} />
           ))}
         </datalist>
         <div className="mt-3 flex flex-wrap gap-2">
