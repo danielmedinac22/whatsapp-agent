@@ -1,0 +1,74 @@
+name: LinkedIn Metrics Scraper
+
+# ── Schedule ────────────────────────────────────────────────────────────────
+# Runs every Monday at 09:00 UTC.
+# You can also trigger it manually from the Actions tab (workflow_dispatch).
+on:
+  schedule:
+    - cron: "0 9 * * 1"
+  workflow_dispatch:      # allow manual runs
+
+# ── Permissions ─────────────────────────────────────────────────────────────
+# Needed so the "commit & push data files" step can write back to the repo.
+permissions:
+  contents: write
+
+jobs:
+  scrape:
+    name: Scrape LinkedIn metrics
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Check out the repository (full history so git push works)
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # 2. Set up Python 3.11
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      # 3. Install Python dependencies
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install playwright python-dotenv
+
+      # 4. Install Playwright browser binaries (Chromium only, saves ~200 MB)
+      - name: Install Playwright browsers
+        run: playwright install chromium --with-deps
+
+      # 5. Run the scraper
+      - name: Run LinkedIn metrics scraper
+        env:
+          LINKEDIN_EMAIL: ${{ secrets.LINKEDIN_EMAIL }}
+          LINKEDIN_PASSWORD: ${{ secrets.LINKEDIN_PASSWORD }}
+        run: python scripts/linkedin_metrics.py
+
+      # 6. (Optional) Update post frontmatter with latest metrics
+      - name: Update post frontmatter
+        run: python scripts/update_post_metrics.py
+        # Don't fail the whole workflow if no posts/ folder exists yet
+        continue-on-error: true
+
+      # 7. Commit and push any new/updated data files
+      - name: Commit and push metrics data
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Stage only the metrics data directory and posts folder
+          git add data/metrics/ posts/ || true
+
+          # Only commit if there are staged changes
+          if git diff --cached --quiet; then
+            echo "No changes to commit — metrics unchanged."
+          else
+            DATE=$(date -u +"%Y-%m-%d")
+            git commit -m "chore(metrics): update LinkedIn metrics ${DATE} [skip ci]"
+            git push
+          fi
