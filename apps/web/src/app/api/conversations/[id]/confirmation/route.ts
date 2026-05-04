@@ -22,6 +22,12 @@ export async function POST(
     return new Response("invalid status", { status: 400 });
   }
   await setConfirmationStatus(id, status);
+  if (status === "confirmed") {
+    workerFetch(`/api/dropi/confirm-by-conversation`, {
+      method: "POST",
+      body: JSON.stringify({ conversationId: id }),
+    }).catch(() => {});
+  }
   // Notify worker so SSE listeners refresh.
   workerFetch(`/api/events/notify`, {
     method: "POST",
