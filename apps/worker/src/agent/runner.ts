@@ -14,6 +14,7 @@ import { db } from "../db";
 import { logger } from "../lib/logger";
 import { enqueueOutbound } from "../jobs/outbound";
 import { openrouter } from "./openrouter";
+import { buildDropiContextBlock } from "./dropi-context";
 import { buildShopifyContextBlock } from "./shopify-context";
 
 function shortHash(s: string): string {
@@ -89,6 +90,13 @@ async function flushBuffer(contactId: string) {
     if (ctx) systemPrompt = `${systemPrompt}\n\n${ctx}`;
   } catch (err) {
     logger.warn({ err }, "shopify context build failed; continuing without it");
+  }
+
+  try {
+    const ctx = await buildDropiContextBlock(entry.contact.id);
+    if (ctx) systemPrompt = `${systemPrompt}\n\n${ctx}`;
+  } catch (err) {
+    logger.warn({ err }, "dropi context build failed; continuing without it");
   }
 
   try {
