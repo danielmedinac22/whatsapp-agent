@@ -118,6 +118,7 @@ async function handleDropiConfirm({ shopifyOrderRowId }: DropiConfirmPayload) {
  */
 export async function confirmDropiOrderById(
   dropiRowId: string,
+  opts: { force?: boolean } = {},
 ): Promise<{ ok: true; dryRun: boolean; alreadyDone: boolean }> {
   const s = await getSettings();
   if (!s?.dropiEnabled) {
@@ -134,7 +135,7 @@ export async function confirmDropiOrderById(
     return { ok: true, dryRun: false, alreadyDone: true };
   }
 
-  if (s.dropiDryRun) {
+  if (s.dropiDryRun && !opts.force) {
     await db
       .update(dropiOrders)
       .set({ confirmDryRunAt: new Date(), updatedAt: new Date() })

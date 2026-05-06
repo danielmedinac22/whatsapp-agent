@@ -214,7 +214,7 @@ dropi.get("/orders", async (c) => {
 dropi.post("/orders/:id/confirm", async (c) => {
   const id = c.req.param("id");
   try {
-    const r = await confirmDropiOrderById(id);
+    const r = await confirmDropiOrderById(id, { force: true });
     return c.json(r);
   } catch (err) {
     const status = err instanceof DropiHttpError ? err.status : 500;
