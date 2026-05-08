@@ -441,6 +441,17 @@ export const dropiOrders = pgTable(
     lastPolledAt: timestamp("last_polled_at", { withTimezone: true }),
     lastNotifiedStatus: dropiStatus("last_notified_status"),
     lastNotifiedAt: timestamp("last_notified_at", { withTimezone: true }),
+    novedadReasonRaw: text("novedad_reason_raw"),
+    novedadFirstNotifiedAt: timestamp("novedad_first_notified_at", {
+      withTimezone: true,
+    }),
+    novedadReminderAt: timestamp("novedad_reminder_at", { withTimezone: true }),
+    novedadEscalatedAt: timestamp("novedad_escalated_at", {
+      withTimezone: true,
+    }),
+    novedadCustomerRepliedAt: timestamp("novedad_customer_replied_at", {
+      withTimezone: true,
+    }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -454,6 +465,9 @@ export const dropiOrders = pgTable(
     index("dropi_orders_status_idx").on(t.status),
     index("dropi_orders_shopify_idx").on(t.shopifyOrderRowId),
     index("dropi_orders_contact_idx").on(t.contactId),
+    index("dropi_orders_novedad_first_notified_idx").on(
+      t.novedadFirstNotifiedAt,
+    ),
   ],
 );
 

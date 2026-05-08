@@ -37,6 +37,11 @@ import {
   scheduleDropiAuthRefresh,
   startDropiAuthRefreshWorker,
 } from "./jobs/dropi-auth-refresh";
+import { startDropiNovedadNotifyWorker } from "./jobs/dropi-novedad-notify";
+import {
+  scheduleDropiNovedadReminder,
+  startDropiNovedadReminderWorker,
+} from "./jobs/dropi-novedad-reminder";
 
 const app = new Hono();
 
@@ -99,5 +104,14 @@ serve({ fetch: app.fetch, port }, (info) => {
   );
   ensureDropiTemplates().catch((err) =>
     logger.error({ err }, "ensureDropiTemplates failed"),
+  );
+  startDropiNovedadNotifyWorker().catch((err) =>
+    logger.error({ err }, "dropi novedad-notify worker failed to start"),
+  );
+  startDropiNovedadReminderWorker().catch((err) =>
+    logger.error({ err }, "dropi novedad-reminder worker failed to start"),
+  );
+  scheduleDropiNovedadReminder().catch((err) =>
+    logger.error({ err }, "dropi novedad-reminder scheduling failed"),
   );
 });

@@ -53,5 +53,41 @@ export async function buildDropiContextBlock(
   lines.push(
     "Usa esta información para responder consultas sobre el estado del envío. No inventes guías ni transportadoras que no estén aquí.",
   );
+
+  // Active novedad: si alguno de los pedidos visibles tiene una novedad ya
+  // notificada al cliente y aún no escalada, inyectar contexto + reglas duras.
+  const activeNovedad = orders.find(
+    (o) =>
+      o.status === "novedad" &&
+      o.novedadFirstNotifiedAt &&
+      !o.novedadEscalatedAt,
+  );
+  if (activeNovedad) {
+    lines.push("");
+    lines.push("## Novedad activa en gestión");
+    lines.push(
+      `Pedido Dropi #${activeNovedad.dropiOrderId} tiene una novedad reportada por la transportadora.`,
+    );
+    if (activeNovedad.novedadReasonRaw) {
+      lines.push(`Motivo crudo de la transportadora: "${activeNovedad.novedadReasonRaw}"`);
+    }
+    const notifiedAt = formatDate(activeNovedad.novedadFirstNotifiedAt);
+    if (notifiedAt) {
+      lines.push(`Ya enviaste el mensaje inicial el ${notifiedAt}.`);
+    }
+    lines.push("");
+    lines.push("Tu rol aquí es solamente:");
+    lines.push("- Recibir la respuesta del cliente y agradecer si confirma o corrige datos.");
+    lines.push("- Confirmar que la información será actualizada para coordinar nuevamente la entrega.");
+    lines.push("- Avisarle que el caso pasará a un asesor para terminar de gestionarlo.");
+    lines.push("");
+    lines.push("Reglas DURAS sobre esta novedad — no las rompas:");
+    lines.push("- NUNCA prometas fechas exactas de entrega ni reentrega.");
+    lines.push("- NUNCA confirmes que la entrega ya fue reagendada.");
+    lines.push("- NUNCA hables de reembolsos, devoluciones ni cancelaciones.");
+    lines.push("- NUNCA modifiques el pedido tú mismo (eso lo hace un humano luego).");
+    lines.push("- Si el cliente está molesto, amenaza, pide reembolso/devolución, o hay inconsistencias graves, agradece su mensaje y dile que un asesor humano continuará la gestión.");
+  }
+
   return lines.join("\n");
 }

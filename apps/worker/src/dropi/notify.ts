@@ -14,6 +14,8 @@ import { renderTemplate } from "../lib/template";
 import { extractOrderVariables } from "../shopify/extract";
 import { enqueueOutbound } from "../jobs/outbound";
 import { getDropiConnection } from "./config";
+import { extractNovedadReason } from "./novedad";
+import { enqueueNovedadNotify } from "../jobs/dropi-novedad-notify";
 
 type DropiStatus = DropiOrder["status"];
 
@@ -129,19 +131,39 @@ export async function maybeNotifyDropiStatus(
   order: DropiOrder,
   s: typeof agentSettings.$inferSelect,
 ): Promise<MaybeNotifyResult> {
-  // novedad → escalate to human, never notify the customer.
+  // novedad → enqueue LLM-driven outreach if a concrete reason is available.
+  // No reason yet (e.g. raw status "INCIDENCIA EN RUTA" without detail) → wait.
   if (order.status === "novedad") {
-    if (order.contactId) {
-      await db
-        .update(contacts)
-        .set({ agentMode: false })
-        .where(eq(contacts.id, order.contactId));
-      logger.warn(
-        { dropiOrderId: order.dropiOrderId, contactId: order.contactId },
-        "dropi notify: novedad — agent mode off, escalated to human",
-      );
+    const reason = extractNovedadReason(order.rawPayload);
+    if (!reason) {
+      return { notified: false, escalated: false, skipped: "not_notifiable" };
     }
-    return { notified: false, escalated: true, skipped: null };
+    if (!order.contactId) {
+      logger.warn(
+        { dropiOrderId: order.dropiOrderId },
+        "dropi notify: novedad without contact, cannot notify",
+      );
+      return { notified: false, escalated: false, skipped: "not_notifiable" };
+    }
+    if (order.novedadFirstNotifiedAt) {
+      return { notified: false, escalated: false, skipped: "already_notified" };
+    }
+    if (order.novedadReasonRaw !== reason) {
+      await db
+        .update(dropiOrders)
+        .set({ novedadReasonRaw: reason })
+        .where(eq(dropiOrders.id, order.id));
+    }
+    await enqueueNovedadNotify(order.id);
+    logger.info(
+      {
+        dropiOrderId: order.dropiOrderId,
+        contactId: order.contactId,
+        reason,
+      },
+      "dropi notify: novedad enqueued for LLM outreach",
+    );
+    return { notified: false, escalated: false, skipped: null };
   }
 
   if (!NOTIFIABLE.includes(order.status)) {

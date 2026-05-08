@@ -14,6 +14,7 @@ import { scheduleConfirmationClassify } from "../agent/confirmation-classifier";
 import { escalateToHuman } from "../agent/escalation";
 import { handleInboundConfirmation } from "../jobs/confirmation-ack";
 import { tryHandleDropi2FAInbound } from "../dropi/2fa-inbound";
+import { markNovedadCustomerReply } from "../dropi/novedad-reply";
 import { resolveIdentity } from "./jid-resolver";
 import { upsertContactByIdentity } from "./contact-upsert";
 
@@ -123,6 +124,10 @@ export async function onMessages(
         );
         continue;
       }
+
+      // Si el contacto tiene una novedad activa esperando respuesta, marcarla.
+      // Best-effort: no bloquea el resto del pipeline.
+      void markNovedadCustomerReply(contact.id);
 
       scheduleConfirmationClassify({
         conversationId: conv.id,
