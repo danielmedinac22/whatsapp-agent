@@ -13,6 +13,7 @@ export const DROPI_POLL_QUEUE = "dropi-poll";
 export const DROPI_AUTH_REFRESH_QUEUE = "dropi-auth-refresh";
 export const DROPI_NOVEDAD_NOTIFY_QUEUE = "dropi-novedad-notify";
 export const DROPI_NOVEDAD_REMINDER_QUEUE = "dropi-novedad-reminder";
+export const DROPI_NOVEDAD_HANDOFF_QUEUE = "dropi-novedad-handoff";
 
 export async function getBoss(): Promise<PgBoss> {
   if (boss) return boss;
@@ -34,6 +35,7 @@ export async function getBoss(): Promise<PgBoss> {
     await b.createQueue(DROPI_AUTH_REFRESH_QUEUE);
     await b.createQueue(DROPI_NOVEDAD_NOTIFY_QUEUE);
     await b.createQueue(DROPI_NOVEDAD_REMINDER_QUEUE);
+    await b.createQueue(DROPI_NOVEDAD_HANDOFF_QUEUE);
     boss = b;
     starting = null;
     return b;

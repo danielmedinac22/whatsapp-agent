@@ -42,6 +42,7 @@ import {
   scheduleDropiNovedadReminder,
   startDropiNovedadReminderWorker,
 } from "./jobs/dropi-novedad-reminder";
+import { startDropiNovedadHandoffWorker } from "./jobs/dropi-novedad-handoff";
 
 const app = new Hono();
 
@@ -113,5 +114,8 @@ serve({ fetch: app.fetch, port }, (info) => {
   );
   scheduleDropiNovedadReminder().catch((err) =>
     logger.error({ err }, "dropi novedad-reminder scheduling failed"),
+  );
+  startDropiNovedadHandoffWorker().catch((err) =>
+    logger.error({ err }, "dropi novedad-handoff worker failed to start"),
   );
 });
