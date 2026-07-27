@@ -179,14 +179,17 @@ const STATUS_EVENT_NAMES: Record<string, DeliveryStatusValue> = {
 
 /**
  * Parse a Kapso delivery-status event (`whatsapp.message.{sent,delivered,read,
- * failed}`). Status comes from the event name (authoritative); on failure the
- * Meta error is pulled from `message.kapso.statuses[].errors[]` (or the flat
- * `message.kapso.errors[]`). Returns null for non-status payloads.
+ * failed}`). The event name is authoritative and, in payload v2, arrives in the
+ * `X-Webhook-Event` HEADER (the body has no `event` field) — callers pass it
+ * in. On failure the Meta error is pulled from `message.kapso.statuses[].
+ * errors[]` (or the flat `message.kapso.errors[]`). Returns null otherwise.
  */
 export function parseStatusEvent(
+  eventName: string | null,
   payload: KapsoInboundPayload,
 ): ParsedStatusEvent | null {
-  const status = payload.event ? STATUS_EVENT_NAMES[payload.event] : undefined;
+  const name = eventName ?? payload.event;
+  const status = name ? STATUS_EVENT_NAMES[name] : undefined;
   if (!status) return null;
   const root = payload.data ?? payload;
   const waMessageId = root.message?.id;

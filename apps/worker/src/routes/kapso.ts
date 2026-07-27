@@ -37,21 +37,25 @@ kapsoWebhook.post("/webhook", async (c) => {
     return c.json({ error: "invalid json" }, 400);
   }
 
-  // Idempotency: Kapso retries deliveries; dedupe on the event id (falling
-  // back to event-name + message id, unique per status transition).
+  // Payload v2 carries the event name and idempotency key in HEADERS, not in
+  // the body: X-Webhook-Event + X-Idempotency-Key.
+  const eventName =
+    c.req.header("x-webhook-event") ?? payload.event ?? null;
   const root = payload.data ?? payload;
   const eventId =
-    payload.id ?? `${payload.event ?? "unknown"}:${root.message?.id ?? raw.length}`;
+    c.req.header("x-idempotency-key") ??
+    payload.id ??
+    `${eventName ?? "unknown"}:${root.message?.id ?? raw.length}`;
   const inserted = await db
     .insert(webhookEvents)
-    .values({ source: "kapso", eventId, event: payload.event ?? null })
+    .values({ source: "kapso", eventId, event: eventName })
     .onConflictDoNothing({ target: [webhookEvents.source, webhookEvents.eventId] })
     .returning({ id: webhookEvents.id });
   if (inserted.length === 0) {
     return c.json({ ok: true, deduped: true });
   }
 
-  const status = parseStatusEvent(payload);
+  const status = parseStatusEvent(eventName, payload);
   if (status) {
     await applyDeliveryStatus(status).catch((err) =>
       logger.error({ err, waId: status.waMessageId }, "kapso: status apply failed"),
@@ -70,7 +74,7 @@ kapsoWebhook.post("/webhook", async (c) => {
     return c.json({ ok: true });
   }
 
-  logger.debug({ event: payload.event }, "kapso webhook: ignored event");
+  logger.debug({ event: eventName }, "kapso webhook: ignored event");
   return c.json({ ok: true, ignored: true });
 });
 
