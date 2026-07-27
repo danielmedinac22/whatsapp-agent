@@ -90,7 +90,9 @@ const CON_MENSAJERO_V1: WaTemplateDefinition = {
 const ENTREGADO_V1: WaTemplateDefinition = {
   name: "vorare_entregado_v1",
   language: "es",
-  category: "UTILITY",
+  // Meta recategorizó esta plantilla a MARKETING al someterla (el cierre
+  // "esperamos verte de nuevo" lee como re-engagement).
+  category: "MARKETING",
   bodyText:
     "Hola {{1}}, muchísimas gracias por tu compra 🙌\n\nTu pedido ya fue entregado. ¡Esperamos verte de nuevo pronto!",
   bodyExample: ["Ana"],

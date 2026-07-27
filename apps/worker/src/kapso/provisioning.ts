@@ -102,13 +102,16 @@ export async function refreshKapsoTemplateStatuses(): Promise<void> {
   const wabaId = conn?.businessAccountId;
   if (!wabaId) return;
 
+  // "draft" included: a submit that failed for a reason other than a clean
+  // "already exists" (e.g. Meta recategorized the existing template) still has
+  // a live counterpart on the WABA whose status the name-poll resolves.
   const pending = await db
     .select()
     .from(waTemplates)
     .where(
       and(
         eq(waTemplates.businessAccountId, wabaId),
-        inArray(waTemplates.status, ["submitted", "paused"]),
+        inArray(waTemplates.status, ["draft", "submitted", "paused"]),
       ),
     );
 
