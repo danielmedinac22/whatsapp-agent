@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { buildReopenOptions, type ReopenOption } from "@/lib/reopen";
 import {
   AlertTriangle,
   Bot,
@@ -42,6 +43,10 @@ export type ChatItem = {
   /** Destination wa_id (E.164 digits, sin "+"). */
   to: string;
   name: string;
+  /** Último mensaje del cliente — define la ventana de 24h de Meta. */
+  lastInboundAt: string | null;
+  novedadReason: string | null;
+  orderNumber: string | null;
   agentMode: boolean;
   preview: string | null;
   unread: number;
@@ -149,7 +154,13 @@ const DROPI_META: Record<
   },
 };
 
-export function InboxClient({ initial }: { initial: ChatItem[] }) {
+export function InboxClient({
+  initial,
+  approvedTemplates,
+}: {
+  initial: ChatItem[];
+  approvedTemplates: string[];
+}) {
   const router = useRouter();
   const [items, setItems] = useState<ChatItem[]>(initial);
   const [selected, setSelected] = useState<ChatItem | null>(initial[0] ?? null);
@@ -337,7 +348,11 @@ export function InboxClient({ initial }: { initial: ChatItem[] }) {
 
         <section className="flex min-h-0 flex-col">
         {selected ? (
-          <ConversationPane key={selected.id} chat={selected} />
+          <ConversationPane
+            key={selected.id}
+            chat={selected}
+            approvedTemplates={approvedTemplates}
+          />
         ) : (
           <div className="app-card flex flex-1 items-center justify-center text-[var(--color-text-dim)]">
             Selecciona una conversación
@@ -357,11 +372,80 @@ type Msg = {
   createdAt: string;
 };
 
-function ConversationPane({ chat }: { chat: ChatItem }) {
+const SERVICE_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+type WindowState = "open" | "closed" | "unknown";
+
+/** Estado de la ventana de 24h de Meta. `unknown` (sin inbound registrado) no
+ *  bloquea: solo bloqueamos con evidencia; si Kapso rechaza, el outbox lo marca. */
+function windowStateOf(lastInboundAt: string | null): WindowState {
+  if (!lastInboundAt) return "unknown";
+  const t = Date.parse(lastInboundAt);
+  if (!Number.isFinite(t)) return "unknown";
+  return Date.now() - t <= SERVICE_WINDOW_MS ? "open" : "closed";
+}
+
+function ConversationPane({
+  chat,
+  approvedTemplates,
+}: {
+  chat: ChatItem;
+  approvedTemplates: string[];
+}) {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  const [reopenSending, setReopenSending] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // La ventana se calcula con el inbound más reciente que conozcamos: el de la
+  // lista del servidor o uno recién llegado por SSE a este hilo.
+  const latestInboundFromMsgs = msgs
+    .filter((m) => m.direction === "in")
+    .map((m) => m.createdAt)
+    .sort()
+    .at(-1);
+  const effectiveLastInbound =
+    [chat.lastInboundAt, latestInboundFromMsgs]
+      .filter((d): d is string => Boolean(d))
+      .sort()
+      .at(-1) ?? null;
+  const windowState = windowStateOf(effectiveLastInbound);
+
+  const reopenOptions = buildReopenOptions({
+    contactName: chat.name.startsWith("+") ? null : chat.name,
+    orderNumber: chat.orderNumber,
+    dropiGuide: chat.dropiGuide,
+    novedadReason: chat.novedadReason,
+    approvedTemplates,
+  });
+
+  const sendReopen = async (opt: ReopenOption) => {
+    if (reopenSending) return;
+    setReopenSending(opt.templateName);
+    try {
+      const r = await fetch("/api/wa/send-template", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          to: chat.to,
+          templateName: opt.templateName,
+          params: opt.params,
+          conversationId: chat.id,
+        }),
+      });
+      if (r.ok) {
+        setTimeout(reload, 400);
+      } else {
+        const j = (await r.json().catch(() => null)) as { error?: unknown } | null;
+        alert(
+          `No se pudo enviar la plantilla: ${typeof j?.error === "string" ? j.error : r.status}`,
+        );
+      }
+    } finally {
+      setReopenSending(null);
+    }
+  };
 
   useEffect(() => {
     scrollRef.current?.scrollTo({
@@ -519,28 +603,81 @@ function ConversationPane({ chat }: { chat: ChatItem }) {
       </div>
 
       <footer className="border-t border-[var(--color-border)] bg-[rgba(10,24,34,0.84)] p-3">
-        <div className="flex gap-2">
-          <input
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                send();
-              }
-            }}
-            placeholder="Escribe un mensaje…"
-            className="app-input flex-1"
-          />
-          <button
-            onClick={send}
-            disabled={sending || !text.trim()}
-            className="app-button gap-2"
-          >
-            <Send className="h-4 w-4" />
-            Enviar
-          </button>
-        </div>
+        {windowState === "closed" ? (
+          <div className="space-y-2">
+            <div className="rounded-lg border border-amber-400/30 bg-amber-500/10 p-3 text-xs leading-5 text-amber-100">
+              ⏳ <strong>Ventana de 24h cerrada.</strong> El cliente lleva más
+              de 24 horas sin escribir y WhatsApp solo permite reabrir con una
+              plantilla aprobada por Meta. Cuando responda, el chat libre se
+              habilita de nuevo.
+            </div>
+            <div className="space-y-2">
+              {reopenOptions.map((opt) => (
+                <div
+                  key={opt.templateName}
+                  className={`flex items-start justify-between gap-3 rounded-lg border p-2.5 ${
+                    opt.sendable
+                      ? "border-[var(--color-border)]"
+                      : "border-[var(--color-border)] opacity-50"
+                  }`}
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold text-[var(--color-text)]">
+                      {opt.label}
+                      {!opt.sendable && opt.reason && (
+                        <span className="ml-2 font-normal text-amber-200/80">
+                          · {opt.reason}
+                        </span>
+                      )}
+                    </p>
+                    <p className="mt-1 line-clamp-2 whitespace-pre-line text-xs text-[var(--color-text-dim)]">
+                      {opt.preview}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => sendReopen(opt)}
+                    disabled={!opt.sendable || reopenSending !== null}
+                    className="app-button shrink-0 gap-1.5 text-xs"
+                  >
+                    <Send className="h-3.5 w-3.5" />
+                    {reopenSending === opt.templateName ? "Enviando…" : "Enviar"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            {windowState === "unknown" && (
+              <p className="text-[11px] leading-4 text-[var(--color-text-dim)]">
+                Este contacto aún no ha escrito — si WhatsApp rechaza el envío
+                por falta de ventana activa, usa una plantilla.
+              </p>
+            )}
+            <div className="flex gap-2">
+              <input
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    send();
+                  }
+                }}
+                placeholder="Escribe un mensaje…"
+                className="app-input flex-1"
+              />
+              <button
+                onClick={send}
+                disabled={sending || !text.trim()}
+                className="app-button gap-2"
+              >
+                <Send className="h-4 w-4" />
+                Enviar
+              </button>
+            </div>
+          </div>
+        )}
       </footer>
     </div>
   );

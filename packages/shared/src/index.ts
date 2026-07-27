@@ -1,3 +1,4 @@
 export * from "./schemas";
 export * from "./types";
 export * from "./template-variables";
+export * from "./wa-templates";

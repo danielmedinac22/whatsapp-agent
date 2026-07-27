@@ -7,6 +7,7 @@ import {
   agentSettings,
   shopifyOrders,
   dropiOrders,
+  waTemplates,
   asc,
   desc,
   eq,
@@ -20,13 +21,20 @@ export type DropiSummary = {
   guideNumber: string | null;
   carrier: string | null;
   guidePdfPath: string | null;
+  novedadReason: string | null;
   updatedAt: Date;
+};
+
+export type ShopifySummary = {
+  orderNumber: string;
+  totalPrice: string | null;
 };
 
 export type ConversationListItem = {
   conversation: typeof conversations.$inferSelect;
   contact: typeof contacts.$inferSelect;
   dropi: DropiSummary | null;
+  shopify: ShopifySummary | null;
 };
 
 export async function listConversations(): Promise<ConversationListItem[]> {
@@ -46,7 +54,7 @@ export async function listConversations(): Promise<ConversationListItem[]> {
 
   const contactIds = rows.map((r) => r.contact.id);
   if (contactIds.length === 0) {
-    return rows.map((r) => ({ ...r, dropi: null }));
+    return rows.map((r) => ({ ...r, dropi: null, shopify: null }));
   }
 
   // Fetch all dropi orders for these contacts, ordered so the most recent
@@ -68,6 +76,7 @@ export async function listConversations(): Promise<ConversationListItem[]> {
         guideNumber: o.guideNumber,
         carrier: o.carrier,
         guidePdfPath: o.guidePdfPath,
+        novedadReason: o.novedadReasonRaw,
         updatedAt: o.updatedAt,
       });
     } else if (o.status === "novedad") {
@@ -75,10 +84,40 @@ export async function listConversations(): Promise<ConversationListItem[]> {
     }
   }
 
+  // Most recent Shopify order per contact — feeds the reopen-template options.
+  const shopifyRows = await db
+    .select({
+      contactId: shopifyOrders.contactId,
+      orderId: shopifyOrders.orderId,
+      totalPrice: shopifyOrders.totalPrice,
+      receivedAt: shopifyOrders.receivedAt,
+    })
+    .from(shopifyOrders)
+    .where(inArray(shopifyOrders.contactId, contactIds))
+    .orderBy(desc(shopifyOrders.receivedAt));
+  const shopifyByContact = new Map<string, ShopifySummary>();
+  for (const o of shopifyRows) {
+    if (!o.contactId || shopifyByContact.has(o.contactId)) continue;
+    shopifyByContact.set(o.contactId, {
+      orderNumber: o.orderId,
+      totalPrice: o.totalPrice,
+    });
+  }
+
   return rows.map((r) => ({
     ...r,
     dropi: byContact.get(r.contact.id) ?? null,
+    shopify: shopifyByContact.get(r.contact.id) ?? null,
   }));
+}
+
+/** Catalog templates Meta has approved for the current WABA. */
+export async function listApprovedWaTemplates(): Promise<string[]> {
+  const rows = await db
+    .select({ name: waTemplates.name })
+    .from(waTemplates)
+    .where(eq(waTemplates.status, "approved"));
+  return rows.map((r) => r.name);
 }
 
 export async function getConversationById(id: string) {
