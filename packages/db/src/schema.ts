@@ -251,9 +251,10 @@ export const contacts = pgTable(
       .defaultNow(),
   },
   (t) => [
-    uniqueIndex("contacts_wa_id_idx")
-      .on(t.waId)
-      .where(sql`${t.waId} is not null`),
+    // Único TOTAL (no parcial): ON CONFLICT (wa_id) necesita inferir este
+    // índice como árbitro y Postgres no infiere índices parciales (42P10).
+    // Los NULL no chocan entre sí, así que los contactos legacy sin wa_id caben.
+    uniqueIndex("contacts_wa_id_idx").on(t.waId),
     index("contacts_jid_idx").on(t.jid),
     uniqueIndex("contacts_lid_idx")
       .on(t.lid)
