@@ -1,178 +1,296 @@
 /**
  * Vorare's Meta WhatsApp template catalog — the single source of truth, shared
  * by the worker (submission/sending) and the web app (reopen flow, previews).
- * Meta doesn't allow editing an approved template, so changes ship as a new
- * `_v2` name and a one-constant swap of the ACTIVE_* export; old versions stay
- * registered so historical sends keep rendering.
+ * Copys según el documento de feedback "plantillas_meta_waichat_vorare.md"
+ * (parámetros con nombre + footer "Tienda Vorare" + categorías por costo).
  *
- * Rules: POSITIONAL params ({{1}}, {{2}}, …), `example.body_text` required
- * when the body has variables, param VALUES must be single-line (no \n/tabs),
- * no emoji in QUICK_REPLY button text, and the body can't end in a variable.
+ * Meta doesn't allow editing an approved template, so changes ship as a new
+ * name/version and a one-constant swap of the ACTIVE_* export.
+ *
+ * Reglas aprendidas empíricamente contra la API de Meta (vía Kapso):
+ * - NAMED params: minúsculas + guion bajo; cada una con ejemplo.
+ * - El body no puede empezar NI terminar en una variable (el "." final no
+ *   cuenta como texto — rechaza con "Invalid parameter").
+ * - Sin emoji en el texto de los botones QUICK_REPLY (mismo rechazo).
+ * - Los VALORES de los parámetros van en una sola línea (sin \n/tabs).
  */
+
+export interface WaTemplateParam {
+  /** lowercase_snake_case — Meta lo exige para named params. */
+  name: string;
+  /** Valor de ejemplo, obligatorio para la aprobación. */
+  example: string;
+}
 
 export interface WaTemplateDefinition {
   name: string;
   language: string;
   category: "UTILITY" | "MARKETING" | "AUTHENTICATION";
+  /** Body con placeholders {{nombre_de_variable}}. */
   bodyText: string;
-  bodyExample: string[];
-  /** QUICK_REPLY button labels, in order. */
+  /** Parámetros EN ORDEN — el orden define el array de valores al enviar. */
+  params: WaTemplateParam[];
+  /** QUICK_REPLY button labels, in order (sin emoji). */
   buttons: string[];
+  footer: string | null;
 }
 
-// --- Customer-facing ---------------------------------------------------------
+const FOOTER = "Tienda Vorare";
 
-const CONFIRMACION_PEDIDO_V1: WaTemplateDefinition = {
-  name: "vorare_confirmacion_pedido_v1",
+// --- Flujo de confirmación (inicio del pedido) --------------------------------
+
+const CONFIRMACION_DATOS_COD: WaTemplateDefinition = {
+  name: "confirmacion_datos_cod",
   language: "es",
   category: "UTILITY",
   bodyText:
-    "Hola {{1}} 👋 ¡Gracias por tu compra!\n\nRecibimos tu pedido {{2}} por {{3}}.\n\n¿Nos confirmas que tus datos de entrega son correctos para despacharlo?",
-  bodyExample: ["Ana", "#1234", "$120.000"],
-  buttons: ["Confirmar pedido", "Tengo una duda"],
+    "Hola {{nombre}} 👋\nTe escribimos desde Tienda Vorare para confirmar que tu pedido de {{producto}} ya quedó reservado en nuestro sistema ✅\n\nPara enviarlo hoy mismo necesitamos validar estos datos:\n📍 Dirección: {{direccion}}\n🏙️ Ciudad / Barrio: {{ciudad}}\n📞 Contacto: {{telefono}}\n💵 Pago contra entrega: Q{{total}}\n\nConfírmanos que todo está correcto para despacharlo en ruta 🚚📦",
+  params: [
+    { name: "nombre", example: "María" },
+    { name: "producto", example: "Colágeno Hidrolizado" },
+    { name: "direccion", example: "Cra 45 #12-30, Apto 201" },
+    { name: "ciudad", example: "Zona 10, Ciudad de Guatemala" },
+    { name: "telefono", example: "5555 1234" },
+    { name: "total", example: "295" },
+  ],
+  buttons: ["Confirmar pedido", "Corregir datos"],
+  footer: FOOTER,
 };
 
-const RECORDATORIO_PEDIDO_V1: WaTemplateDefinition = {
-  name: "vorare_recordatorio_pedido_v1",
+const RECUPERACION_PEDIDO_SIN_CONFIRMAR: WaTemplateDefinition = {
+  name: "recuperacion_pedido_sin_confirmar",
   language: "es",
+  // Borderline UTILITY: versión neutra sin lenguaje promocional para no caer
+  // en MARKETING. Si Meta la reclasifica, se acepta (sobrecosto mínimo).
   category: "UTILITY",
   bodyText:
-    "Hola {{1}}, aún tenemos pendiente la confirmación de tu pedido {{2}} 📦\n\n¿Quieres que lo despachemos? Respóndenos por aquí y lo dejamos listo.",
-  bodyExample: ["Ana", "#1234"],
-  buttons: ["Confirmar pedido", "Cancelar pedido"],
+    "Hola {{nombre}} 👋\nRegistramos un pedido tuyo de {{producto}} en nuestra web que aún no ha sido confirmado.\nPara despacharlo necesitamos tu confirmación. ¿Deseas que procedamos con el envío?",
+  params: [
+    { name: "nombre", example: "María" },
+    { name: "producto", example: "Colágeno Hidrolizado" },
+  ],
+  buttons: ["Sí, confírmalo", "Cancelar"],
+  footer: FOOTER,
 };
 
-const GUIA_GENERADA_V1: WaTemplateDefinition = {
-  name: "vorare_guia_generada_v1",
+const PEDIDO_CONFIRMADO_PROGRAMADO: WaTemplateDefinition = {
+  name: "pedido_confirmado_programado",
   language: "es",
   category: "UTILITY",
   bodyText:
-    "Hola {{1}} 👋\n\nTu pedido fue confirmado. Aquí los detalles de envío:\n\n📦 Guía: {{2}}\n🚚 Transportadora: {{3}}\n📎 PDF: {{4}}\n\nPronto te avisaremos cuando salga a entrega.",
-  bodyExample: [
-    "Ana",
-    "240012345678",
-    "Interrapidísimo",
-    "https://ejemplo.com/guia.pdf",
+    "¡Listo {{nombre}}! 🙌 Tu pedido de {{producto}} quedó confirmado y programado con éxito ✅\nSerá despachado lo antes posible a la transportadora 🚚📦\n\nMantente atento a llamadas y WhatsApp: se comunicarán contigo por esos medios para coordinar la entrega.\nCualquier duda, aquí estamos. ¡Gracias por tu compra! 💙",
+  params: [
+    { name: "nombre", example: "María" },
+    { name: "producto", example: "Colágeno Hidrolizado" },
   ],
   buttons: [],
+  footer: FOOTER,
 };
 
-const RECOLECTADO_V1: WaTemplateDefinition = {
-  name: "vorare_recolectado_v1",
+// --- Flujo de tracking (estados de guía) --------------------------------------
+
+// El doc cierra estos dos con "Guía: {{guia}}" a secas, pero Meta rechaza un
+// body que termina en variable — se añade un cierre corto después de la guía.
+const GUIA_RECOLECTADA: WaTemplateDefinition = {
+  name: "guia_recolectada",
   language: "es",
   category: "UTILITY",
   bodyText:
-    "Hola {{1}}, tu pedido acaba de ser recolectado por {{2}}. Guía: {{3}} — pronto estará en camino.",
-  bodyExample: ["Ana", "Interrapidísimo", "240012345678"],
+    "Hola {{nombre}} 📦 Tu pedido acaba de ser recolectado por {{transportadora}}.\nGuía: {{guia}} — te avisaremos en cada avance.",
+  params: [
+    { name: "nombre", example: "María" },
+    { name: "transportadora", example: "Interrapidísimo" },
+    { name: "guia", example: "240012345678" },
+  ],
   buttons: [],
+  footer: FOOTER,
 };
 
-const EN_TRANSITO_V1: WaTemplateDefinition = {
-  name: "vorare_en_transito_v1",
-  language: "es",
-  category: "UTILITY",
-  bodyText: "Hola {{1}}, tu pedido está en tránsito. Guía: {{2}} ({{3}}).",
-  bodyExample: ["Ana", "240012345678", "Interrapidísimo"],
-  buttons: [],
-};
-
-const CON_MENSAJERO_V1: WaTemplateDefinition = {
-  name: "vorare_con_mensajero_v1",
+const GUIA_EN_TRANSITO: WaTemplateDefinition = {
+  name: "guia_en_transito",
   language: "es",
   category: "UTILITY",
   bodyText:
-    "Hola {{1}}, ¡tu pedido ya está con el mensajero! Pronto lo recibirás. Guía: {{2}} por si necesitas consultarla.",
-  bodyExample: ["Ana", "240012345678"],
+    "Hola {{nombre}} 🚚 Tu pedido ya va viajando a tu ciudad de destino.\nGuía: {{guia}} ({{transportadora}})",
+  params: [
+    { name: "nombre", example: "María" },
+    { name: "guia", example: "240012345678" },
+    { name: "transportadora", example: "Interrapidísimo" },
+  ],
   buttons: [],
+  footer: FOOTER,
 };
 
-const ENTREGADO_V1: WaTemplateDefinition = {
-  name: "vorare_entregado_v1",
+const GUIA_EN_REPARTO: WaTemplateDefinition = {
+  name: "guia_en_reparto",
   language: "es",
-  // Meta recategorizó esta plantilla a MARKETING al someterla (el cierre
-  // "esperamos verte de nuevo" lee como re-engagement).
+  category: "UTILITY",
+  bodyText:
+    "Hola {{nombre}} 🛵 ¡Tu pedido ya está con el mensajero! Pronto lo recibirás.\nGuía: {{guia}} por si necesitas consultarla.",
+  params: [
+    { name: "nombre", example: "María" },
+    { name: "guia", example: "240012345678" },
+  ],
+  buttons: [],
+  footer: FOOTER,
+};
+
+const GUIA_ENTREGADA: WaTemplateDefinition = {
+  name: "guia_entregada",
+  language: "es",
+  category: "UTILITY",
+  bodyText:
+    "Hola {{nombre}} 🙌 ¡Muchísimas gracias por tu compra! Tu pedido ya fue entregado.\nEsperamos verte de nuevo pronto 💙",
+  params: [{ name: "nombre", example: "María" }],
+  buttons: [],
+  footer: FOOTER,
+};
+
+const NOVEDAD_ENTREGA: WaTemplateDefinition = {
+  name: "novedad_entrega",
+  language: "es",
+  category: "UTILITY",
+  bodyText:
+    "Hola {{nombre}}, tu pedido con guía {{guia}} tiene una novedad en la entrega:\n⚠️ {{novedad}}\n¿Nos ayudas respondiendo este mensaje para solucionarla y que tu pedido llegue pronto? 🙏",
+  params: [
+    { name: "nombre", example: "María" },
+    { name: "guia", example: "240012345678" },
+    { name: "novedad", example: "Dirección incompleta" },
+  ],
+  buttons: ["Actualizar mis datos"],
+  footer: FOOTER,
+};
+
+// Guía generada (con PDF) — no está en el doc pero el flujo Dropi la usa como
+// primer aviso tras la confirmación; restyle con named params + footer.
+const GUIA_GENERADA_V2: WaTemplateDefinition = {
+  name: "vorare_guia_generada_v2",
+  language: "es",
+  category: "UTILITY",
+  bodyText:
+    "Hola {{nombre}} 👋\n\nTu pedido fue confirmado. Aquí los detalles de envío:\n\n📦 Guía: {{guia}}\n🚚 Transportadora: {{transportadora}}\n📎 PDF: {{pdf_guia}}\n\nPronto te avisaremos cuando salga a entrega.",
+  params: [
+    { name: "nombre", example: "María" },
+    { name: "guia", example: "240012345678" },
+    { name: "transportadora", example: "Interrapidísimo" },
+    { name: "pdf_guia", example: "https://ejemplo.com/guia.pdf" },
+  ],
+  buttons: [],
+  footer: FOOTER,
+};
+
+// --- Re-enganche y recompra ----------------------------------------------------
+
+const REMARKETING_RECOMPRA_MES: WaTemplateDefinition = {
+  name: "remarketing_recompra_mes",
+  language: "es",
+  // MARKETING: se cobra siempre (~25x utility) — enviar segmentada.
   category: "MARKETING",
   bodyText:
-    "Hola {{1}}, muchísimas gracias por tu compra 🙌\n\nTu pedido ya fue entregado. ¡Esperamos verte de nuevo pronto!",
-  bodyExample: ["Ana"],
-  buttons: [],
+    "¡Hola {{nombre}}! 😊✨\nHace casi un mes te llevaste nuestro {{producto}} y no queríamos dejar pasar más tiempo sin saber de ti 💛\n\nCuéntanos… ¿cómo te ha ido? ¿Cómo te has sentido? ¿Notaste resultados? 🙌 Nos encanta saber cómo va tu proceso.\n\nY ojo 👀 si ya te está quedando poquito, este es el momento ideal para reponerlo y seguir completando tu tratamiento mes a mes 📆💪 La constancia es la que hace la magia ✨\n\n¿Te preparo tu nuevo pedido? Aquí estamos para ti 🫶",
+  params: [
+    { name: "nombre", example: "María" },
+    { name: "producto", example: "Colágeno Hidrolizado" },
+  ],
+  buttons: ["Quiero recomprar", "Tengo una duda"],
+  footer: FOOTER,
 };
 
-const NOVEDAD_V1: WaTemplateDefinition = {
-  name: "vorare_novedad_v1",
+const REABRIR_V2: WaTemplateDefinition = {
+  name: "vorare_reabrir_v2",
   language: "es",
   category: "UTILITY",
   bodyText:
-    "Hola {{1}}, tu pedido con guía {{2}} tiene una novedad en la entrega:\n\n⚠️ {{3}}\n\n¿Nos ayudas respondiendo este mensaje para solucionarla y que tu pedido llegue pronto? 🙏",
-  bodyExample: ["Ana", "240012345678", "Dirección incompleta"],
-  buttons: [],
-};
-
-const REABRIR_V1: WaTemplateDefinition = {
-  name: "vorare_reabrir_v1",
-  language: "es",
-  category: "UTILITY",
-  bodyText:
-    "Hola {{1}} 👋 Te escribimos de Vorare para retomar tu pedido pendiente. ¿Seguimos por aquí?",
-  bodyExample: ["Ana"],
+    "Hola {{nombre}} 👋 Te escribimos de Tienda Vorare para retomar tu pedido pendiente. ¿Seguimos por aquí?",
+  params: [{ name: "nombre", example: "María" }],
   buttons: ["Sí, continuar", "No, gracias"],
+  footer: FOOTER,
 };
 
-// --- Admin-facing (notifications to the operator's own WhatsApp) -------------
+// --- Admin (avisos al operador en su propio WhatsApp) --------------------------
 
-const ADMIN_ALERTA_V1: WaTemplateDefinition = {
-  name: "vorare_admin_alerta_v1",
+const ADMIN_ALERTA_V2: WaTemplateDefinition = {
+  name: "vorare_admin_alerta_v2",
   language: "es",
   category: "UTILITY",
   bodyText:
-    "🚨 Escalación a humano\n\nCliente: {{1}}\nMotivo: {{2}}\nTeléfono: +{{3}}\n\nEl agente quedó apagado para esta conversación. Responde desde el inbox.",
-  bodyExample: ["Ana Pérez", "el cliente envió un audio", "573001234567"],
+    "🚨 Escalación a humano\n\nCliente: {{cliente}}\nMotivo: {{motivo}}\nTeléfono: +{{telefono}}\n\nEl agente quedó apagado para esta conversación. Responde desde el inbox.",
+  params: [
+    { name: "cliente", example: "Ana Pérez" },
+    { name: "motivo", example: "el cliente envió un audio" },
+    { name: "telefono", example: "573001234567" },
+  ],
   buttons: [],
+  footer: null,
 };
 
-const ADMIN_AVISO_V1: WaTemplateDefinition = {
-  name: "vorare_admin_aviso_v1",
+const ADMIN_AVISO_V2: WaTemplateDefinition = {
+  name: "vorare_admin_aviso_v2",
   language: "es",
   category: "UTILITY",
   bodyText:
-    "🔔 Aviso del agente Vorare: {{1}}\n\nRevisa el inbox para ver el detalle.",
-  bodyExample: ["hay novedades de Dropi pendientes por revisar"],
+    "🔔 Aviso del agente Vorare: {{aviso}}\n\nRevisa el inbox para ver el detalle.",
+  params: [
+    { name: "aviso", example: "hay novedades de Dropi pendientes por revisar" },
+  ],
   buttons: [],
+  footer: null,
 };
 
-// NOTA: no hay plantilla dedicada para el 2FA de Dropi — Meta auto-rechaza
-// UTILITY con lenguaje de códigos/OTP (vorare_admin_codigo_v1 quedó REJECTED
-// en el WABA). El fallback usa ADMIN_AVISO; el parámetro sí puede mencionar el
-// código porque Meta solo revisa el texto estático de la plantilla.
+// NOTA: sigue sin haber plantilla dedicada al 2FA de Dropi — Meta auto-rechaza
+// UTILITY con lenguaje de códigos/OTP. El fallback usa ADMIN_AVISO y el texto
+// del código viaja en el parámetro (Meta no revisa los params de envío).
 
 // --- Catalog + active pointers ----------------------------------------------
 
 export const VORARE_TEMPLATES: WaTemplateDefinition[] = [
-  CONFIRMACION_PEDIDO_V1,
-  RECORDATORIO_PEDIDO_V1,
-  GUIA_GENERADA_V1,
-  RECOLECTADO_V1,
-  EN_TRANSITO_V1,
-  CON_MENSAJERO_V1,
-  ENTREGADO_V1,
-  NOVEDAD_V1,
-  REABRIR_V1,
-  ADMIN_ALERTA_V1,
-  ADMIN_AVISO_V1,
+  CONFIRMACION_DATOS_COD,
+  RECUPERACION_PEDIDO_SIN_CONFIRMAR,
+  PEDIDO_CONFIRMADO_PROGRAMADO,
+  GUIA_RECOLECTADA,
+  GUIA_EN_TRANSITO,
+  GUIA_EN_REPARTO,
+  GUIA_ENTREGADA,
+  NOVEDAD_ENTREGA,
+  GUIA_GENERADA_V2,
+  REMARKETING_RECOMPRA_MES,
+  REABRIR_V2,
+  ADMIN_ALERTA_V2,
+  ADMIN_AVISO_V2,
 ];
 
 // Swap these constants to roll a new version (the old one stays registered).
-export const CONFIRMACION_PEDIDO_TEMPLATE: string = CONFIRMACION_PEDIDO_V1.name;
-export const RECORDATORIO_PEDIDO_TEMPLATE: string = RECORDATORIO_PEDIDO_V1.name;
-export const GUIA_GENERADA_TEMPLATE: string = GUIA_GENERADA_V1.name;
-export const RECOLECTADO_TEMPLATE: string = RECOLECTADO_V1.name;
-export const EN_TRANSITO_TEMPLATE: string = EN_TRANSITO_V1.name;
-export const CON_MENSAJERO_TEMPLATE: string = CON_MENSAJERO_V1.name;
-export const ENTREGADO_TEMPLATE: string = ENTREGADO_V1.name;
-export const NOVEDAD_TEMPLATE: string = NOVEDAD_V1.name;
-export const REABRIR_TEMPLATE: string = REABRIR_V1.name;
-export const ADMIN_ALERTA_TEMPLATE: string = ADMIN_ALERTA_V1.name;
-export const ADMIN_AVISO_TEMPLATE: string = ADMIN_AVISO_V1.name;
+export const CONFIRMACION_PEDIDO_TEMPLATE: string = CONFIRMACION_DATOS_COD.name;
+export const RECORDATORIO_PEDIDO_TEMPLATE: string =
+  RECUPERACION_PEDIDO_SIN_CONFIRMAR.name;
+export const PEDIDO_CONFIRMADO_TEMPLATE: string =
+  PEDIDO_CONFIRMADO_PROGRAMADO.name;
+export const GUIA_GENERADA_TEMPLATE: string = GUIA_GENERADA_V2.name;
+export const RECOLECTADO_TEMPLATE: string = GUIA_RECOLECTADA.name;
+export const EN_TRANSITO_TEMPLATE: string = GUIA_EN_TRANSITO.name;
+export const CON_MENSAJERO_TEMPLATE: string = GUIA_EN_REPARTO.name;
+export const ENTREGADO_TEMPLATE: string = GUIA_ENTREGADA.name;
+export const NOVEDAD_TEMPLATE: string = NOVEDAD_ENTREGA.name;
+export const RECOMPRA_TEMPLATE: string = REMARKETING_RECOMPRA_MES.name;
+export const REABRIR_TEMPLATE: string = REABRIR_V2.name;
+export const ADMIN_ALERTA_TEMPLATE: string = ADMIN_ALERTA_V2.name;
+export const ADMIN_AVISO_TEMPLATE: string = ADMIN_AVISO_V2.name;
+
+/** Nombres retirados del WABA cuando se rediseñó el catálogo (feedback doc). */
+export const RETIRED_TEMPLATE_NAMES: string[] = [
+  "vorare_confirmacion_pedido_v1",
+  "vorare_recordatorio_pedido_v1",
+  "vorare_guia_generada_v1",
+  "vorare_recolectado_v1",
+  "vorare_en_transito_v1",
+  "vorare_con_mensajero_v1",
+  "vorare_entregado_v1",
+  "vorare_novedad_v1",
+  "vorare_reabrir_v1",
+  "vorare_admin_alerta_v1",
+  "vorare_admin_aviso_v1",
+  "vorare_admin_codigo_v1",
+];
 
 export function templateByName(name: string): WaTemplateDefinition | null {
   return VORARE_TEMPLATES.find((t) => t.name === name) ?? null;
@@ -187,19 +305,22 @@ export function sanitizeParam(value: string, maxLen = 200): string {
 }
 
 /**
- * Render the template body locally by filling {{n}} placeholders — the exact
- * text the customer reads, stored in `messages` so the inbox history never
- * diverges from what Meta approved.
+ * Render the template body locally by filling {{param}} placeholders with the
+ * ORDERED params array — the exact text the customer reads, stored in
+ * `messages` so the inbox history never diverges from what Meta approved.
+ * El footer no se incluye: WhatsApp lo muestra aparte, en gris.
  */
 export function renderTemplateBody(name: string, params: string[]): string {
   const def = templateByName(name);
   if (!def) return params.join(" ");
-  return def.bodyText.replace(/\{\{(\d+)\}\}/g, (_, i) => {
-    return params[Number(i) - 1] ?? `{{${i}}}`;
+  let body = def.bodyText;
+  def.params.forEach((p, i) => {
+    body = body.replaceAll(`{{${p.name}}}`, params[i] ?? `{{${p.name}}}`);
   });
+  return body;
 }
 
-/** The Meta creation payload for a catalog definition. */
+/** The Meta creation payload for a catalog definition (NAMED params). */
 export function toMetaDefinition(
   def: WaTemplateDefinition,
 ): Record<string, unknown> {
@@ -207,11 +328,21 @@ export function toMetaDefinition(
     {
       type: "BODY",
       text: def.bodyText,
-      ...(def.bodyExample.length > 0
-        ? { example: { body_text: [def.bodyExample] } }
+      ...(def.params.length > 0
+        ? {
+            example: {
+              body_text_named_params: def.params.map((p) => ({
+                param_name: p.name,
+                example: p.example,
+              })),
+            },
+          }
         : {}),
     },
   ];
+  if (def.footer) {
+    components.push({ type: "FOOTER", text: def.footer });
+  }
   if (def.buttons.length > 0) {
     components.push({
       type: "BUTTONS",
@@ -222,7 +353,7 @@ export function toMetaDefinition(
     name: def.name,
     language: def.language,
     category: def.category,
-    parameter_format: "POSITIONAL",
+    parameter_format: "NAMED",
     components,
   };
 }

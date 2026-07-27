@@ -28,6 +28,7 @@ export type DropiSummary = {
 export type ShopifySummary = {
   orderNumber: string;
   totalPrice: string | null;
+  producto: string | null;
 };
 
 export type ConversationListItem = {
@@ -91,6 +92,7 @@ export async function listConversations(): Promise<ConversationListItem[]> {
       orderId: shopifyOrders.orderId,
       totalPrice: shopifyOrders.totalPrice,
       receivedAt: shopifyOrders.receivedAt,
+      producto: sql<string>`coalesce(${shopifyOrders.rawPayload}->'line_items'->0->>'title', '')`,
     })
     .from(shopifyOrders)
     .where(inArray(shopifyOrders.contactId, contactIds))
@@ -101,6 +103,7 @@ export async function listConversations(): Promise<ConversationListItem[]> {
     shopifyByContact.set(o.contactId, {
       orderNumber: o.orderId,
       totalPrice: o.totalPrice,
+      producto: o.producto || null,
     });
   }
 

@@ -57,6 +57,7 @@ export default async function InboxPage() {
         dropiPdfUrl: buildPdfUrl(i.dropi?.guidePdfPath ?? null),
         novedadReason: i.dropi?.novedadReason ?? null,
         orderNumber: i.shopify?.orderNumber ?? null,
+        producto: i.shopify?.producto ?? null,
       }))}
       approvedTemplates={approvedTemplates}
     />

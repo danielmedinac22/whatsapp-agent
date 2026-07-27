@@ -91,13 +91,14 @@ async function handleRemarketing({ orderId }: RemarketingPayload) {
   }
 
   // Business-initiated reminder outside the 24h window → Meta template.
+  // Orden de recuperacion_pedido_sin_confirmar: nombre, producto.
   const vars = extractOrderVariables(order.rawPayload);
   const params = [
     sanitizeParam(
       String(vars.nombre || order.customerName || contact.name || "").trim() ||
         "👋",
     ),
-    sanitizeParam(`#${order.orderId}`),
+    sanitizeParam(vars.producto || "tu pedido"),
   ];
 
   await enqueueOutbound({

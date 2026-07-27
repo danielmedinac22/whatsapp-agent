@@ -76,7 +76,7 @@ wa.post("/send-template", async (c) => {
   if (!waId) return c.json({ error: "invalid destination" }, 400);
   const def = templateByName(templateName);
   if (!def) return c.json({ error: "unknown template" }, 400);
-  const expected = (def.bodyText.match(/\{\{\d+\}\}/g) ?? []).length;
+  const expected = def.params.length;
   if (params.length !== expected) {
     return c.json(
       { error: `template expects ${expected} params, got ${params.length}` },

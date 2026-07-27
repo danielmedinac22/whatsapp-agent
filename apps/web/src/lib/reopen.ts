@@ -1,6 +1,7 @@
 import {
   NOVEDAD_TEMPLATE,
   REABRIR_TEMPLATE,
+  RECOMPRA_TEMPLATE,
   RECORDATORIO_PEDIDO_TEMPLATE,
   renderTemplateBody,
   sanitizeParam,
@@ -15,7 +16,8 @@ import {
 
 export interface ReopenContext {
   contactName: string | null;
-  orderNumber: string | null;
+  /** Título del último producto pedido en Shopify, si lo hay. */
+  producto: string | null;
   dropiGuide: string | null;
   novedadReason: string | null;
   /** Template names Meta has approved for the current WABA. */
@@ -56,15 +58,16 @@ function option(
 
 export function buildReopenOptions(ctx: ReopenContext): ReopenOption[] {
   const nombre = sanitizeParam(ctx.contactName ?? "") || "👋";
+  const producto = ctx.producto ? sanitizeParam(ctx.producto) : null;
 
   return [
     option(ctx, REABRIR_TEMPLATE, "Retomar conversación", [nombre], null),
     option(
       ctx,
       RECORDATORIO_PEDIDO_TEMPLATE,
-      "Recordatorio de pedido",
-      [nombre, ctx.orderNumber ? sanitizeParam(`#${ctx.orderNumber}`) : "#?"],
-      ctx.orderNumber ? null : "Sin pedido Shopify vinculado",
+      "Recuperar pedido sin confirmar",
+      [nombre, producto ?? "tu pedido"],
+      ctx.producto ? null : "Sin pedido Shopify vinculado",
     ),
     option(
       ctx,
@@ -78,6 +81,13 @@ export function buildReopenOptions(ctx: ReopenContext): ReopenOption[] {
       ctx.dropiGuide && ctx.novedadReason
         ? null
         : "Sin novedad activa de Dropi",
+    ),
+    option(
+      ctx,
+      RECOMPRA_TEMPLATE,
+      "Recompra del mes (marketing, ~25x más cara)",
+      [nombre, producto ?? "tu producto"],
+      ctx.producto ? null : "Sin compra previa vinculada",
     ),
   ];
 }

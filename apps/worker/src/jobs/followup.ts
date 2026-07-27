@@ -97,15 +97,20 @@ async function handleFollowup({ orderId }: FollowupPayload) {
 
   // Business-initiated first touch (the customer usually hasn't written yet)
   // → Meta pre-approved template, not free text.
+  // Orden de confirmacion_datos_cod: nombre, producto, direccion, ciudad,
+  // telefono, total (los params no pueden ir vacíos — Meta los rechaza).
   const vars = extractOrderVariables(order.rawPayload);
   const params = [
     sanitizeParam(
       String(vars.nombre || order.customerName || contact.name || "").trim() ||
         "👋",
     ),
-    sanitizeParam(`#${order.orderId}`),
+    sanitizeParam(vars.producto || "tu pedido"),
+    sanitizeParam(vars.direccion || "por confirmar"),
+    sanitizeParam(vars.ciudad || "por confirmar"),
+    sanitizeParam(vars.telefono || `+${contactWaId(contact) ?? "?"}`),
     sanitizeParam(
-      String(vars.total || order.totalPrice || "").trim() || "tu compra",
+      String(vars.total || order.totalPrice || "").trim() || "0",
     ),
   ];
 

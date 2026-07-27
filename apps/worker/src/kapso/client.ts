@@ -1,4 +1,5 @@
 import { kapsoApiBaseUrl, kapsoApiKey } from "./config";
+import { templateByName } from "./templates";
 
 /**
  * Kapso HTTP client (no SDK — plain fetch). Contract verified against
@@ -200,8 +201,9 @@ export async function sendText(input: {
 
 /**
  * Build the Meta Cloud API `type:"template"` message body. Pure (no I/O) so the
- * shape — the part most likely to be subtly wrong — is testable. Positional
- * `bodyParams` fill the template's `{{1}}, {{2}}, …` placeholders in order.
+ * shape — the part most likely to be subtly wrong — is testable. `bodyParams`
+ * is the ORDERED values array; the catalog definition supplies each value's
+ * `parameter_name` (our templates are created with parameter_format NAMED).
  */
 export function buildTemplateMessageBody(input: {
   to: string;
@@ -209,12 +211,19 @@ export function buildTemplateMessageBody(input: {
   languageCode: string;
   bodyParams: string[];
 }): Record<string, unknown> {
+  const def = templateByName(input.templateName);
   const components =
     input.bodyParams.length > 0
       ? [
           {
             type: "body",
-            parameters: input.bodyParams.map((text) => ({ type: "text", text })),
+            parameters: input.bodyParams.map((text, i) => ({
+              type: "text",
+              ...(def?.params[i]?.name
+                ? { parameter_name: def.params[i]!.name }
+                : {}),
+              text,
+            })),
           },
         ]
       : [];

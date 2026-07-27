@@ -47,6 +47,7 @@ export type ChatItem = {
   lastInboundAt: string | null;
   novedadReason: string | null;
   orderNumber: string | null;
+  producto: string | null;
   agentMode: boolean;
   preview: string | null;
   unread: number;
@@ -414,7 +415,7 @@ function ConversationPane({
 
   const reopenOptions = buildReopenOptions({
     contactName: chat.name.startsWith("+") ? null : chat.name,
-    orderNumber: chat.orderNumber,
+    producto: chat.producto,
     dropiGuide: chat.dropiGuide,
     novedadReason: chat.novedadReason,
     approvedTemplates,
