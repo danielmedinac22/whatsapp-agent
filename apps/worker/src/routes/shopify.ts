@@ -7,14 +7,8 @@ import { logger } from "../lib/logger";
 import { verifyShopifyHmac } from "../shopify/verify";
 import { scheduleFollowup } from "../jobs/followup";
 import { scheduleRemarketing } from "../jobs/remarketing";
-import { getSocket } from "../baileys/session";
-import {
-  jidFromPhone,
-  normalizePhone,
-  resolveFromPhone,
-  type ResolvedIdentity,
-} from "../baileys/jid-resolver";
-import { upsertContactByIdentity } from "../baileys/contact-upsert";
+import { normalizePhone } from "../lib/phone";
+import { upsertContactByWaId } from "../inbound/contacts";
 
 export const shopify = new Hono();
 
@@ -50,27 +44,9 @@ shopify.post("/webhook", async (c) => {
     .join(" ")
     .trim() || order.shipping_address?.name || null;
 
-  // Resolve the actual identity via Baileys — handles LID/PN duality.
-  // If the socket is down we cannot resolve the LID, so we'd link the order to
-  // the wrong contact and miss the customer's confirmation. Return 503 so
-  // Shopify retries the webhook (it retries non-2xx for ~48h).
-  const sock = getSocket();
-  if (!sock) {
-    logger.warn(
-      { phone, orderId: order.id },
-      "shopify webhook: no socket — returning 503 so Shopify retries",
-    );
-    return c.json({ error: "whatsapp socket not ready" }, 503);
-  }
-  const identity: ResolvedIdentity = (await resolveFromPhone(sock, phone)) ?? {
-    lid: null,
-    pnJid: jidFromPhone(phone),
-    phone,
-    preferredJid: jidFromPhone(phone),
-  };
-  const contact = await upsertContactByIdentity(identity, {
-    name: customerName,
-  });
+  // Cloud API addressing is just the E.164 wa_id — no LID/PN resolution and
+  // no dependency on a live socket (the old 503-when-disconnected is gone).
+  const contact = await upsertContactByWaId(phone, { name: customerName });
 
   let [conv] = await db
     .select()

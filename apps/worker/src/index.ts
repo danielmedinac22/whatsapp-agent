@@ -19,7 +19,11 @@ import { agent } from "./routes/agent";
 import { shopify } from "./routes/shopify";
 import { shopifyConn } from "./routes/shopify-connection";
 import { dropi } from "./routes/dropi";
-import { autoStart } from "./baileys/session";
+import { kapsoAdmin, kapsoWebhook } from "./routes/kapso";
+import {
+  scheduleKapsoTemplatePoll,
+  startKapsoTemplateWorker,
+} from "./jobs/kapso-templates";
 import { startFollowupWorker } from "./jobs/followup";
 import { startOutboundWorker } from "./jobs/outbound";
 import { startRemarketingWorker } from "./jobs/remarketing";
@@ -56,8 +60,9 @@ app.use(
 
 app.route("/health", health);
 
-// Shopify webhook is HMAC-authenticated, NOT Bearer
+// Shopify + Kapso webhooks are HMAC-authenticated, NOT Bearer
 app.route("/shopify", shopify);
+app.route("/kapso", kapsoWebhook);
 
 app.use("/api/*", auth());
 app.route("/api/wa", wa);
@@ -65,13 +70,17 @@ app.route("/api/events", events);
 app.route("/api/agent", agent);
 app.route("/api/shopify", shopifyConn);
 app.route("/api/dropi", dropi);
+app.route("/api/kapso", kapsoAdmin);
 
 const port = Number(process.env.PORT ?? 3001);
 
 serve({ fetch: app.fetch, port }, (info) => {
   logger.info({ port: info.port }, "worker listening");
-  autoStart().catch((err) =>
-    logger.error({ err }, "auto-start failed"),
+  startKapsoTemplateWorker().catch((err) =>
+    logger.error({ err }, "kapso template worker failed to start"),
+  );
+  scheduleKapsoTemplatePoll().catch((err) =>
+    logger.error({ err }, "kapso template poll scheduling failed"),
   );
   startFollowupWorker().catch((err) =>
     logger.error({ err }, "followup worker failed to start"),

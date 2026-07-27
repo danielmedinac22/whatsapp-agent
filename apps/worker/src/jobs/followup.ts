@@ -5,12 +5,16 @@ import {
   conversations,
   messages,
   shopifyOrders,
-  templates,
 } from "@wa/db";
 import { db } from "../db";
 import { logger } from "../lib/logger";
-import { renderTemplate } from "../lib/template";
+import { contactWaId } from "../lib/phone";
 import { extractOrderVariables } from "../shopify/extract";
+import {
+  CONFIRMACION_PEDIDO_TEMPLATE,
+  renderTemplateBody,
+  sanitizeParam,
+} from "../kapso/templates";
 import { enqueueOutbound } from "./outbound";
 import { FOLLOWUP_QUEUE, getBoss } from "./queue";
 
@@ -85,45 +89,34 @@ async function handleFollowup({ orderId }: FollowupPayload) {
     }
   }
 
-  const [s] = await db
-    .select()
-    .from(agentSettings)
-    .where(eq(agentSettings.id, 1))
-    .limit(1);
-
-  if (!s?.followupTemplateId) {
-    logger.warn({ orderId }, "no follow-up template configured");
-    await db
-      .update(shopifyOrders)
-      .set({ status: "no_response" })
-      .where(eq(shopifyOrders.id, order.id));
-    return;
-  }
-  const [tpl] = await db
-    .select()
-    .from(templates)
-    .where(eq(templates.id, s.followupTemplateId))
-    .limit(1);
-  if (!tpl) {
-    logger.warn({ orderId }, "follow-up template missing");
+  const to = contactWaId(contact);
+  if (!to) {
+    logger.warn({ orderId, contactId: contact.id }, "follow-up: contact has no wa_id");
     return;
   }
 
+  // Business-initiated first touch (the customer usually hasn't written yet)
+  // → Meta pre-approved template, not free text.
   const vars = extractOrderVariables(order.rawPayload);
-  const text = renderTemplate(tpl.body, {
-    ...vars,
-    nombre: vars.nombre || order.customerName || contact.name || "",
-    total: vars.total || order.totalPrice || "",
-    pedido: order.orderId,
-  });
+  const params = [
+    sanitizeParam(
+      String(vars.nombre || order.customerName || contact.name || "").trim() ||
+        "👋",
+    ),
+    sanitizeParam(`#${order.orderId}`),
+    sanitizeParam(
+      String(vars.total || order.totalPrice || "").trim() || "tu compra",
+    ),
+  ];
 
   await enqueueOutbound({
-    jid: contact.jid,
-    body: text,
+    to,
+    body: renderTemplateBody(CONFIRMACION_PEDIDO_TEMPLATE, params),
     source: "followup",
     sourceRef: order.id,
     dedupKey: `followup:${order.id}`,
     conversationId: conv?.id ?? null,
+    template: { name: CONFIRMACION_PEDIDO_TEMPLATE, params },
   });
 
   await db

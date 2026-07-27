@@ -8,14 +8,30 @@ import {
 } from "@wa/db";
 import { db } from "../db";
 import { logger } from "../lib/logger";
-import { getSocket, getStatus } from "../baileys/session";
-import { classifyBaileysError } from "../lib/baileys-errors";
+import {
+  KapsoApiError,
+  classifyKapsoError,
+  isWindowClosedError,
+  sendTemplate,
+  sendText,
+} from "../kapso/client";
+import { getKapsoConnection } from "../kapso/connection";
+import { isTemplateApproved } from "../kapso/provisioning";
+import { renderTemplateBody } from "../kapso/templates";
 import { OUTBOUND_QUEUE, getBoss } from "./queue";
 
 const MAX_BODY_LEN = 4096;
 
+export interface TemplateSend {
+  name: string;
+  params: string[];
+}
+
 interface EnqueueInput {
-  jid: string;
+  /** Destination wa_id: E.164 digits, no "+". */
+  to: string;
+  /** Rendered text — what the chat history shows. For template sends, render
+   *  the template body so history matches what Meta delivers. */
   body: string;
   source:
     | "followup"
@@ -32,6 +48,10 @@ interface EnqueueInput {
   sentByUserId?: string | null;
   /** ms from now to defer the first attempt */
   delayMs?: number;
+  /** Send this Meta template instead of free text (business-initiated sends). */
+  template?: TemplateSend;
+  /** Template to fall back to when a free-text send hits the closed 24h window. */
+  fallbackTemplate?: TemplateSend;
 }
 
 export async function enqueueOutbound(input: EnqueueInput): Promise<{
@@ -45,13 +65,17 @@ export async function enqueueOutbound(input: EnqueueInput): Promise<{
   const inserted = await db
     .insert(outboundMessages)
     .values({
-      jid: input.jid,
+      toWaId: input.to.replace(/\D/g, ""),
       body: input.body,
       source: input.source,
       sourceRef: input.sourceRef ?? null,
       dedupKey: input.dedupKey,
       conversationId: input.conversationId ?? null,
       sentByUserId: input.sentByUserId ?? null,
+      templateName: input.template?.name ?? null,
+      templateParams: input.template?.params ?? null,
+      fallbackTemplateName: input.fallbackTemplate?.name ?? null,
+      fallbackTemplateParams: input.fallbackTemplate?.params ?? null,
       scheduledFor,
     })
     .onConflictDoNothing({ target: outboundMessages.dedupKey })
@@ -94,7 +118,7 @@ export async function enqueueOutbound(input: EnqueueInput): Promise<{
   );
 
   logger.info(
-    { outboundId, source: input.source, jid: input.jid, dedupKey: input.dedupKey },
+    { outboundId, source: input.source, to: input.to, dedupKey: input.dedupKey },
     "outbound: enqueued",
   );
   return { outboundId, enqueued: true };
@@ -113,6 +137,11 @@ async function loadRow(id: string): Promise<OutboundMessage | undefined> {
   return row;
 }
 
+function errorDetail(err: unknown): string {
+  if (err instanceof KapsoApiError) return err.detail;
+  return err instanceof Error ? err.message : String(err);
+}
+
 async function markPermanent(
   id: string,
   err: unknown,
@@ -123,7 +152,7 @@ async function markPermanent(
     .set({
       status: "dead",
       failedAt: new Date(),
-      lastError: err instanceof Error ? err.message : String(err),
+      lastError: errorDetail(err),
       lastErrorKind: "permanent",
       attempts,
       updatedAt: new Date(),
@@ -140,7 +169,7 @@ async function markTransientFailure(
     .update(outboundMessages)
     .set({
       status: "pending",
-      lastError: err instanceof Error ? err.message : String(err),
+      lastError: errorDetail(err),
       lastErrorKind: "transient",
       attempts,
       updatedAt: new Date(),
@@ -166,7 +195,7 @@ async function handleOutbound(payload: OutboundJob): Promise<void> {
   }
 
   // Body length is a permanent error — don't retry.
-  if (row.body.length > MAX_BODY_LEN) {
+  if (!row.templateName && row.body.length > MAX_BODY_LEN) {
     await markPermanent(
       row.id,
       new Error(`body too long (${row.body.length} > ${MAX_BODY_LEN})`),
@@ -175,16 +204,16 @@ async function handleOutbound(payload: OutboundJob): Promise<void> {
     return;
   }
 
-  const sock = getSocket();
-  const { status: connStatus } = getStatus();
-  if (!sock || connStatus !== "connected") {
+  const conn = await getKapsoConnection();
+  if (!conn?.phoneNumberId) {
     await markTransientFailure(
       row.id,
-      new Error(`socket not connected (status=${connStatus})`),
+      new Error("kapso connection not configured"),
       row.attempts + 1,
     );
-    throw new Error("socket not connected"); // pg-boss retries with backoff
+    throw new Error("kapso connection not configured"); // pg-boss retries
   }
+  const phoneNumberId = conn.phoneNumberId;
 
   // Mark sending so observers see in-flight state.
   await db
@@ -196,35 +225,75 @@ async function handleOutbound(payload: OutboundJob): Promise<void> {
     })
     .where(eq(outboundMessages.id, row.id));
 
-  // Light typing indicator (best-effort).
-  try {
-    await sock.sendPresenceUpdate("composing", row.jid);
-    await new Promise((r) => setTimeout(r, Math.min(row.body.length * 25, 1800)));
-    await sock.sendPresenceUpdate("paused", row.jid);
-  } catch {
-    /* ignore presence failures */
-  }
-
   let waId: string | null = null;
+  // What actually went out — mirrors into `messages` for the chat history.
+  let sentBody = row.body;
   try {
-    const result = await sock.sendMessage(row.jid, { text: row.body });
-    waId = result?.key?.id ?? null;
+    if (row.templateName) {
+      const params = row.templateParams ?? [];
+      if (await isTemplateApproved(row.templateName)) {
+        const result = await sendTemplate({
+          phoneNumberId,
+          to: row.toWaId,
+          templateName: row.templateName,
+          bodyParams: params,
+        });
+        waId = result.waMessageId;
+      } else {
+        // Template not (yet) approved: degrade to free text. Works whenever the
+        // 24h window is open; outside it the 422 below is a permanent failure.
+        const result = await sendText({
+          phoneNumberId,
+          to: row.toWaId,
+          body: row.body,
+        });
+        waId = result.waMessageId;
+      }
+    } else {
+      try {
+        const result = await sendText({
+          phoneNumberId,
+          to: row.toWaId,
+          body: row.body,
+        });
+        waId = result.waMessageId;
+      } catch (err) {
+        // Closed 24h window → retry as the caller-provided fallback template.
+        if (
+          isWindowClosedError(err) &&
+          row.fallbackTemplateName &&
+          (await isTemplateApproved(row.fallbackTemplateName))
+        ) {
+          const params = row.fallbackTemplateParams ?? [];
+          const result = await sendTemplate({
+            phoneNumberId,
+            to: row.toWaId,
+            templateName: row.fallbackTemplateName,
+            bodyParams: params,
+          });
+          waId = result.waMessageId;
+          sentBody = renderTemplateBody(row.fallbackTemplateName, params);
+        } else {
+          throw err;
+        }
+      }
+    }
     if (!waId) {
-      throw new Error("sendMessage returned without key.id");
+      throw new Error("kapso send returned without message id");
     }
   } catch (err) {
-    const kind = classifyBaileysError(err);
+    const kind = classifyKapsoError(err);
     if (kind === "permanent") {
       await markPermanent(row.id, err, row.attempts + 1);
       logger.warn(
-        { outboundId: row.id, err: err instanceof Error ? err.message : err },
+        { outboundId: row.id, err: errorDetail(err) },
         "outbound: permanent failure, marked dead",
       );
       return; // no throw → pg-boss completes the job
     }
     await markTransientFailure(row.id, err, row.attempts + 1);
     logger.warn(
-      { outboundId: row.id, err: err instanceof Error ? err.message : err },
+      { outboundId: row.id, err: errorDetail(err) },
       "outbound: transient failure, will retry",
     );
     throw err; // pg-boss retries with backoff
@@ -240,46 +309,39 @@ async function handleOutbound(payload: OutboundJob): Promise<void> {
     })
     .where(eq(outboundMessages.id, row.id));
 
-  // Mirror the outbound into messages so the chat UI shows it for every source
-  // (followup/remarketing didn't write to messages before — this fixes that).
-  // conversationId may be null for manual sends without context; resolve via JID
-  // if not provided.
+  // Mirror the outbound into messages so the chat UI shows it for every source.
+  // The Cloud API sends no echo of our own messages (statuses only), so this is
+  // the single write — no race to resolve.
   let convId = row.conversationId;
   if (!convId) {
     const [conv] = await db
       .select({ id: conversations.id })
       .from(conversations)
       .innerJoin(contacts, eq(contacts.id, conversations.contactId))
-      .where(eq(contacts.jid, row.jid))
+      .where(eq(contacts.waId, row.toWaId))
       .limit(1);
     convId = conv?.id ?? null;
   }
   if (convId) {
-    const insertValues = {
-      conversationId: convId,
-      direction: "out" as const,
-      waId,
-      body: row.body,
-      status: "sent" as const,
-      fromAgent: row.source === "agent",
-      sentByUserId: row.sentByUserId ?? null,
-    };
-    if (row.source === "agent") {
-      // Preserve fromAgent=true even if the Baileys echo (messages.upsert)
-      // raced and inserted the row first with default fromAgent=false.
-      await db
-        .insert(messages)
-        .values(insertValues)
-        .onConflictDoUpdate({
-          target: messages.waId,
-          set: { fromAgent: true, status: "sent" },
-        });
-    } else {
-      await db
-        .insert(messages)
-        .values(insertValues)
-        .onConflictDoNothing({ target: messages.waId });
-    }
+    await db
+      .insert(messages)
+      .values({
+        conversationId: convId,
+        direction: "out" as const,
+        waId,
+        body: sentBody,
+        status: "sent" as const,
+        fromAgent: row.source === "agent",
+        sentByUserId: row.sentByUserId ?? null,
+      })
+      .onConflictDoNothing({ target: messages.waId });
+    await db
+      .update(conversations)
+      .set({
+        lastOutboundAt: new Date(),
+        lastMessagePreview: sentBody.slice(0, 200),
+      })
+      .where(eq(conversations.id, convId));
   }
 
   logger.info(

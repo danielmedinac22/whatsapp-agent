@@ -1,24 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import QRCode from "qrcode";
-import type { WaConnectionStatus } from "@wa/shared";
+import { useEffect, useState } from "react";
 
 type Snapshot = {
-  status: WaConnectionStatus;
-  qr: string | null;
+  status: "connected" | "disconnected";
   phone?: string | null;
-  name?: string | null;
+  phoneNumberId?: string | null;
+  displayName?: string | null;
+  kind?: string | null;
+  connectedAt?: string | null;
 };
 
 export function ConnectionPanel() {
-  const [snap, setSnap] = useState<Snapshot>({
-    status: "disconnected",
-    qr: null,
-    phone: null,
-    name: null,
-  });
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [snap, setSnap] = useState<Snapshot>({ status: "disconnected" });
 
   useEffect(() => {
     let alive = true;
@@ -33,146 +27,64 @@ export function ConnectionPanel() {
       }
     };
     fetchStatus();
-
-    const es = new EventSource("/api/events");
-    es.addEventListener("wa", (e) => {
-      try {
-        const ev = JSON.parse((e as MessageEvent).data) as
-          | { type: "qr"; qr: string }
-          | { type: "status"; status: WaConnectionStatus };
-        if (ev.type === "qr") {
-          setSnap((s) => ({ ...s, qr: ev.qr, status: "qr" }));
-        } else if (ev.type === "status") {
-          setSnap((s) => ({
-            ...s,
-            status: ev.status,
-            qr: ev.status === "connected" ? null : s.qr,
-          }));
-        }
-      } catch {
-        /* ignore */
-      }
-    });
-    es.onerror = () => {
-      // browser will retry automatically
-    };
-
+    const interval = setInterval(fetchStatus, 30_000);
     return () => {
       alive = false;
-      es.close();
+      clearInterval(interval);
     };
   }, []);
 
-  useEffect(() => {
-    if (snap.qr && canvasRef.current) {
-      QRCode.toCanvas(canvasRef.current, snap.qr, {
-        width: 280,
-        margin: 1,
-      }).catch(() => {});
-    }
-  }, [snap.qr]);
-
-  const start = async () => {
-    await fetch("/api/wa/start", { method: "POST" });
-  };
-  const logout = async () => {
-    if (!confirm("¿Cerrar sesión de WhatsApp y borrar credenciales?")) return;
-    await fetch("/api/wa/logout", { method: "POST" });
-    setSnap({ status: "disconnected", qr: null });
-  };
+  const connected = snap.status === "connected";
 
   return (
     <div className="app-card w-full max-w-5xl p-4">
-      <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-        <div className="space-y-4">
-          <div>
-            <h2 className="text-xl font-semibold">Conexión de WhatsApp</h2>
-            <p className="mt-1 text-sm leading-5 text-[var(--color-text-dim)]">
-              Sesión activa para recibir y enviar mensajes desde el inbox.
-            </p>
-          </div>
-
-          {snap.status === "connected" ? (
-            <div className="rounded-lg border border-emerald-400/25 bg-emerald-500/10 p-4">
-              <div className="flex items-center gap-3">
-                <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500/25 text-emerald-200">
-                  ✓
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs uppercase tracking-wide text-emerald-300/80">
-                    Conectado
-                  </p>
-                  <p className="truncate text-sm font-semibold text-[var(--color-text)]">
-                    {snap.name || "WhatsApp"}
-                  </p>
-                  {snap.phone && (
-                    <p className="truncate text-xs text-[var(--color-text-dim)]">
-                      +{snap.phone}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="rounded-lg border border-amber-400/30 bg-amber-500/10 p-3 text-sm text-amber-100">
-              Estado: {labelFor(snap.status)}. Genera el QR y escanéalo desde
-              tu teléfono para vincular el dispositivo.
-            </div>
-          )}
-
-          <div className="flex flex-wrap gap-3">
-            {snap.status !== "connected" && (
-              <button onClick={start} className="app-button">
-                {snap.qr ? "Regenerar QR" : "Iniciar / mostrar QR"}
-              </button>
-            )}
-            {snap.status === "connected" && (
-              <button
-                onClick={logout}
-                className="app-button-secondary border-red-500/25 text-red-100 hover:bg-red-950/30"
-              >
-                Desconectar
-              </button>
-            )}
-          </div>
+      <div className="space-y-4">
+        <div>
+          <h2 className="text-xl font-semibold">Conexión de WhatsApp</h2>
+          <p className="mt-1 text-sm leading-5 text-[var(--color-text-dim)]">
+            Número conectado vía Kapso (WhatsApp Cloud API oficial). Sin QR ni
+            sesiones que expiren: la conexión se gestiona desde el panel de
+            Kapso.
+          </p>
         </div>
 
-        <div className="app-card-muted flex min-h-[280px] flex-col items-center justify-center gap-3 p-4">
-          {snap.qr && snap.status !== "connected" ? (
-            <>
-              <canvas ref={canvasRef} className="rounded-lg bg-white p-2" />
-              <p className="max-w-xs text-center text-xs leading-5 text-[var(--color-text-dim)]">
-                Abre WhatsApp en tu teléfono, entra a Dispositivos vinculados y
-                escanea este código.
-              </p>
-            </>
-          ) : (
-            <>
-              <div className="flex h-14 w-14 items-center justify-center rounded-lg border border-[var(--color-border)] bg-[rgba(8,21,30,0.72)] text-2xl">
-                {snap.status === "connected" ? "✓" : "⌁"}
+        {connected ? (
+          <div className="rounded-lg border border-emerald-400/25 bg-emerald-500/10 p-4">
+            <div className="flex items-center gap-3">
+              <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500/25 text-emerald-200">
+                ✓
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs uppercase tracking-wide text-emerald-300/80">
+                  Conectado {snap.kind === "sandbox" ? "· sandbox" : ""}
+                </p>
+                <p className="truncate text-sm font-semibold text-[var(--color-text)]">
+                  {snap.displayName || "WhatsApp Business"}
+                </p>
+                {snap.phone && (
+                  <p className="truncate text-xs text-[var(--color-text-dim)]">
+                    {snap.phone.startsWith("+") ? snap.phone : `+${snap.phone}`}
+                  </p>
+                )}
+                {snap.phoneNumberId && (
+                  <p className="truncate text-xs text-[var(--color-text-dim)]">
+                    phone_number_id: {snap.phoneNumberId}
+                  </p>
+                )}
               </div>
-              <p className="max-w-xs text-center text-sm leading-5 text-[var(--color-text-dim)]">
-                {snap.status === "connected"
-                  ? "La sesión está enlazada. Puedes seguir operando desde el inbox."
-                  : "Cuando generes el QR, aparecerá aquí para completar el enlace del dispositivo."}
-              </p>
-            </>
-          )}
-        </div>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-lg border border-amber-400/30 bg-amber-500/10 p-3 text-sm text-amber-100">
+            Sin número conectado. Conecta o aprovisiona un número desde el panel
+            de Kapso (app.kapso.ai) y vincúlalo al worker con{" "}
+            <code className="rounded bg-black/30 px-1">
+              POST /api/kapso/connect
+            </code>
+            .
+          </div>
+        )}
       </div>
     </div>
   );
-}
-
-function labelFor(s: WaConnectionStatus): string {
-  switch (s) {
-    case "connected":
-      return "conectado";
-    case "connecting":
-      return "conectando…";
-    case "qr":
-      return "esperando escaneo de QR";
-    case "disconnected":
-      return "desconectado";
-  }
 }

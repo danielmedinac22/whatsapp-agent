@@ -2,6 +2,8 @@ import { eq } from "@wa/db";
 import { contacts, type Contact } from "@wa/db";
 import { db } from "../db";
 import { logger } from "../lib/logger";
+import { contactWaId } from "../lib/phone";
+import { ADMIN_ALERTA_TEMPLATE, sanitizeParam } from "../kapso/templates";
 import { enqueueOutbound } from "../jobs/outbound";
 import { getDropiConnection } from "../dropi/config";
 
@@ -51,10 +53,12 @@ export async function escalateToHuman({
   // and only if there's a notice for this reason). Idempotent via dedupKey
   // bucketed per hour so no spam on bursts.
   const notice = CUSTOMER_NOTICE[reason];
-  if (wasAgent && notice && contact.phone) {
+  const customerTo = contactWaId(contact);
+  if (wasAgent && notice && customerTo) {
     const hourBucket = Math.floor(Date.now() / 3_600_000);
+    // Reacción inmediata a un inbound del cliente → ventana abierta.
     await enqueueOutbound({
-      jid: `${contact.phone}@s.whatsapp.net`,
+      to: customerTo,
       body: notice,
       source: "escalation",
       dedupKey: `escalation-customer-${contact.id}-${reason}-${hourBucket}`,
@@ -71,8 +75,8 @@ export async function escalateToHuman({
     const conn = await getDropiConnection().catch(() => null);
     const adminPhone = conn?.adminPhone;
     if (adminPhone) {
-      const customerLabel = contact.name ?? `+${contact.phone ?? "?"}`;
-      const phoneLine = contact.phone ? `\n📱 +${contact.phone}` : "";
+      const customerLabel = contact.name ?? `+${customerTo ?? "?"}`;
+      const phoneLine = customerTo ? `\n📱 +${customerTo}` : "";
       const reasonLine = REASON_LABEL[reason];
       const detailLine = detail ? `\n\n_${detail}_` : "";
       const body =
@@ -80,10 +84,19 @@ export async function escalateToHuman({
         `*${customerLabel}* — ${reasonLine}.${phoneLine}${detailLine}\n\n` +
         `El agente quedó apagado para esta conversación. Responde desde el inbox.`;
       await enqueueOutbound({
-        jid: `${adminPhone.replace(/\D/g, "")}@s.whatsapp.net`,
+        to: adminPhone.replace(/\D/g, ""),
         body,
         source: "escalation",
         dedupKey: `escalation-admin-${contact.id}-${reason}-${Date.now()}`,
+        // Fuera de la ventana de 24h con el admin, cae a plantilla aprobada.
+        fallbackTemplate: {
+          name: ADMIN_ALERTA_TEMPLATE,
+          params: [
+            sanitizeParam(customerLabel),
+            sanitizeParam(`${reasonLine}${detail ? ` — ${detail}` : ""}`),
+            sanitizeParam(customerTo ?? "desconocido"),
+          ],
+        },
       }).catch((err) => {
         logger.error(
           { err: String(err) },

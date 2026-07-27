@@ -115,6 +115,14 @@ export const dropiMatchConfidence = pgEnum("dropi_match_confidence", [
   "manual",
 ]);
 
+export const waTemplateStatus = pgEnum("wa_template_status", [
+  "draft",
+  "submitted",
+  "approved",
+  "rejected",
+  "paused",
+]);
+
 // ────────────────────────────────────────────────────────────────────────────
 // users
 // ────────────────────────────────────────────────────────────────────────────
@@ -152,6 +160,74 @@ export const waSession = pgTable("wa_session", {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
+// kapso connection (singleton row, id=1)
+// ────────────────────────────────────────────────────────────────────────────
+
+export const kapsoConnection = pgTable("kapso_connection", {
+  id: integer("id").primaryKey().default(1),
+  phoneNumberId: text("phone_number_id"),
+  businessAccountId: text("business_account_id"),
+  displayPhoneNumber: text("display_phone_number"),
+  displayName: text("display_name"),
+  // "sandbox" | "dedicated" — sandbox numbers can't submit Meta templates
+  kind: text("kind"),
+  webhookRegisteredAt: timestamp("webhook_registered_at", {
+    withTimezone: true,
+  }),
+  connectedAt: timestamp("connected_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// webhook events (idempotency ledger for inbound webhooks)
+// ────────────────────────────────────────────────────────────────────────────
+
+export const webhookEvents = pgTable(
+  "webhook_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    source: text("source").notNull(),
+    eventId: text("event_id").notNull(),
+    event: text("event"),
+    receivedAt: timestamp("received_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [uniqueIndex("webhook_events_source_event_idx").on(t.source, t.eventId)],
+);
+
+// ────────────────────────────────────────────────────────────────────────────
+// wa templates (Meta-approved WhatsApp templates, per current WABA)
+// ────────────────────────────────────────────────────────────────────────────
+
+export const waTemplates = pgTable(
+  "wa_templates",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    name: text("name").notNull(),
+    language: text("language").notNull().default("es"),
+    category: text("category").notNull().default("UTILITY"),
+    // canonical BODY text with {{n}} placeholders, mirrors what Meta approved
+    bodyText: text("body_text").notNull(),
+    buttons: jsonb("buttons").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    businessAccountId: text("business_account_id"),
+    metaTemplateId: text("meta_template_id"),
+    status: waTemplateStatus("status").notNull().default("draft"),
+    statusReason: text("status_reason"),
+    lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [uniqueIndex("wa_templates_name_waba_idx").on(t.name, t.businessAccountId)],
+);
+
+// ────────────────────────────────────────────────────────────────────────────
 // contacts & conversations
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -159,8 +235,9 @@ export const contacts = pgTable(
   "contacts",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    // jid = "preferred JID for sending" (LID if known, else PN-JID).
-    // Kept for backward-compat with sendMessage call sites.
+    // Canonical WhatsApp address: E.164 digits (Cloud API wa_id), no "+".
+    waId: text("wa_id"),
+    // Legacy Baileys identifiers — kept for historical rows, no longer written.
     jid: text("jid").notNull(),
     lid: text("lid"),
     pnJid: text("pn_jid"),
@@ -174,6 +251,9 @@ export const contacts = pgTable(
       .defaultNow(),
   },
   (t) => [
+    uniqueIndex("contacts_wa_id_idx")
+      .on(t.waId)
+      .where(sql`${t.waId} is not null`),
     index("contacts_jid_idx").on(t.jid),
     uniqueIndex("contacts_lid_idx")
       .on(t.lid)
@@ -479,10 +559,18 @@ export const outboundMessages = pgTable(
   "outbound_messages",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    jid: text("jid").notNull(),
+    // Destination wa_id (E.164 digits). Pre-migration rows may hold Baileys JIDs.
+    toWaId: text("to_wa_id").notNull(),
     body: text("body").notNull(),
     source: outboundSource("source").notNull(),
     sourceRef: text("source_ref"),
+    // Meta template send: when set, handleOutbound sends this template instead
+    // of free text; `body` holds the locally rendered text for the chat history.
+    templateName: text("template_name"),
+    templateParams: jsonb("template_params").$type<string[]>(),
+    // Fallback when a free-text send is rejected for the closed 24h window.
+    fallbackTemplateName: text("fallback_template_name"),
+    fallbackTemplateParams: jsonb("fallback_template_params").$type<string[]>(),
     dedupKey: text("dedup_key").notNull(),
     conversationId: uuid("conversation_id").references(() => conversations.id, {
       onDelete: "set null",
@@ -512,7 +600,7 @@ export const outboundMessages = pgTable(
     uniqueIndex("outbound_messages_dedup_idx").on(t.dedupKey),
     uniqueIndex("outbound_messages_wa_id_idx").on(t.waId),
     index("outbound_messages_status_sched_idx").on(t.status, t.scheduledFor),
-    index("outbound_messages_jid_idx").on(t.jid, t.createdAt),
+    index("outbound_messages_to_idx").on(t.toWaId, t.createdAt),
     index("outbound_messages_source_idx").on(t.source, t.sourceRef),
   ],
 );
@@ -565,3 +653,7 @@ export type DropiConnection = typeof dropiConnection.$inferSelect;
 export type NewDropiConnection = typeof dropiConnection.$inferInsert;
 export type DropiOrder = typeof dropiOrders.$inferSelect;
 export type NewDropiOrder = typeof dropiOrders.$inferInsert;
+export type KapsoConnection = typeof kapsoConnection.$inferSelect;
+export type NewKapsoConnection = typeof kapsoConnection.$inferInsert;
+export type WaTemplate = typeof waTemplates.$inferSelect;
+export type WebhookEvent = typeof webhookEvents.$inferSelect;

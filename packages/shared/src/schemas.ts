@@ -1,7 +1,8 @@
 import { z } from "zod";
 
 export const sendMessageInput = z.object({
-  jid: z.string().min(1),
+  /** Destination wa_id: E.164 digits without "+". */
+  to: z.string().min(5),
   body: z.string().min(1).max(4096),
   templateId: z.string().uuid().optional(),
   variables: z.record(z.string(), z.string()).optional(),

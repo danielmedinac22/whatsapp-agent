@@ -38,15 +38,15 @@ export async function tryHandleDropi2FAInbound(input: {
   );
 
   const result = await submitDropi2FACode(text);
-  const jid = `${adminDigits}@s.whatsapp.net`;
   let reply: string;
   if (result.ok) {
     reply = `✅ Token Dropi renovado · user ${result.auth.userId}`;
   } else {
     reply = `❌ ${result.error}`;
   }
+  // Respuesta inmediata a un inbound del admin → ventana de 24h abierta.
   await enqueueOutbound({
-    jid,
+    to: adminDigits,
     body: reply,
     source: "dropi_2fa",
     dedupKey: `dropi-2fa-reply-${Date.now()}`,

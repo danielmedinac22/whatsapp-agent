@@ -1,11 +1,11 @@
 ---
 name: deploy
-description: Deploy whatsapp-agent worker to Railway production. Use when the user asks to "deploy", "send to prod", "envía a prod", "deployar", "push to railway", "railway up", or any variant of shipping the current branch. Covers preflight (typecheck), DB migrations (generation + backfill + apply), commit/push, and the railway up command — including the post-deploy QR-scan caveat.
+description: Deploy whatsapp-agent worker to Railway production. Use when the user asks to "deploy", "send to prod", "envía a prod", "deployar", "push to railway", "railway up", or any variant of shipping the current branch. Covers preflight (typecheck), DB migrations (generation + backfill + apply), commit/push, and the railway up command — including post-deploy verification of the Kapso connection.
 ---
 
 # Deploy a producción (Railway)
 
-Stack: monorepo pnpm con `apps/worker` (Hono + Baileys + tsx), `apps/web` (Next.js, deploy aparte en Vercel), `packages/db` (drizzle + Postgres). El servicio que se deploya con este skill es **whatsapp-worker** en Railway.
+Stack: monorepo pnpm con `apps/worker` (Hono + Kapso/WhatsApp Cloud API + tsx), `apps/web` (Next.js, deploy aparte en Vercel), `packages/db` (drizzle + Postgres). El servicio que se deploya con este skill es **whatsapp-worker** en Railway.
 
 Sigue estos pasos en orden. **No saltes** la verificación de migraciones — la DB de Railway prod se conecta directamente desde el `.env` local, así que es fácil aplicar cambios destructivos por accidente.
 
@@ -125,15 +125,18 @@ sleep 8 && railway logs --service whatsapp-worker 2>&1 | tail -25
 
 Busca:
 - `worker listening port=8080` ✅
-- `auth state found, auto-starting session` ✅
-- `starting baileys socket` ✅
+- `kapso template poll worker started` ✅
 - `outbound worker started` / `follow-up worker started` / `remarketing worker started` ✅
 
-## 7 · ⚠️ Caveat: la sesión de WhatsApp se pierde en el redeploy
+## 7 · Verificación de la conexión Kapso
 
-Cada `railway up` reinicia el container y **Baileys emite QR de nuevo** (los logs muestran `QR code emitted`). Esto es comportamiento inherente al restart, no un bug del cambio que acabas de deployar.
+Con la Cloud API **no hay QR ni sesión que se pierda en el redeploy** — el webhook y el número siguen conectados en Kapso. Tras el deploy verifica:
 
-**Avisa al usuario al final del deploy** que tendrá que reescanear el QR desde el dashboard web (`apps/web` en Vercel) para reconectar el bot.
+```bash
+curl -s -H "Authorization: Bearer $WORKER_API_TOKEN" "$PUBLIC_URL/api/kapso/status" | head -c 500
+```
+
+Debe responder `connection.phoneNumberId` no nulo. Si el worker cambió de URL pública (dominio Railway nuevo), re-registra el webhook con `POST /api/kapso/connect {"phoneNumberId": "..."}` y actualiza `PUBLIC_URL`.
 
 ## Resumen de comandos en orden
 
@@ -169,4 +172,3 @@ sleep 8 && railway logs --service whatsapp-worker 2>&1 | tail -25
 - ❌ Aplicar migraciones destructivas (DROP, NOT NULL en columnas con datos, ALTER TYPE) sin confirmar con el usuario — la DB del `.env` ES la de prod.
 - ❌ `railway up` sin `--service` — falla en non-interactive.
 - ❌ Asumir que `DATABASE_URL` está en el ambiente — siempre `set -a && source .env && set +a` antes de comandos drizzle.
-- ❌ Reiniciar el container "para limpiar" — fuerza re-escaneo de QR sin razón.

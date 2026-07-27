@@ -26,8 +26,17 @@ export default async function InboxPage() {
       initial={items.map((i) => ({
         id: i.conversation.id,
         contactId: i.contact.id,
-        jid: i.contact.jid,
-        name: i.contact.name ?? i.contact.pushName ?? i.contact.phone ?? i.contact.jid,
+        to:
+          i.contact.waId ??
+          i.contact.phone ??
+          i.contact.jid.split("@")[0] ??
+          "",
+        name:
+          i.contact.name ??
+          i.contact.pushName ??
+          i.contact.phone ??
+          i.contact.waId ??
+          i.contact.jid,
         agentMode: i.contact.agentMode,
         preview: i.conversation.lastMessagePreview,
         unread: i.conversation.unreadCount,

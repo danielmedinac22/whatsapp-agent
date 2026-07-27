@@ -5,13 +5,21 @@ import {
   conversations,
   dropiOrders,
   shopifyOrders,
-  templates,
   type DropiOrder,
 } from "@wa/db";
 import { db } from "../db";
 import { logger } from "../lib/logger";
-import { renderTemplate } from "../lib/template";
+import { contactWaId } from "../lib/phone";
 import { extractOrderVariables } from "../shopify/extract";
+import {
+  CON_MENSAJERO_TEMPLATE,
+  EN_TRANSITO_TEMPLATE,
+  ENTREGADO_TEMPLATE,
+  GUIA_GENERADA_TEMPLATE,
+  RECOLECTADO_TEMPLATE,
+  renderTemplateBody,
+  sanitizeParam,
+} from "../kapso/templates";
 import { enqueueOutbound } from "../jobs/outbound";
 import { getDropiConnection } from "./config";
 import { extractNovedadReason } from "./novedad";
@@ -47,10 +55,32 @@ function templateIdFor(
   }
 }
 
-async function sendStatusNotification(
-  order: DropiOrder,
-  templateBody: string,
-): Promise<boolean> {
+/** Meta template + positional params for a notifiable Dropi status. */
+function metaTemplateFor(
+  status: DropiStatus,
+  vars: { nombre: string; guia: string; transportadora: string; pdfGuia: string },
+): { name: string; params: string[] } | null {
+  const { nombre, guia, transportadora, pdfGuia } = vars;
+  switch (status) {
+    case "guia_generada":
+      return {
+        name: GUIA_GENERADA_TEMPLATE,
+        params: [nombre, guia, transportadora, pdfGuia || "en camino"],
+      };
+    case "recolectado":
+      return { name: RECOLECTADO_TEMPLATE, params: [nombre, transportadora, guia] };
+    case "en_transito":
+      return { name: EN_TRANSITO_TEMPLATE, params: [nombre, guia, transportadora] };
+    case "con_mensajero":
+      return { name: CON_MENSAJERO_TEMPLATE, params: [nombre, guia] };
+    case "entregado":
+      return { name: ENTREGADO_TEMPLATE, params: [nombre] };
+    default:
+      return null;
+  }
+}
+
+async function sendStatusNotification(order: DropiOrder): Promise<boolean> {
   if (!order.contactId) {
     logger.warn(
       { dropiOrderId: order.dropiOrderId, status: order.status },
@@ -64,6 +94,14 @@ async function sendStatusNotification(
     .where(eq(contacts.id, order.contactId))
     .limit(1);
   if (!contact) return false;
+  const to = contactWaId(contact);
+  if (!to) {
+    logger.warn(
+      { dropiOrderId: order.dropiOrderId, contactId: contact.id },
+      "dropi notify: contact has no wa_id",
+    );
+    return false;
+  }
 
   const [conv] = await db
     .select()
@@ -72,7 +110,6 @@ async function sendStatusNotification(
     .limit(1);
 
   let shopifyVars: Record<string, string | number | null | undefined> = {};
-  let shopifyOrderNum: string | null = null;
   if (order.shopifyOrderRowId) {
     const [shop] = await db
       .select()
@@ -81,7 +118,6 @@ async function sendStatusNotification(
       .limit(1);
     if (shop) {
       shopifyVars = extractOrderVariables(shop.rawPayload);
-      shopifyOrderNum = shop.orderId;
     }
   }
 
@@ -92,25 +128,27 @@ async function sendStatusNotification(
       ? `${assetsBase}/${order.guidePdfPath.replace(/^\//, "")}`
       : "";
 
-  const vars: Record<string, string | number | null | undefined> = {
-    ...shopifyVars,
-    nombre: shopifyVars.nombre || order.customerName || contact.name || "",
-    pedido: shopifyOrderNum || String(order.dropiOrderId),
-    guia: order.guideNumber ?? "",
-    transportadora: order.carrier ?? "",
-    estado: order.status,
-    pdf_guia: pdfGuia,
-  };
-
-  const text = renderTemplate(templateBody, vars);
+  // Status updates are business-initiated (usually outside the 24h window)
+  // → Meta pre-approved templates.
+  const tpl = metaTemplateFor(order.status, {
+    nombre: sanitizeParam(
+      String(shopifyVars.nombre || order.customerName || contact.name || "").trim() ||
+        "👋",
+    ),
+    guia: sanitizeParam(order.guideNumber ?? "en generación"),
+    transportadora: sanitizeParam(order.carrier ?? "la transportadora"),
+    pdfGuia: sanitizeParam(pdfGuia, 500),
+  });
+  if (!tpl) return false;
 
   await enqueueOutbound({
-    jid: contact.jid,
-    body: text,
+    to,
+    body: renderTemplateBody(tpl.name, tpl.params),
     source: "dropi_status",
     sourceRef: order.id,
     dedupKey: `dropi:${order.dropiOrderId}:${order.status}`,
     conversationId: conv?.id ?? null,
+    template: tpl,
   });
   return true;
 }
@@ -173,6 +211,8 @@ export async function maybeNotifyDropiStatus(
     return { notified: false, escalated: false, skipped: "already_notified" };
   }
 
+  // The agent_settings template ids still act as per-status on/off switches;
+  // the message content itself now comes from the Meta-approved catalog.
   const tplId = templateIdFor(s, order.status);
   if (!tplId) {
     logger.info(
@@ -181,20 +221,8 @@ export async function maybeNotifyDropiStatus(
     );
     return { notified: false, escalated: false, skipped: "no_template" };
   }
-  const [tpl] = await db
-    .select()
-    .from(templates)
-    .where(eq(templates.id, tplId))
-    .limit(1);
-  if (!tpl) {
-    logger.warn(
-      { dropiOrderId: order.dropiOrderId, tplId },
-      "dropi notify: template missing",
-    );
-    return { notified: false, escalated: false, skipped: "no_template" };
-  }
 
-  const ok = await sendStatusNotification(order, tpl.body);
+  const ok = await sendStatusNotification(order);
   if (ok) {
     await db
       .update(dropiOrders)

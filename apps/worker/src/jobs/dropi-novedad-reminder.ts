@@ -7,6 +7,12 @@ import {
 } from "@wa/db";
 import { db } from "../db";
 import { logger } from "../lib/logger";
+import { contactWaId } from "../lib/phone";
+import {
+  ADMIN_AVISO_TEMPLATE,
+  NOVEDAD_TEMPLATE,
+  sanitizeParam,
+} from "../kapso/templates";
 import { enqueueOutbound } from "./outbound";
 import { getDropiConnection } from "../dropi/config";
 import { DROPI_NOVEDAD_REMINDER_QUEUE, getBoss } from "./queue";
@@ -33,13 +39,30 @@ async function sendReminder(order: DropiOrder): Promise<boolean> {
     .where(eq(conversations.contactId, contact.id))
     .limit(1);
 
+  const to = contactWaId(contact);
+  if (!to) {
+    logger.warn(
+      { dropiOrderId: order.dropiOrderId, contactId: contact.id },
+      "novedad-reminder: contact has no wa_id",
+    );
+    return false;
+  }
   await enqueueOutbound({
-    jid: contact.jid,
+    to,
     body: REMINDER_BODY,
     source: "dropi_status",
     sourceRef: order.id,
     dedupKey: `dropi-novedad:${order.dropiOrderId}:reminder`,
     conversationId: conv?.id ?? null,
+    // Sin respuesta del cliente en horas → ventana probablemente cerrada.
+    fallbackTemplate: {
+      name: NOVEDAD_TEMPLATE,
+      params: [
+        sanitizeParam((contact.name ?? "").trim() || "👋"),
+        sanitizeParam(order.guideNumber ?? `Dropi #${order.dropiOrderId}`),
+        sanitizeParam(order.novedadReasonRaw ?? "novedad en la entrega"),
+      ],
+    },
   });
   await db
     .update(dropiOrders)
@@ -75,10 +98,18 @@ async function escalateOrder(order: DropiOrder): Promise<boolean> {
       `Motivo reportado: _${order.novedadReasonRaw ?? "(sin detalle)"}_\n\n` +
       `El agente quedó apagado. Continúa la gestión manualmente.`;
     await enqueueOutbound({
-      jid: `${adminPhone.replace(/\D/g, "")}@s.whatsapp.net`,
+      to: adminPhone.replace(/\D/g, ""),
       body,
       source: "escalation",
       dedupKey: `dropi-novedad:${order.dropiOrderId}:escalation`,
+      fallbackTemplate: {
+        name: ADMIN_AVISO_TEMPLATE,
+        params: [
+          sanitizeParam(
+            `novedad sin respuesta del pedido Dropi #${order.dropiOrderId} (${customerLabel})`,
+          ),
+        ],
+      },
     });
   } else {
     logger.warn(

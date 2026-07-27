@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import type { WaEvent } from "@wa/shared";
 import { events as bus } from "../lib/events";
-import { getStatus } from "../baileys/session";
+import { getKapsoConnection } from "../kapso/connection";
 
 export const events = new Hono();
 
@@ -26,10 +26,13 @@ events.get("/", (c) =>
       });
     };
 
-    // initial snapshot
-    const snap = getStatus();
-    await send({ type: "status", status: snap.status });
-    if (snap.qr) await send({ type: "qr", qr: snap.qr });
+    // initial snapshot — connection state now lives in kapso_connection
+    const conn = await getKapsoConnection().catch(() => null);
+    await send({
+      type: "status",
+      status: conn?.phoneNumberId ? "connected" : "disconnected",
+      phone: conn?.displayPhoneNumber ?? undefined,
+    });
 
     const off = bus.onEvent((ev) => {
       void send(ev);

@@ -39,7 +39,8 @@ export type DropiStatus =
 export type ChatItem = {
   id: string;
   contactId: string;
-  jid: string;
+  /** Destination wa_id (E.164 digits, sin "+"). */
+  to: string;
   name: string;
   agentMode: boolean;
   preview: string | null;
@@ -406,7 +407,7 @@ function ConversationPane({ chat }: { chat: ChatItem }) {
       const r = await fetch("/api/wa/send", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ jid: chat.jid, body: text }),
+        body: JSON.stringify({ to: chat.to, body: text }),
       });
       if (r.ok) {
         setText("");
@@ -433,7 +434,7 @@ function ConversationPane({ chat }: { chat: ChatItem }) {
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border)] px-4 py-3">
         <div>
           <p className="text-base font-semibold">{chat.name}</p>
-          <p className="text-xs text-[var(--color-text-dim)]">{chat.jid}</p>
+          <p className="text-xs text-[var(--color-text-dim)]">+{chat.to}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <ConfirmationMenu chat={chat} />

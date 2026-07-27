@@ -99,6 +99,13 @@
       "when": 1778207000000,
       "tag": "0013_backfill_novedad_handled",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1785164425943,
+      "tag": "0014_wandering_bishop",
+      "breakpoints": true
     }
   ]
 }

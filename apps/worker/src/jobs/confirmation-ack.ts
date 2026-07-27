@@ -10,6 +10,7 @@ import {
 import { db } from "../db";
 import { logger } from "../lib/logger";
 import { renderTemplate } from "../lib/template";
+import { contactWaId } from "../lib/phone";
 import { extractOrderVariables } from "../shopify/extract";
 import { enqueueOutbound } from "./outbound";
 
@@ -116,8 +117,16 @@ export async function handleInboundConfirmation({
     pedido: order.orderId,
   });
 
+  const to = contactWaId(contact);
+  if (!to) {
+    logger.warn(
+      { contactId: contact.id },
+      "confirmation-ack: contact has no wa_id, cannot send",
+    );
+    return true;
+  }
   await enqueueOutbound({
-    jid: contact.jid,
+    to,
     body: text,
     source: "confirmation_ack",
     sourceRef: order.id,

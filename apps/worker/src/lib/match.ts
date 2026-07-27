@@ -1,4 +1,4 @@
-import { normalizePhone } from "../baileys/jid-resolver";
+import { normalizePhone } from "./phone";
 
 export { normalizePhone };
 

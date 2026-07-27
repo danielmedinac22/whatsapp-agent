@@ -1,16 +1,19 @@
 import { and, eq, gte } from "@wa/db";
 import {
-  agentSettings,
   contacts,
   conversations,
   messages,
   shopifyOrders,
-  templates,
 } from "@wa/db";
 import { db } from "../db";
 import { logger } from "../lib/logger";
-import { renderTemplate } from "../lib/template";
+import { contactWaId } from "../lib/phone";
 import { extractOrderVariables } from "../shopify/extract";
+import {
+  RECORDATORIO_PEDIDO_TEMPLATE,
+  renderTemplateBody,
+  sanitizeParam,
+} from "../kapso/templates";
 import { enqueueOutbound } from "./outbound";
 import { REMARKETING_QUEUE, getBoss } from "./queue";
 
@@ -81,41 +84,30 @@ async function handleRemarketing({ orderId }: RemarketingPayload) {
     }
   }
 
-  const [s] = await db
-    .select()
-    .from(agentSettings)
-    .where(eq(agentSettings.id, 1))
-    .limit(1);
-
-  if (!s?.remarketingTemplateId) {
-    logger.warn({ orderId }, "no remarketing template configured");
-    return;
-  }
-  const [tpl] = await db
-    .select()
-    .from(templates)
-    .where(eq(templates.id, s.remarketingTemplateId))
-    .limit(1);
-  if (!tpl) {
-    logger.warn({ orderId }, "remarketing template missing");
+  const to = contactWaId(contact);
+  if (!to) {
+    logger.warn({ orderId, contactId: contact.id }, "remarketing: contact has no wa_id");
     return;
   }
 
+  // Business-initiated reminder outside the 24h window → Meta template.
   const vars = extractOrderVariables(order.rawPayload);
-  const text = renderTemplate(tpl.body, {
-    ...vars,
-    nombre: vars.nombre || order.customerName || contact.name || "",
-    total: vars.total || order.totalPrice || "",
-    pedido: order.orderId,
-  });
+  const params = [
+    sanitizeParam(
+      String(vars.nombre || order.customerName || contact.name || "").trim() ||
+        "👋",
+    ),
+    sanitizeParam(`#${order.orderId}`),
+  ];
 
   await enqueueOutbound({
-    jid: contact.jid,
-    body: text,
+    to,
+    body: renderTemplateBody(RECORDATORIO_PEDIDO_TEMPLATE, params),
     source: "remarketing",
     sourceRef: order.id,
     dedupKey: `remarketing:${order.id}`,
     conversationId: conv?.id ?? null,
+    template: { name: RECORDATORIO_PEDIDO_TEMPLATE, params },
   });
 
   await db

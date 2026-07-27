@@ -366,6 +366,9 @@ async function loginAndPersist(): Promise<DropiAuth> {
     if (conn.adminPhone) {
       // Import dinámico para evitar ciclo (outbound importa pg-boss).
       const { enqueueOutbound } = await import("../jobs/outbound");
+      const { ADMIN_AVISO_TEMPLATE, sanitizeParam } = await import(
+        "../kapso/templates"
+      );
       const expiresLabel = result.challengeExpiresAt
         ? result.challengeExpiresAt.toLocaleTimeString("es-CO", {
             hour: "2-digit",
@@ -376,12 +379,22 @@ async function loginAndPersist(): Promise<DropiAuth> {
         `🔐 *Dropi pide código 2FA*\n\n` +
         `Abre Google Authenticator y respóndeme con el código de 6 dígitos.\n\n` +
         `_Válido hasta ~${expiresLabel}._`;
-      const jid = `${conn.adminPhone.replace(/\D/g, "")}@s.whatsapp.net`;
       await enqueueOutbound({
-        jid,
+        to: conn.adminPhone.replace(/\D/g, ""),
         body,
         source: "dropi_2fa",
         dedupKey: `dropi-2fa-${Date.now()}`,
+        // Si el admin no ha chateado con el bot en 24h, cae a plantilla.
+        // El texto del código va en el parámetro (Meta solo revisa el
+        // texto estático de la plantilla, no los params de envío).
+        fallbackTemplate: {
+          name: ADMIN_AVISO_TEMPLATE,
+          params: [
+            sanitizeParam(
+              "Dropi pide tu código 2FA — respóndeme por aquí con los 6 dígitos de Google Authenticator",
+            ),
+          ],
+        },
       }).catch((err) => {
         logger.error({ err: String(err) }, "dropi.2fa ping enqueue failed");
       });

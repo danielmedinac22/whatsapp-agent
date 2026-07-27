@@ -8,7 +8,9 @@ import {
 } from "@wa/db";
 import { db } from "../db";
 import { logger } from "../lib/logger";
+import { contactWaId } from "../lib/phone";
 import { openrouter } from "../agent/openrouter";
+import { NOVEDAD_TEMPLATE, sanitizeParam } from "../kapso/templates";
 import { enqueueOutbound } from "./outbound";
 import { DROPI_NOVEDAD_NOTIFY_QUEUE, getBoss } from "./queue";
 
@@ -168,13 +170,33 @@ async function handleNovedadNotify({ dropiRowId }: NovedadNotifyPayload) {
     return;
   }
 
+  const to = contactWaId(contact);
+  if (!to) {
+    logger.warn(
+      { dropiOrderId: order.dropiOrderId, contactId: contact.id },
+      "novedad-notify: contact has no wa_id",
+    );
+    return;
+  }
+  // Preferimos el mensaje rico del LLM (si la ventana de 24h está abierta);
+  // fuera de ventana cae a la plantilla aprobada de novedad.
   await enqueueOutbound({
-    jid: contact.jid,
+    to,
     body: text,
     source: "dropi_status",
     sourceRef: order.id,
     dedupKey: `dropi-novedad:${order.dropiOrderId}:first`,
     conversationId: conv?.id ?? null,
+    fallbackTemplate: {
+      name: NOVEDAD_TEMPLATE,
+      params: [
+        sanitizeParam(
+          (order.customerName ?? contact.name ?? "").trim() || "👋",
+        ),
+        sanitizeParam(order.guideNumber ?? `Dropi #${order.dropiOrderId}`),
+        sanitizeParam(reason),
+      ],
+    },
   });
 
   await db

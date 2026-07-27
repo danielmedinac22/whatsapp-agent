@@ -12,6 +12,7 @@ import {
 } from "@wa/db";
 import { db } from "../db";
 import { logger } from "../lib/logger";
+import { contactWaId } from "../lib/phone";
 import { enqueueOutbound } from "../jobs/outbound";
 import { openrouter } from "./openrouter";
 import { buildDropiContextBlock } from "./dropi-context";
@@ -113,8 +114,16 @@ async function flushBuffer(contactId: string) {
       return;
     }
 
+    const to = contactWaId(entry.contact);
+    if (!to) {
+      logger.warn(
+        { contactId: entry.contact.id },
+        "agent: contact has no wa_id, cannot send",
+      );
+      return;
+    }
     await enqueueOutbound({
-      jid: entry.contact.jid,
+      to,
       body: reply,
       source: "agent",
       sourceRef: entry.conversation.id,

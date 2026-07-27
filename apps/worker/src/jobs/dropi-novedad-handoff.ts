@@ -7,6 +7,8 @@ import {
 } from "@wa/db";
 import { db } from "../db";
 import { logger } from "../lib/logger";
+import { contactWaId } from "../lib/phone";
+import { ADMIN_AVISO_TEMPLATE, sanitizeParam } from "../kapso/templates";
 import { enqueueOutbound } from "./outbound";
 import { getDropiConnection } from "../dropi/config";
 import { DROPI_NOVEDAD_HANDOFF_QUEUE, getBoss } from "./queue";
@@ -112,10 +114,18 @@ async function handleNovedadHandoff({ dropiRowId }: NovedadHandoffPayload) {
 
   if (adminPhone) {
     await enqueueOutbound({
-      jid: `${adminPhone.replace(/\D/g, "")}@s.whatsapp.net`,
+      to: adminPhone.replace(/\D/g, ""),
       body,
       source: "escalation",
       dedupKey: `dropi-novedad:${order.dropiOrderId}:handoff`,
+      fallbackTemplate: {
+        name: ADMIN_AVISO_TEMPLATE,
+        params: [
+          sanitizeParam(
+            `el cliente ${customerLabel} respondió la novedad del pedido Dropi #${order.dropiOrderId} — actualízala en Dropi`,
+          ),
+        ],
+      },
     });
   }
 

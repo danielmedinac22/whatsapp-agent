@@ -15,8 +15,6 @@
     "@wa/shared": "workspace:*",
     "hono": "^4.6.14",
     "@hono/node-server": "^1.13.7",
-    "baileys": "7.0.0-rc13",
-    "qrcode": "^1.5.4",
     "pg-boss": "^10.1.6",
     "drizzle-orm": "^0.36.4",
     "postgres": "^3.4.5",
@@ -28,7 +26,6 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
-    "@types/qrcode": "^1.5.5",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }
