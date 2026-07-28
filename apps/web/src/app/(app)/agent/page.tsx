@@ -1,12 +1,17 @@
-import { getAgentSettings, listTemplates } from "@/lib/queries";
+import {
+  getAgentSettings,
+  listRecentConversationOptions,
+  listTemplates,
+} from "@/lib/queries";
 import { AgentForm } from "./agent-form";
 
 export const dynamic = "force-dynamic";
 
 export default async function AgentPage() {
-  const [settings, templates] = await Promise.all([
+  const [settings, templates, conversations] = await Promise.all([
     getAgentSettings(),
     listTemplates(),
+    listRecentConversationOptions(),
   ]);
 
   return (
@@ -43,6 +48,7 @@ export default async function AgentPage() {
           name: t.name,
           type: t.type,
         }))}
+        conversations={conversations}
       />
     </div>
   );

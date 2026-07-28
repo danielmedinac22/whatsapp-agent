@@ -53,6 +53,23 @@ export const agentSettingsInput = z.object({
 });
 export type AgentSettingsInput = z.infer<typeof agentSettingsInput>;
 
+/** Guardado del system prompt desde el editor del dashboard. */
+export const agentPromptInput = z.object({
+  prompt: z.string().min(1).max(8000),
+  /** Nota corta del cambio, para el historial. */
+  label: z.string().max(200).nullable().optional(),
+});
+export type AgentPromptInput = z.infer<typeof agentPromptInput>;
+
+/** Ejecución de prueba del prompt (no envía nada a WhatsApp). */
+export const agentPreviewInput = z.object({
+  prompt: z.string().min(1).max(8000),
+  model: z.string().min(1),
+  message: z.string().min(1).max(2000),
+  conversationId: z.string().uuid().nullable().optional(),
+});
+export type AgentPreviewInput = z.infer<typeof agentPreviewInput>;
+
 export const dropiConnectionInput = z.object({
   apiBaseUrl: z.string().url().optional(),
   email: z.string().email().nullable().optional(),

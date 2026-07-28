@@ -406,6 +406,26 @@ export const agentSettings = pgTable("agent_settings", {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
+// agent prompt versions — historial append-only del system prompt
+// ────────────────────────────────────────────────────────────────────────────
+
+export const agentPromptVersions = pgTable(
+  "agent_prompt_versions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    prompt: text("prompt").notNull(),
+    /** Nota corta del cambio, escrita por quien guarda. */
+    label: text("label"),
+    /** Email del usuario del dashboard que guardó (null si vino del sistema). */
+    authorEmail: text("author_email"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("agent_prompt_versions_created_idx").on(t.createdAt)],
+);
+
+// ────────────────────────────────────────────────────────────────────────────
 // shopify connection (singleton row, id=1)
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -643,6 +663,8 @@ export type Message = typeof messages.$inferSelect;
 export type NewMessage = typeof messages.$inferInsert;
 export type Template = typeof templates.$inferSelect;
 export type AgentSettings = typeof agentSettings.$inferSelect;
+export type AgentPromptVersion = typeof agentPromptVersions.$inferSelect;
+export type NewAgentPromptVersion = typeof agentPromptVersions.$inferInsert;
 export type ShopifyOrder = typeof shopifyOrders.$inferSelect;
 export type NewShopifyOrder = typeof shopifyOrders.$inferInsert;
 export type WaSession = typeof waSession.$inferSelect;

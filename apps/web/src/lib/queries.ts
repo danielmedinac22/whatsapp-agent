@@ -162,6 +162,34 @@ export async function getAgentSettings() {
   return row ?? null;
 }
 
+/**
+ * Conversaciones recientes para el selector del banco de pruebas del prompt:
+ * permite probar el prompt sobre el historial real de un cliente.
+ */
+export async function listRecentConversationOptions(limit = 25) {
+  const rows = await db
+    .select({
+      id: conversations.id,
+      name: contacts.name,
+      waId: contacts.waId,
+      phone: contacts.phone,
+      lastInboundAt: conversations.lastInboundAt,
+    })
+    .from(conversations)
+    .innerJoin(contacts, eq(conversations.contactId, contacts.id))
+    .orderBy(
+      desc(
+        sql`COALESCE(${conversations.lastInboundAt}, ${conversations.lastOutboundAt}, ${conversations.createdAt})`,
+      ),
+    )
+    .limit(limit);
+
+  return rows.map((r) => ({
+    id: r.id,
+    label: r.name ?? (r.phone || r.waId || "sin nombre"),
+  }));
+}
+
 export async function setAgentMode(contactId: string, on: boolean) {
   await db
     .update(contacts)

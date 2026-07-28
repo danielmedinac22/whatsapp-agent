@@ -46,7 +46,37 @@ async function loadSettings() {
   return row;
 }
 
-async function loadHistory(
+/**
+ * Prompt que realmente recibe el modelo: el prompt configurable del dashboard
+ * más los bloques de contexto que se inyectan solos (Shopify, Dropi).
+ * Lo usan tanto el runner de producción como el banco de pruebas de /agent,
+ * para que lo que se prueba sea idéntico a lo que se envía.
+ */
+export async function buildEffectiveSystemPrompt(
+  basePrompt: string,
+  contactId: string | null,
+): Promise<string> {
+  let systemPrompt = basePrompt;
+  if (!contactId) return systemPrompt;
+
+  try {
+    const ctx = await buildShopifyContextBlock(contactId);
+    if (ctx) systemPrompt = `${systemPrompt}\n\n${ctx}`;
+  } catch (err) {
+    logger.warn({ err }, "shopify context build failed; continuing without it");
+  }
+
+  try {
+    const ctx = await buildDropiContextBlock(contactId);
+    if (ctx) systemPrompt = `${systemPrompt}\n\n${ctx}`;
+  } catch (err) {
+    logger.warn({ err }, "dropi context build failed; continuing without it");
+  }
+
+  return systemPrompt;
+}
+
+export async function loadHistory(
   conversationId: string,
   limit: number,
 ): Promise<ModelMessage[]> {
@@ -85,20 +115,10 @@ async function flushBuffer(contactId: string) {
 
   const prompt: ModelMessage[] = history;
 
-  let systemPrompt = settings.systemPrompt;
-  try {
-    const ctx = await buildShopifyContextBlock(entry.contact.id);
-    if (ctx) systemPrompt = `${systemPrompt}\n\n${ctx}`;
-  } catch (err) {
-    logger.warn({ err }, "shopify context build failed; continuing without it");
-  }
-
-  try {
-    const ctx = await buildDropiContextBlock(entry.contact.id);
-    if (ctx) systemPrompt = `${systemPrompt}\n\n${ctx}`;
-  } catch (err) {
-    logger.warn({ err }, "dropi context build failed; continuing without it");
-  }
+  const systemPrompt = await buildEffectiveSystemPrompt(
+    settings.systemPrompt,
+    entry.contact.id,
+  );
 
   try {
     const provider = openrouter();

@@ -4,6 +4,8 @@ import { useMemo, useState } from "react";
 
 import type { TemplateType } from "@wa/shared";
 
+import { PromptCard, type ConversationOption } from "./prompt-card";
+
 type Initial = {
   systemPrompt: string;
   model: string;
@@ -58,23 +60,25 @@ const QUICK_MODELS = [
 export function AgentForm({
   initial,
   templates,
+  conversations,
 }: {
   initial: Initial;
   templates: TemplateOption[];
+  conversations: ConversationOption[];
 }) {
   const tplFor = (...types: TemplateType[]) =>
     templates.filter((t) => types.includes(t.type) || t.type === "general");
   const [v, setV] = useState<Initial>(initial);
   const [baseline, setBaseline] = useState<Initial>(initial);
   const [saving, setSaving] = useState(false);
-  const [savingPrompt, setSavingPrompt] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
 
-  const dirty = useMemo(
-    () => JSON.stringify(v) !== JSON.stringify(baseline),
-    [v, baseline],
-  );
-  const promptDirty = v.systemPrompt !== baseline.systemPrompt;
+  // El prompt tiene su propio guardado (con nota e historial), así que la
+  // barra de abajo sólo mira el resto de la configuración.
+  const dirty = useMemo(() => {
+    const strip = ({ systemPrompt: _p, ...rest }: Initial) => rest;
+    return JSON.stringify(strip(v)) !== JSON.stringify(strip(baseline));
+  }, [v, baseline]);
 
   const persist = async (state: Initial) => {
     const r = await fetch("/api/agent/settings", {
@@ -94,64 +98,35 @@ export function AgentForm({
   const saveAll = async () => {
     setSaving(true);
     try {
-      await persist(v);
+      // Nunca publica un borrador del prompt: eso pasa sólo por su botón.
+      await persist({ ...v, systemPrompt: baseline.systemPrompt });
     } finally {
       setSaving(false);
     }
   };
 
-  const savePrompt = async () => {
-    setSavingPrompt(true);
-    try {
-      // Persist current full state — only the prompt has changed locally
-      await persist({ ...baseline, systemPrompt: v.systemPrompt });
-    } finally {
-      setSavingPrompt(false);
-    }
-  };
+  const discard = () =>
+    setV((s) => ({ ...baseline, systemPrompt: s.systemPrompt }));
 
-  const discard = () => setV(baseline);
+  /** El prompt ya se guardó por su propio endpoint: sincroniza el baseline
+   *  para que "Guardar configuración" no lo revierta. */
+  const onPromptSaved = (prompt: string) => {
+    setBaseline((b) => ({ ...b, systemPrompt: prompt }));
+    setV((s) => ({ ...s, systemPrompt: prompt }));
+    setSavedAt(Date.now());
+  };
 
   return (
     <div className="space-y-4 pb-24">
-      {/* System prompt — own card with amber accent */}
-      <section className="app-card overflow-hidden">
-        <div className="flex items-start justify-between gap-3 border-b border-[var(--color-border)] px-4 py-3">
-          <div>
-            <h2 className="text-base font-semibold">Prompt del sistema</h2>
-            <p className="mt-1 text-xs text-[var(--color-text-dim)]">
-              Define el rol, tono y reglas del agente. Se envía como mensaje
-              system en cada conversación.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            {promptDirty && (
-              <span className="text-[11px] text-amber-200">sin guardar</span>
-            )}
-            <button
-              type="button"
-              onClick={savePrompt}
-              disabled={savingPrompt || !promptDirty}
-              className="app-button"
-            >
-              {savingPrompt ? "Guardando…" : "Guardar prompt"}
-            </button>
-          </div>
-        </div>
-        <div className="bg-[rgba(40,28,8,0.35)] p-4">
-          <textarea
-            value={v.systemPrompt}
-            onChange={(e) => setV({ ...v, systemPrompt: e.target.value })}
-            rows={12}
-            placeholder="Eres un asistente de servicio al cliente…"
-            className="block w-full resize-y rounded-md border border-amber-400/20 bg-[rgba(20,14,4,0.55)] p-3 font-mono text-sm leading-relaxed text-amber-50 outline-none transition focus:border-amber-300/40"
-          />
-          <div className="mt-2 flex justify-between text-[11px] text-[var(--color-text-dim)]">
-            <span>{v.systemPrompt.length.toLocaleString()} caracteres</span>
-            <span>máximo 8.000</span>
-          </div>
-        </div>
-      </section>
+      {/* System prompt — editor, banco de pruebas e historial */}
+      <PromptCard
+        value={v.systemPrompt}
+        saved={baseline.systemPrompt}
+        model={v.model}
+        conversations={conversations}
+        onChange={(systemPrompt) => setV((s) => ({ ...s, systemPrompt }))}
+        onSaved={onPromptSaved}
+      />
 
       {/* Model */}
       <section className="app-card p-4">
