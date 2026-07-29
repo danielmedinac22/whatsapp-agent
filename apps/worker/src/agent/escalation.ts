@@ -83,11 +83,12 @@ export async function escalateToHuman({
         `🚨 *Escalación a humano*\n\n` +
         `*${customerLabel}* — ${reasonLine}.${phoneLine}${detailLine}\n\n` +
         `El agente quedó apagado para esta conversación. Responde desde el inbox.`;
+      const hourBucket = Math.floor(Date.now() / 3_600_000);
       await enqueueOutbound({
         to: adminPhone.replace(/\D/g, ""),
         body,
         source: "escalation",
-        dedupKey: `escalation-admin-${contact.id}-${reason}-${Date.now()}`,
+        dedupKey: `escalation-admin-${contact.id}-${reason}-${hourBucket}`,
         // Fuera de la ventana de 24h con el admin, cae a plantilla aprobada.
         fallbackTemplate: {
           name: ADMIN_ALERTA_TEMPLATE,

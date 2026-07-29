@@ -379,11 +379,14 @@ async function loginAndPersist(): Promise<DropiAuth> {
         `🔐 *Dropi pide código 2FA*\n\n` +
         `Abre Google Authenticator y respóndeme con el código de 6 dígitos.\n\n` +
         `_Válido hasta ~${expiresLabel}._`;
+      // Bucket horario: los crons de Dropi reintentan el login constantemente
+      // mientras hay 2FA pendiente — sin esto se generaban cientos de pings.
+      const hourBucket = Math.floor(Date.now() / 3_600_000);
       await enqueueOutbound({
         to: conn.adminPhone.replace(/\D/g, ""),
         body,
         source: "dropi_2fa",
-        dedupKey: `dropi-2fa-${Date.now()}`,
+        dedupKey: `dropi-2fa-${hourBucket}`,
         // Si el admin no ha chateado con el bot en 24h, cae a plantilla.
         // El texto del código va en el parámetro (Meta solo revisa el
         // texto estático de la plantilla, no los params de envío).
