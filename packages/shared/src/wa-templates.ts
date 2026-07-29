@@ -138,7 +138,8 @@ const GUIA_EN_REPARTO: WaTemplateDefinition = {
 const GUIA_ENTREGADA: WaTemplateDefinition = {
   name: "guia_entregada",
   language: "es",
-  category: "UTILITY",
+  // Meta la recategorizó a MARKETING ("esperamos verte de nuevo" = re-engagement).
+  category: "MARKETING",
   bodyText:
     "Hola {{nombre}} 🙌 ¡Muchísimas gracias por tu compra! Tu pedido ya fue entregado.\nEsperamos verte de nuevo pronto 💙",
   params: [{ name: "nombre", example: "María" }],
@@ -199,7 +200,8 @@ const REMARKETING_RECOMPRA_MES: WaTemplateDefinition = {
 const REABRIR_V2: WaTemplateDefinition = {
   name: "vorare_reabrir_v2",
   language: "es",
-  category: "UTILITY",
+  // Meta la recategorizó a MARKETING (reapertura = re-engagement).
+  category: "MARKETING",
   bodyText:
     "Hola {{nombre}} 👋 Te escribimos de Tienda Vorare para retomar tu pedido pendiente. ¿Seguimos por aquí?",
   params: [{ name: "nombre", example: "María" }],
