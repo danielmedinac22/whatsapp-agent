@@ -1,5 +1,11 @@
 import { eq } from "@wa/db";
-import { contacts, conversations, messages, type Conversation } from "@wa/db";
+import {
+  contacts,
+  conversations,
+  messageMedia,
+  messages,
+  type Conversation,
+} from "@wa/db";
 import { db } from "../db";
 import { logger } from "../lib/logger";
 import { events } from "../lib/events";
@@ -9,9 +15,41 @@ import { escalateToHuman } from "../agent/escalation";
 import { handleInboundConfirmation } from "../jobs/confirmation-ack";
 import { tryHandleDropi2FAInbound } from "../dropi/2fa-inbound";
 import { markNovedadCustomerReply } from "../dropi/novedad-reply";
-import { markRead } from "../kapso/client";
+import { fetchKapsoMedia, markRead } from "../kapso/client";
 import type { ParsedInboundMessage } from "../kapso/inbound";
 import { upsertContactByWaId } from "./contacts";
+
+/**
+ * Copia el audio entrante a `message_media`. Best-effort: si Kapso no da URL o
+ * la descarga falla, el mensaje se guarda igual (sin reproductor) — perder el
+ * audio no puede costar el mensaje.
+ */
+async function storeInboundAudio(
+  parsed: ParsedInboundMessage,
+): Promise<{ id: string; mime: string } | null> {
+  if (!parsed.mediaUrl) return null;
+  try {
+    const { bytes, mime } = await fetchKapsoMedia(parsed.mediaUrl);
+    if (bytes.byteLength === 0) return null;
+    const resolved = parsed.mediaMime ?? mime;
+    const [row] = await db
+      .insert(messageMedia)
+      .values({
+        mime: resolved,
+        bytes,
+        byteSize: bytes.byteLength,
+        source: "inbound",
+      })
+      .returning({ id: messageMedia.id });
+    return row ? { id: row.id, mime: resolved } : null;
+  } catch (err) {
+    logger.warn(
+      { err: String(err), waId: parsed.waMessageId },
+      "inbound: no se pudo guardar el audio del cliente",
+    );
+    return null;
+  }
+}
 
 async function ensureConversation(contactId: string): Promise<Conversation> {
   const existing = await db
@@ -41,6 +79,10 @@ export async function handleInbound(parsed: ParsedInboundMessage): Promise<void>
   });
   const conv = await ensureConversation(contact.id);
 
+  // Los audios se copian a nuestro almacenamiento: la URL de Kapso exige API
+  // key, así que el navegador del asesor no puede reproducirla directamente.
+  const media = hasAudio ? await storeInboundAudio(parsed) : null;
+
   const [stored] = await db
     .insert(messages)
     .values({
@@ -49,6 +91,8 @@ export async function handleInbound(parsed: ParsedInboundMessage): Promise<void>
       waId: parsed.waMessageId,
       body: parsed.text,
       status: "delivered",
+      mediaUrl: media ? `/api/media/${media.id}` : null,
+      mediaMime: media?.mime ?? null,
     })
     .onConflictDoNothing({ target: messages.waId })
     .returning();
@@ -80,7 +124,9 @@ export async function handleInbound(parsed: ParsedInboundMessage): Promise<void>
   markRead({
     phoneNumberId: parsed.phoneNumberId,
     messageId: parsed.waMessageId,
-    typing: contact.agentMode && !hasAudio,
+    // Con transcripción el agente sí va a contestar el audio, así que el
+    // "escribiendo…" corresponde.
+    typing: contact.agentMode && (!hasAudio || Boolean(parsed.transcript)),
   }).catch(() => {
     /* best-effort */
   });
@@ -96,9 +142,10 @@ export async function handleInbound(parsed: ParsedInboundMessage): Promise<void>
   });
   if (handled2fa) return;
 
-  // Audio inbound → el agente IA no procesa audio, escalamos a humano y
-  // cortamos el resto del pipeline (no clasificar, no ack, no agente).
-  if (hasAudio) {
+  // Audio inbound: con transcripción de Kapso sigue el pipeline normal (el
+  // agente puede responder sobre el texto). Sin transcripción no hay nada que
+  // leer, así que se escala a humano como siempre.
+  if (hasAudio && !parsed.transcript) {
     await escalateToHuman({ contact, reason: "audio_message" }).catch((err) =>
       logger.error({ err }, "audio escalation failed"),
     );

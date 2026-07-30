@@ -16,6 +16,23 @@ export async function workerFetch(
   });
 }
 
+/**
+ * Multipart hacia el worker (notas de voz). Va aparte de `workerFetch` porque
+ * ahí el content-type está fijado a JSON, y en multipart el boundary lo tiene
+ * que poner fetch.
+ */
+export async function workerFetchMultipart(
+  path: string,
+  body: FormData,
+): Promise<Response> {
+  return fetch(`${WORKER_URL}${path}`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${TOKEN}` },
+    body,
+    cache: "no-store",
+  });
+}
+
 export async function workerJson<T>(
   path: string,
   init?: RequestInit,

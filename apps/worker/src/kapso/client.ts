@@ -200,6 +200,109 @@ export async function sendText(input: {
 }
 
 /**
+ * Upload media to Meta through the Kapso proxy (multipart, NOT JSON — de ahí
+ * que no use kapsoFetch). Devuelve el media id que consume el envío.
+ * WhatsApp lo conserva ~30 días, suficiente para cualquier reintento.
+ */
+export async function uploadMedia(input: {
+  phoneNumberId: string;
+  bytes: Buffer;
+  mime: string;
+  filename: string;
+}): Promise<{ mediaId: string }> {
+  const path = `${META_BASE}/${input.phoneNumberId}/media`;
+  const form = new FormData();
+  form.append("messaging_product", "whatsapp");
+  form.append("type", input.mime);
+  form.append(
+    "file",
+    new Blob([new Uint8Array(input.bytes)], { type: input.mime }),
+    input.filename,
+  );
+
+  let res: Response;
+  try {
+    res = await fetch(`${kapsoApiBaseUrl()}${path}`, {
+      method: "POST",
+      signal: AbortSignal.timeout(KAPSO_TIMEOUT_MS),
+      // Sin content-type a mano: fetch tiene que poner el boundary.
+      headers: { "X-API-Key": kapsoApiKey() },
+      body: form,
+    });
+  } catch (err) {
+    throw new KapsoApiError("POST", path, 0, String(err).slice(0, 300));
+  }
+  if (!res.ok) {
+    throw new KapsoApiError(
+      "POST",
+      path,
+      res.status,
+      await res.text().catch(() => ""),
+    );
+  }
+  const json = (await res.json()) as { id?: string };
+  if (!json.id) {
+    throw new KapsoApiError("POST", path, 502, "upload sin media id");
+  }
+  return { mediaId: json.id };
+}
+
+/**
+ * Send an audio message. `voice: true` lo pinta como nota de voz en WhatsApp y
+ * SOLO funciona con ogg/opus — de ahí que la grabación en el navegador use un
+ * encoder opus en vez del webm nativo de Chrome, que Meta rechaza.
+ */
+export async function sendAudio(input: {
+  phoneNumberId: string;
+  to: string;
+  mediaId: string;
+  voice?: boolean;
+}): Promise<{ waMessageId: string | null }> {
+  const res = await kapsoFetch<MetaSendResponse>(
+    "POST",
+    `${META_BASE}/${input.phoneNumberId}/messages`,
+    {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: input.to,
+      type: "audio",
+      audio: { id: input.mediaId, voice: input.voice ?? true },
+    },
+  );
+  return { waMessageId: res.messages?.[0]?.id ?? null };
+}
+
+/**
+ * Descarga los bytes de un media hospedado por Kapso (los audios que ENTRAN
+ * llegan como URL de api.kapso.ai, que necesita la API key).
+ */
+export async function fetchKapsoMedia(
+  url: string,
+): Promise<{ bytes: Buffer; mime: string }> {
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      signal: AbortSignal.timeout(KAPSO_TIMEOUT_MS),
+      headers: { "X-API-Key": kapsoApiKey() },
+    });
+  } catch (err) {
+    throw new KapsoApiError("GET", url, 0, String(err).slice(0, 300));
+  }
+  if (!res.ok) {
+    throw new KapsoApiError(
+      "GET",
+      url,
+      res.status,
+      await res.text().catch(() => ""),
+    );
+  }
+  return {
+    bytes: Buffer.from(await res.arrayBuffer()),
+    mime: res.headers.get("content-type") ?? "application/octet-stream",
+  };
+}
+
+/**
  * Build the Meta Cloud API `type:"template"` message body. Pure (no I/O) so the
  * shape — the part most likely to be subtly wrong — is testable. `bodyParams`
  * is the ORDERED values array; the catalog definition supplies each value's

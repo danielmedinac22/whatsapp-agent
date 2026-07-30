@@ -12,7 +12,15 @@ import {
   index,
   uniqueIndex,
   primaryKey,
+  customType,
 } from "drizzle-orm/pg-core";
+
+/** bytea — drizzle no trae helper para binarios. */
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType() {
+    return "bytea";
+  },
+});
 
 // ────────────────────────────────────────────────────────────────────────────
 // enums
@@ -336,6 +344,32 @@ export const messages = pgTable(
 );
 
 // ────────────────────────────────────────────────────────────────────────────
+// message media (notas de voz y audios entrantes)
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Los bytes del audio viven aquí porque ninguna de las dos URLs de WhatsApp
+ * sirve para reproducir en el hilo: la de Meta caduca en 5 minutos y exige
+ * token, y la de Kapso solo existe para lo que ENTRA. Una nota de voz de 2
+ * minutos en opus pesa ~150 KB, así que la tabla crece ~1 MB/día al ritmo
+ * actual — si eso deja de ser aceptable, esto es lo que se muda a S3/R2.
+ */
+export const messageMedia = pgTable("message_media", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  mime: text("mime").notNull(),
+  bytes: bytea("bytes").notNull(),
+  byteSize: integer("byte_size").notNull(),
+  durationMs: integer("duration_ms"),
+  /** "outbound" (grabada por el asesor) | "inbound" (la mandó el cliente). */
+  source: text("source").notNull(),
+  /** Id de media en Meta, para no re-subir el archivo si el envío se reintenta. */
+  metaMediaId: text("meta_media_id"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+// ────────────────────────────────────────────────────────────────────────────
 // templates
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -617,6 +651,15 @@ export const outboundMessages = pgTable(
     // Fallback when a free-text send is rejected for the closed 24h window.
     fallbackTemplateName: text("fallback_template_name"),
     fallbackTemplateParams: jsonb("fallback_template_params").$type<string[]>(),
+    /**
+     * Nota de voz: el audio va por el outbox como cualquier otro envío para
+     * heredar reintentos, dedup y estados de entrega. `body` guarda el texto
+     * que se ve en el historial.
+     */
+    mediaId: uuid("media_id").references(() => messageMedia.id, {
+      onDelete: "set null",
+    }),
+    mediaKind: text("media_kind"),
     dedupKey: text("dedup_key").notNull(),
     conversationId: uuid("conversation_id").references(() => conversations.id, {
       onDelete: "set null",
@@ -698,6 +741,8 @@ export type Contact = typeof contacts.$inferSelect;
 export type Conversation = typeof conversations.$inferSelect;
 export type Message = typeof messages.$inferSelect;
 export type NewMessage = typeof messages.$inferInsert;
+export type MessageMedia = typeof messageMedia.$inferSelect;
+export type NewMessageMedia = typeof messageMedia.$inferInsert;
 export type Template = typeof templates.$inferSelect;
 export type AgentSettings = typeof agentSettings.$inferSelect;
 export type AgentPromptVersion = typeof agentPromptVersions.$inferSelect;

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { buildReopenOptions, type ReopenOption } from "@/lib/reopen";
+import { VoiceRecorder } from "./voice-recorder";
 import {
   AlertCircle,
   AlertTriangle,
@@ -490,6 +491,8 @@ type Msg = {
   fromAgent: boolean;
   status: MessageStatus;
   deliveryError: string | null;
+  mediaUrl: string | null;
+  mediaMime: string | null;
   createdAt: string;
 };
 
@@ -743,7 +746,25 @@ function ConversationPane({
                   : ""
               }`}
             >
-              <p className="whitespace-pre-wrap break-words">{m.body}</p>
+              {m.mediaUrl && m.mediaMime?.startsWith("audio/") ? (
+                <div className="space-y-1">
+                  <audio
+                    src={m.mediaUrl}
+                    controls
+                    preload="metadata"
+                    className="h-9 w-[240px] max-w-full"
+                  />
+                  {/* Para el audio entrante el body es la transcripción de
+                      Kapso: se muestra como pie para poder leer sin escuchar. */}
+                  {m.direction === "in" && m.body.trim() && (
+                    <p className="whitespace-pre-wrap break-words text-xs italic text-[var(--color-text-dim)]">
+                      “{m.body}”
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <p className="whitespace-pre-wrap break-words">{m.body}</p>
+              )}
               {m.direction === "out" && m.status === "failed" && (
                 <p className="mt-1 text-[11px] leading-4 text-red-200">
                   ⚠ No entregado
@@ -822,7 +843,7 @@ function ConversationPane({
                 por falta de ventana activa, usa una plantilla.
               </p>
             )}
-            <div className="flex gap-2">
+            <div className="flex flex-wrap items-start gap-2">
               <input
                 value={text}
                 onChange={(e) => setText(e.target.value)}
@@ -833,7 +854,14 @@ function ConversationPane({
                   }
                 }}
                 placeholder="Escribe un mensaje…"
-                className="app-input flex-1"
+                className="app-input min-w-[180px] flex-1"
+              />
+              {/* Solo con la ventana abierta: una nota de voz no puede reabrir
+                  una conversación de más de 24h, eso exige plantilla. */}
+              <VoiceRecorder
+                to={chat.to}
+                conversationId={chat.id}
+                onSent={() => setTimeout(reload, 400)}
               />
               <button
                 onClick={send}

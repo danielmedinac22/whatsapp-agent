@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import { z } from "zod";
+import { eq, messageMedia } from "@wa/db";
+import { db } from "../db";
 import { getKapsoConnection } from "../kapso/connection";
 import { isTemplateApproved } from "../kapso/provisioning";
 import {
@@ -12,6 +14,30 @@ import { normalizePhone } from "../lib/phone";
 import { enqueueOutbound } from "../jobs/outbound";
 
 export const wa = new Hono();
+
+/**
+ * Sirve los bytes de una nota de voz (nuestra o del cliente). El hilo apunta
+ * aquí porque la URL de Meta caduca en 5 minutos y la de Kapso exige API key.
+ */
+wa.get("/media/:id", async (c) => {
+  const id = c.req.param("id");
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return c.json({ error: "bad id" }, 400);
+  const [media] = await db
+    .select()
+    .from(messageMedia)
+    .where(eq(messageMedia.id, id))
+    .limit(1);
+  if (!media) return c.json({ error: "not found" }, 404);
+  return new Response(new Uint8Array(media.bytes), {
+    headers: {
+      "content-type": media.mime,
+      "content-length": String(media.byteSize),
+      // Los bytes son inmutables: se cachean sin miedo.
+      "cache-control": "private, max-age=31536000, immutable",
+      "accept-ranges": "none",
+    },
+  });
+});
 
 /** Connection status — fed by kapso_connection (no QR/session lifecycle). */
 wa.get("/status", async (c) => {
@@ -53,6 +79,73 @@ wa.post("/send", async (c) => {
     outboundId,
     status: conn?.phoneNumberId ? "connected" : "disconnected",
   });
+});
+
+/** Tope del lado servidor; la UI ya corta a 2 minutos de grabación. */
+const MAX_AUDIO_BYTES = 8 * 1024 * 1024;
+const ALLOWED_AUDIO_MIME = [
+  "audio/ogg",
+  "audio/ogg; codecs=opus",
+  "audio/mpeg",
+  "audio/mp4",
+  "audio/aac",
+  "audio/amr",
+];
+
+/**
+ * Nota de voz del asesor. Recibe el archivo (multipart), lo guarda para poder
+ * reproducirlo en el hilo y lo encola en el outbox: así hereda reintentos,
+ * dedup y chulos de entrega como cualquier otro envío.
+ */
+wa.post("/send-audio", async (c) => {
+  const form = await c.req.formData().catch(() => null);
+  const file = form?.get("file");
+  const to = form?.get("to");
+  if (!(file instanceof File) || typeof to !== "string") {
+    return c.json({ error: "file y to son obligatorios" }, 400);
+  }
+  const waId = normalizePhone(to);
+  if (!waId) return c.json({ error: "invalid destination" }, 400);
+
+  const mime = (file.type || "audio/ogg").toLowerCase();
+  if (!ALLOWED_AUDIO_MIME.some((m) => mime.startsWith(m.split(";")[0]!))) {
+    return c.json({ error: `formato de audio no soportado: ${mime}` }, 415);
+  }
+  const bytes = Buffer.from(await file.arrayBuffer());
+  if (bytes.byteLength === 0) return c.json({ error: "audio vacío" }, 400);
+  if (bytes.byteLength > MAX_AUDIO_BYTES) {
+    return c.json({ error: "la nota de voz es demasiado larga" }, 413);
+  }
+
+  const durationRaw = form?.get("durationMs");
+  const durationMs =
+    typeof durationRaw === "string" && Number.isFinite(Number(durationRaw))
+      ? Math.round(Number(durationRaw))
+      : null;
+  const conversationId = form?.get("conversationId");
+
+  const [media] = await db
+    .insert(messageMedia)
+    .values({
+      mime,
+      bytes,
+      byteSize: bytes.byteLength,
+      durationMs,
+      source: "outbound",
+    })
+    .returning({ id: messageMedia.id });
+  if (!media) return c.json({ error: "no se pudo guardar el audio" }, 500);
+
+  const { outboundId } = await enqueueOutbound({
+    to: waId,
+    body: "🎤 Nota de voz",
+    source: "manual",
+    dedupKey: `manual-audio:${randomUUID()}`,
+    conversationId:
+      typeof conversationId === "string" && conversationId ? conversationId : null,
+    media: { id: media.id, kind: "audio" },
+  });
+  return c.json({ ok: true, outboundId, mediaId: media.id });
 });
 
 const sendTemplateSchema = z.object({

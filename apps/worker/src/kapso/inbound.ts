@@ -57,6 +57,16 @@ interface KapsoMessageFields {
       status?: string;
       statuses?: Array<{ status?: string; errors?: KapsoStatusError[] }>;
       errors?: KapsoStatusError[];
+      /** URL hospedada por Kapso (necesita API key) para el media entrante. */
+      media_url?: string | null;
+      media_data?: {
+        url?: string | null;
+        filename?: string | null;
+        content_type?: string | null;
+        byte_size?: number | null;
+      } | null;
+      /** Transcripción del audio, cuando Kapso la genera. */
+      transcript?: { text?: string | null } | null;
     };
   };
   conversation?: {
@@ -80,10 +90,15 @@ export interface ParsedInboundMessage {
   from: string;
   phoneNumberId: string;
   contactName: string | null;
-  /** Normalized text: body, caption, or tapped button/list title. Empty for
-   *  audio and caption-less media. */
+  /** Normalized text: body, caption, or tapped button/list title. Para audio,
+   *  la transcripción cuando Kapso la trae; si no, vacío. */
   text: string;
   kind: InboundKind;
+  /** URL de Kapso con los bytes del media (audio/imagen), si hay. */
+  mediaUrl: string | null;
+  mediaMime: string | null;
+  /** Transcripción cruda del audio (null si Kapso no la generó). */
+  transcript: string | null;
   receivedAt: Date;
 }
 
@@ -129,7 +144,9 @@ export function parseInboundMessage(
       kind = "media";
       break;
     case "audio":
-      text = "";
+      // La transcripción entra como texto: con ella el agente puede responder
+      // en vez de escalar toda nota de voz a un humano a ciegas.
+      text = m.kapso?.transcript?.text?.trim() ?? "";
       kind = "audio";
       break;
     default:
@@ -149,6 +166,7 @@ export function parseInboundMessage(
   const receivedAt =
     Number.isFinite(tsNum) && tsNum > 0 ? new Date(tsNum * 1000) : new Date();
 
+  const kapso = m.kapso;
   return {
     waMessageId,
     from: from.replace(/\D/g, ""),
@@ -156,6 +174,9 @@ export function parseInboundMessage(
     contactName: root.conversation?.kapso?.contact_name ?? null,
     text,
     kind,
+    mediaUrl: kapso?.media_data?.url ?? kapso?.media_url ?? null,
+    mediaMime: kapso?.media_data?.content_type ?? null,
+    transcript: kapso?.transcript?.text?.trim() || null,
     receivedAt,
   };
 }

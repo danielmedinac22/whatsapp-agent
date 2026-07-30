@@ -2,6 +2,7 @@ import { eq } from "@wa/db";
 import {
   contacts,
   conversations,
+  messageMedia,
   messages,
   outboundMessages,
   type OutboundMessage,
@@ -13,8 +14,10 @@ import {
   KapsoApiError,
   classifyKapsoError,
   isWindowClosedError,
+  sendAudio,
   sendTemplate,
   sendText,
+  uploadMedia,
 } from "../kapso/client";
 import { isStatusAdvance } from "../kapso/delivery";
 import { getKapsoConnection } from "../kapso/connection";
@@ -54,6 +57,8 @@ interface EnqueueInput {
   template?: TemplateSend;
   /** Template to fall back to when a free-text send hits the closed 24h window. */
   fallbackTemplate?: TemplateSend;
+  /** Nota de voz: fila de message_media ya persistida. */
+  media?: { id: string; kind: "audio" };
 }
 
 export async function enqueueOutbound(input: EnqueueInput): Promise<{
@@ -78,6 +83,8 @@ export async function enqueueOutbound(input: EnqueueInput): Promise<{
       templateParams: input.template?.params ?? null,
       fallbackTemplateName: input.fallbackTemplate?.name ?? null,
       fallbackTemplateParams: input.fallbackTemplate?.params ?? null,
+      mediaId: input.media?.id ?? null,
+      mediaKind: input.media?.kind ?? null,
       scheduledFor,
     })
     .onConflictDoNothing({ target: outboundMessages.dedupKey })
@@ -305,8 +312,44 @@ async function handleOutbound(payload: OutboundJob): Promise<void> {
   let waId: string | null = null;
   // What actually went out — mirrors into `messages` for the chat history.
   let sentBody = row.body;
+  let mediaMime: string | null = null;
   try {
-    if (row.templateName) {
+    if (row.mediaId) {
+      // Nota de voz: los bytes ya están guardados; solo falta que Meta tenga
+      // su copia. El media id se cachea para que un reintento no re-suba.
+      const [media] = await db
+        .select()
+        .from(messageMedia)
+        .where(eq(messageMedia.id, row.mediaId))
+        .limit(1);
+      if (!media) {
+        await markPermanent(row, new Error("media row not found"));
+        return;
+      }
+      mediaMime = media.mime;
+      let metaMediaId = media.metaMediaId;
+      if (!metaMediaId) {
+        const uploaded = await uploadMedia({
+          phoneNumberId,
+          bytes: media.bytes,
+          mime: media.mime,
+          filename: media.mime.includes("ogg") ? "nota-de-voz.ogg" : "audio",
+        });
+        metaMediaId = uploaded.mediaId;
+        await db
+          .update(messageMedia)
+          .set({ metaMediaId })
+          .where(eq(messageMedia.id, media.id));
+      }
+      const result = await sendAudio({
+        phoneNumberId,
+        to: row.toWaId,
+        mediaId: metaMediaId,
+        // `voice: true` solo es válido con ogg/opus.
+        voice: media.mime.includes("ogg"),
+      });
+      waId = result.waMessageId;
+    } else if (row.templateName) {
       const params = row.templateParams ?? [];
       if (await isTemplateApproved(row.templateName)) {
         const result = await sendTemplate({
@@ -399,6 +442,10 @@ async function handleOutbound(payload: OutboundJob): Promise<void> {
         waId,
         body: sentBody,
         status: "sent" as const,
+        // El hilo sirve el audio desde nuestro propio endpoint: la URL de Meta
+        // caduca en 5 minutos.
+        mediaUrl: row.mediaId ? `/api/media/${row.mediaId}` : null,
+        mediaMime,
         fromAgent: row.source === "agent",
         sentByUserId: row.sentByUserId ?? null,
       })
