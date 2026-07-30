@@ -11,9 +11,43 @@ import {
   asc,
   desc,
   eq,
+  ilike,
   inArray,
+  or,
   sql,
 } from "@wa/db";
+import type { SQL } from "drizzle-orm";
+
+/**
+ * Actividad más reciente de una conversación. GREATEST y no COALESCE: con
+ * COALESCE(lastInbound, …) una conversación donde el último mensaje es NUESTRO
+ * se quedaba anclada a la fecha del cliente y nunca subía al tope de la lista.
+ * GREATEST ignora los NULL y createdAt es NOT NULL, así que siempre hay valor.
+ */
+const lastActivityAt = sql`GREATEST(${conversations.lastInboundAt}, ${conversations.lastOutboundAt}, ${conversations.createdAt})`;
+
+/**
+ * Filtro del buscador del Inbox: nombre, teléfono y contenido de los mensajes.
+ * El teléfono se compara sobre solo-dígitos en ambos lados para que "+502 3689"
+ * y "5023689" encuentren lo mismo.
+ */
+function conversationSearchFilter(term: string): SQL | undefined {
+  const like = `%${term}%`;
+  const parts: Array<SQL | undefined> = [
+    ilike(contacts.name, like),
+    ilike(contacts.pushName, like),
+    sql`exists (select 1 from ${messages} where ${messages.conversationId} = ${conversations.id} and ${messages.body} ilike ${like})`,
+  ];
+  const digits = term.replace(/\D/g, "");
+  if (digits.length >= 3) {
+    const digitsLike = `%${digits}%`;
+    parts.push(
+      sql`regexp_replace(coalesce(${contacts.phone}, ''), '[^0-9]', '', 'g') like ${digitsLike}`,
+    );
+    parts.push(sql`coalesce(${contacts.waId}, '') like ${digitsLike}`);
+  }
+  return or(...parts);
+}
 
 export type DropiSummary = {
   status: typeof dropiOrders.$inferSelect.status;
@@ -38,7 +72,15 @@ export type ConversationListItem = {
   shopify: ShopifySummary | null;
 };
 
-export async function listConversations(): Promise<ConversationListItem[]> {
+/**
+ * Lista del Inbox, ordenada por actividad real. `search` busca sobre TODAS las
+ * conversaciones (no solo las 200 que se muestran), que es el punto: encontrar
+ * a alguien de hace meses sin scrollear.
+ */
+export async function listConversations(
+  search?: string,
+): Promise<ConversationListItem[]> {
+  const term = search?.trim();
   const rows = await db
     .select({
       conversation: conversations,
@@ -46,11 +88,8 @@ export async function listConversations(): Promise<ConversationListItem[]> {
     })
     .from(conversations)
     .innerJoin(contacts, eq(conversations.contactId, contacts.id))
-    .orderBy(
-      desc(
-        sql`COALESCE(${conversations.lastInboundAt}, ${conversations.lastOutboundAt}, ${conversations.createdAt})`,
-      ),
-    )
+    .where(term ? conversationSearchFilter(term) : undefined)
+    .orderBy(desc(lastActivityAt))
     .limit(200);
 
   const contactIds = rows.map((r) => r.contact.id);
@@ -177,11 +216,7 @@ export async function listRecentConversationOptions(limit = 25) {
     })
     .from(conversations)
     .innerJoin(contacts, eq(conversations.contactId, contacts.id))
-    .orderBy(
-      desc(
-        sql`COALESCE(${conversations.lastInboundAt}, ${conversations.lastOutboundAt}, ${conversations.createdAt})`,
-      ),
-    )
+    .orderBy(desc(lastActivityAt))
     .limit(limit);
 
   return rows.map((r) => ({

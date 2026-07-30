@@ -5,9 +5,26 @@ import { InboxClient } from "./inbox-client";
 
 export const dynamic = "force-dynamic";
 
-export default async function InboxPage() {
+/** Actividad más reciente: el mayor de los tres, no el primero no-nulo. */
+function lastActivity(
+  lastInboundAt: Date | null,
+  lastOutboundAt: Date | null,
+  createdAt: Date,
+): Date {
+  return [lastInboundAt, lastOutboundAt, createdAt].reduce<Date>(
+    (max, d) => (d && d > max ? d : max),
+    createdAt,
+  );
+}
+
+export default async function InboxPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string }>;
+}) {
+  const { q } = await searchParams;
   const [items, [conn], approvedTemplates] = await Promise.all([
-    listConversations(),
+    listConversations(q),
     db
       .select({ assetsBaseUrl: dropiConnection.assetsBaseUrl })
       .from(dropiConnection)
@@ -43,12 +60,11 @@ export default async function InboxPage() {
         unread: i.conversation.unreadCount,
         confirmationStatus: i.conversation.confirmationStatus,
         confirmationSource: i.conversation.confirmationSource,
-        lastAt:
-          (
-            i.conversation.lastInboundAt ??
-            i.conversation.lastOutboundAt ??
-            i.conversation.createdAt
-          ).toISOString(),
+        lastAt: lastActivity(
+          i.conversation.lastInboundAt,
+          i.conversation.lastOutboundAt,
+          i.conversation.createdAt,
+        ).toISOString(),
         lastInboundAt: i.conversation.lastInboundAt?.toISOString() ?? null,
         dropiStatus: i.dropi?.status ?? null,
         dropiHasNovedad: i.dropi?.hasNovedad ?? false,
@@ -60,6 +76,7 @@ export default async function InboxPage() {
         producto: i.shopify?.producto ?? null,
       }))}
       approvedTemplates={approvedTemplates}
+      query={q ?? ""}
     />
   );
 }

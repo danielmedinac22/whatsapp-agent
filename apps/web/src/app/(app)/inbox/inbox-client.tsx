@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { buildReopenOptions, type ReopenOption } from "@/lib/reopen";
 import {
@@ -12,9 +12,11 @@ import {
   HelpCircle,
   MessageSquareText,
   Package,
+  Search,
   Send,
   Sparkles,
   Truck,
+  X,
   XCircle,
 } from "lucide-react";
 
@@ -158,14 +160,33 @@ const DROPI_META: Record<
 export function InboxClient({
   initial,
   approvedTemplates,
+  query,
 }: {
   initial: ChatItem[];
   approvedTemplates: string[];
+  /** Término de búsqueda vigente en la URL (?q=), resuelto en el servidor. */
+  query: string;
 }) {
   const router = useRouter();
   const [items, setItems] = useState<ChatItem[]>(initial);
   const [selected, setSelected] = useState<ChatItem | null>(initial[0] ?? null);
   const [filter, setFilter] = useState<FilterKey>("all");
+  const [search, setSearch] = useState(query);
+  const [searching, startSearch] = useTransition();
+
+  // La búsqueda vive en la URL y la resuelve el servidor sobre TODAS las
+  // conversaciones — la lista solo carga las 200 más recientes, así que un
+  // filtro local no encontraría a nadie de hace meses.
+  useEffect(() => {
+    if (search.trim() === query) return;
+    const timer = setTimeout(() => {
+      const term = search.trim();
+      startSearch(() => {
+        router.replace(term ? `/inbox?q=${encodeURIComponent(term)}` : "/inbox");
+      });
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [search, query, router]);
   const automatedCount = items.filter((item) => item.agentMode).length;
   const unreadCount = items.reduce((sum, item) => sum + item.unread, 0);
   const pendingCount = items.filter(
@@ -254,8 +275,30 @@ export function InboxClient({
 
       <div className="grid min-h-0 flex-1 gap-3 xl:grid-cols-[336px_1fr]">
         <aside className="app-card flex min-h-[520px] flex-col overflow-hidden">
-          <div className="flex items-center justify-between gap-2 border-b border-[var(--color-border)] px-3 py-2.5">
-            <p className="text-sm font-semibold">Conversaciones</p>
+          <div className="flex flex-col gap-2 border-b border-[var(--color-border)] px-3 py-2.5">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--color-text-soft)]" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Buscar nombre, teléfono o mensaje…"
+                className="app-input h-8 w-full pl-8 pr-8 text-xs"
+              />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch("")}
+                  title="Limpiar búsqueda"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--color-text-soft)] hover:text-[var(--color-text)]"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+            <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-semibold">
+              {query ? (searching ? "Buscando…" : "Resultados") : "Conversaciones"}
+            </p>
             <div className="flex items-center gap-2">
               <select
                 value={filter}
@@ -272,13 +315,16 @@ export function InboxClient({
                 {visibleItems.length}/{items.length}
               </span>
             </div>
+            </div>
           </div>
           <ul className="flex-1 overflow-y-auto p-2">
           {visibleItems.length === 0 && (
             <li className="p-4 text-center text-sm text-[var(--color-text-dim)]">
-              {items.length === 0
-                ? "No hay conversaciones todavía."
-                : "Sin resultados con este filtro."}
+              {query && items.length === 0
+                ? `Sin resultados para «${query}».`
+                : items.length === 0
+                  ? "No hay conversaciones todavía."
+                  : "Sin resultados con este filtro."}
             </li>
           )}
           {visibleItems.map((it) => {
