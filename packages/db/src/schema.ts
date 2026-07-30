@@ -92,8 +92,18 @@ export const dropiStatus = pgEnum("dropi_status", [
   "recolectado",
   "en_transito",
   "con_mensajero",
+  // El paquete llegó a la oficina de la transportadora y espera que el cliente
+  // lo reclame. Dropi lo reporta como ENTREGADO a nivel de pedido, así que sin
+  // este estado propio le decíamos "ya fue entregado" a quien no lo tiene.
+  "en_oficina",
   "entregado",
   "novedad",
+  // "NOVEDAD SOLUCIONADA": estado propio a propósito — mapearlo a `novedad`
+  // dispararía la escalación de una novedad que ya se resolvió.
+  "novedad_solucionada",
+  "devolucion",
+  "rechazado",
+  "retornado",
   "anulada",
 ]);
 
@@ -107,6 +117,7 @@ export const templateType = pgEnum("template_type", [
   "dropi_en_transito",
   "dropi_con_mensajero",
   "dropi_entregado",
+  "dropi_en_oficina",
 ]);
 
 export const dropiMatchConfidence = pgEnum("dropi_match_confidence", [
@@ -402,6 +413,10 @@ export const agentSettings = pgTable("agent_settings", {
     () => templates.id,
     { onDelete: "set null" },
   ),
+  dropiTemplateEnOficinaId: uuid("dropi_template_en_oficina_id").references(
+    () => templates.id,
+    { onDelete: "set null" },
+  ),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -537,6 +552,14 @@ export const dropiOrders = pgTable(
     carrier: text("carrier"),
     status: dropiStatus("status").notNull().default("unknown"),
     rawStatus: text("raw_status"),
+    /**
+     * Último movimiento reportado por la transportadora, tal cual lo da Dropi
+     * (`servientrega_movements[].nom_mov`). Es la situación logística real —
+     * más fina que el status del pedido — y por eso se materializa en columna:
+     * los filtros de Pedidos no pueden desempaquetar 1 259 arrays JSON.
+     */
+    lastMovementRaw: text("last_movement_raw"),
+    lastMovementAt: timestamp("last_movement_at", { withTimezone: true }),
     rawPayload: jsonb("raw_payload"),
     matchConfidence: dropiMatchConfidence("match_confidence"),
     confirmPutAt: timestamp("confirm_put_at", { withTimezone: true }),

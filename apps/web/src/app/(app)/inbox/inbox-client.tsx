@@ -7,6 +7,7 @@ import {
   AlertCircle,
   AlertTriangle,
   Bot,
+  Building2,
   Check,
   CheckCheck,
   CheckCircle2,
@@ -20,6 +21,7 @@ import {
   Send,
   Sparkles,
   Truck,
+  Undo2,
   X,
   XCircle,
 } from "lucide-react";
@@ -39,8 +41,13 @@ export type DropiStatus =
   | "recolectado"
   | "en_transito"
   | "con_mensajero"
+  | "en_oficina"
   | "entregado"
   | "novedad"
+  | "novedad_solucionada"
+  | "devolucion"
+  | "rechazado"
+  | "retornado"
   | "anulada";
 
 export type ChatItem = {
@@ -146,6 +153,11 @@ const DROPI_META: Record<
     classes: "border-sky-400/30 bg-sky-500/10 text-sky-200",
     icon: Truck,
   },
+  en_oficina: {
+    label: "en oficina",
+    classes: "border-orange-400/30 bg-orange-500/10 text-orange-200",
+    icon: Building2,
+  },
   entregado: {
     label: "entregado",
     classes: "border-emerald-400/30 bg-emerald-500/10 text-emerald-200",
@@ -155,6 +167,26 @@ const DROPI_META: Record<
     label: "novedad",
     classes: "border-red-400/30 bg-red-500/10 text-red-200",
     icon: AlertTriangle,
+  },
+  novedad_solucionada: {
+    label: "novedad resuelta",
+    classes: "border-emerald-400/30 bg-emerald-500/10 text-emerald-200",
+    icon: CheckCircle2,
+  },
+  devolucion: {
+    label: "devolución",
+    classes: "border-amber-400/30 bg-amber-500/10 text-amber-200",
+    icon: Undo2,
+  },
+  rechazado: {
+    label: "rechazado",
+    classes: "border-red-400/30 bg-red-500/10 text-red-200",
+    icon: XCircle,
+  },
+  retornado: {
+    label: "retornado",
+    classes: "border-amber-400/30 bg-amber-500/10 text-amber-200",
+    icon: Undo2,
   },
   anulada: {
     label: "anulada",
@@ -167,15 +199,22 @@ export function InboxClient({
   initial,
   approvedTemplates,
   query,
+  selectedId,
 }: {
   initial: ChatItem[];
   approvedTemplates: string[];
   /** Término de búsqueda vigente en la URL (?q=), resuelto en el servidor. */
   query: string;
+  /** Conversación pedida por URL (?c=), p. ej. desde un pedido. */
+  selectedId: string | null;
 }) {
   const router = useRouter();
   const [items, setItems] = useState<ChatItem[]>(initial);
-  const [selected, setSelected] = useState<ChatItem | null>(initial[0] ?? null);
+  const [selected, setSelected] = useState<ChatItem | null>(
+    (selectedId ? initial.find((i) => i.id === selectedId) : null) ??
+      initial[0] ??
+      null,
+  );
   const [filter, setFilter] = useState<FilterKey>("all");
   const [search, setSearch] = useState(query);
   const [searching, startSearch] = useTransition();
@@ -235,6 +274,19 @@ export function InboxClient({
     });
     return () => es.close();
   }, [router]);
+
+  // Un ?c= nuevo (salto desde Pedidos) selecciona esa conversación una sola
+  // vez: si se reaplicara en cada refresh del servidor, pisaría el click del
+  // asesor cada vez que entra un mensaje.
+  const appliedSelectedId = useRef<string | null>(null);
+  useEffect(() => {
+    if (!selectedId || appliedSelectedId.current === selectedId) return;
+    const target = initial.find((i) => i.id === selectedId);
+    if (target) {
+      appliedSelectedId.current = selectedId;
+      setSelected(target);
+    }
+  }, [selectedId, initial]);
 
   // resync local list when server sends new initial
   useEffect(() => {

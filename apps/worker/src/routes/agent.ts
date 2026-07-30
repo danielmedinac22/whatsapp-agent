@@ -62,6 +62,7 @@ agent.put("/settings", async (c) => {
     dropiTemplateEnTransitoId: v.dropiTemplateEnTransitoId,
     dropiTemplateConMensajeroId: v.dropiTemplateConMensajeroId,
     dropiTemplateEntregadoId: v.dropiTemplateEntregadoId,
+    dropiTemplateEnOficinaId: v.dropiTemplateEnOficinaId,
     updatedAt: new Date(),
   };
   await db

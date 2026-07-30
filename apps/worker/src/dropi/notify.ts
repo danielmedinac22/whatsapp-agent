@@ -13,6 +13,7 @@ import { contactWaId } from "../lib/phone";
 import { extractOrderVariables } from "../shopify/extract";
 import {
   CON_MENSAJERO_TEMPLATE,
+  EN_OFICINA_TEMPLATE,
   EN_TRANSITO_TEMPLATE,
   ENTREGADO_TEMPLATE,
   GUIA_GENERADA_TEMPLATE,
@@ -32,6 +33,7 @@ const NOTIFIABLE: DropiStatus[] = [
   "recolectado",
   "en_transito",
   "con_mensajero",
+  "en_oficina",
   "entregado",
 ];
 
@@ -48,6 +50,8 @@ function templateIdFor(
       return s.dropiTemplateEnTransitoId;
     case "con_mensajero":
       return s.dropiTemplateConMensajeroId;
+    case "en_oficina":
+      return s.dropiTemplateEnOficinaId;
     case "entregado":
       return s.dropiTemplateEntregadoId;
     default:
@@ -58,9 +62,15 @@ function templateIdFor(
 /** Meta template + positional params for a notifiable Dropi status. */
 function metaTemplateFor(
   status: DropiStatus,
-  vars: { nombre: string; guia: string; transportadora: string; pdfGuia: string },
+  vars: {
+    nombre: string;
+    guia: string;
+    transportadora: string;
+    pdfGuia: string;
+    ciudad: string;
+  },
 ): { name: string; params: string[] } | null {
-  const { nombre, guia, transportadora, pdfGuia } = vars;
+  const { nombre, guia, transportadora, pdfGuia, ciudad } = vars;
   switch (status) {
     case "guia_generada":
       return {
@@ -73,6 +83,11 @@ function metaTemplateFor(
       return { name: EN_TRANSITO_TEMPLATE, params: [nombre, guia, transportadora] };
     case "con_mensajero":
       return { name: CON_MENSAJERO_TEMPLATE, params: [nombre, guia] };
+    case "en_oficina":
+      return {
+        name: EN_OFICINA_TEMPLATE,
+        params: [nombre, guia, transportadora, ciudad],
+      };
     case "entregado":
       return { name: ENTREGADO_TEMPLATE, params: [nombre] };
     default:
@@ -138,6 +153,15 @@ async function sendStatusNotification(order: DropiOrder): Promise<boolean> {
     guia: sanitizeParam(order.guideNumber ?? "en generación"),
     transportadora: sanitizeParam(order.carrier ?? "la transportadora"),
     pdfGuia: sanitizeParam(pdfGuia, 500),
+    // Dropi no dice en qué oficina quedó el paquete; la ciudad del pedido es
+    // lo más concreto que podemos darle al cliente.
+    ciudad: sanitizeParam(
+      String(
+        (order.rawPayload as { city?: unknown } | null)?.city ??
+          shopifyVars.ciudad ??
+          "",
+      ).trim() || "tu ciudad",
+    ),
   });
   if (!tpl) return false;
 

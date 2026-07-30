@@ -38,6 +38,7 @@ export default async function AgentPage() {
           dropiMatchWindowDays: settings?.dropiMatchWindowDays ?? 5,
           dropiTemplateGuiaId: settings?.dropiTemplateGuiaId ?? null,
           dropiTemplateRecolectadoId: settings?.dropiTemplateRecolectadoId ?? null,
+          dropiTemplateEnOficinaId: settings?.dropiTemplateEnOficinaId ?? null,
           dropiTemplateEnTransitoId: settings?.dropiTemplateEnTransitoId ?? null,
           dropiTemplateConMensajeroId:
             settings?.dropiTemplateConMensajeroId ?? null,

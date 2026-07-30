@@ -147,6 +147,27 @@ const GUIA_ENTREGADA: WaTemplateDefinition = {
   footer: FOOTER,
 };
 
+// El paquete quedó en la oficina de la transportadora. Dropi no dice CUÁL
+// oficina (el movimiento solo trae nombre y fecha), así que el copy se queda en
+// transportadora + ciudad e invita a responder: dos tercios de estos clientes
+// esperaban entrega a domicilio, y su respuesta reabre la ventana de 24h para
+// que el asesor o el agente resuelva el caso concreto.
+const GUIA_EN_OFICINA: WaTemplateDefinition = {
+  name: "guia_en_oficina",
+  language: "es",
+  category: "UTILITY",
+  bodyText:
+    "Hola {{nombre}} 📦 Tu pedido con guía {{guia}} quedó en la oficina de {{transportadora}} en {{ciudad}} y te espera ahí para que lo reclames.\nLleva tu documento de identidad. Si necesitas la dirección exacta o prefieres que intentemos entregarlo de nuevo, responde este mensaje y lo coordinamos 🙌",
+  params: [
+    { name: "nombre", example: "María" },
+    { name: "guia", example: "240012345678" },
+    { name: "transportadora", example: "Forza" },
+    { name: "ciudad", example: "Quetzaltenango" },
+  ],
+  buttons: ["Necesito la dirección", "Reintentar entrega"],
+  footer: FOOTER,
+};
+
 const NOVEDAD_ENTREGA: WaTemplateDefinition = {
   name: "novedad_entrega",
   language: "es",
@@ -253,6 +274,7 @@ export const VORARE_TEMPLATES: WaTemplateDefinition[] = [
   GUIA_EN_TRANSITO,
   GUIA_EN_REPARTO,
   GUIA_ENTREGADA,
+  GUIA_EN_OFICINA,
   NOVEDAD_ENTREGA,
   GUIA_GENERADA_V2,
   REMARKETING_RECOMPRA_MES,
@@ -272,6 +294,7 @@ export const RECOLECTADO_TEMPLATE: string = GUIA_RECOLECTADA.name;
 export const EN_TRANSITO_TEMPLATE: string = GUIA_EN_TRANSITO.name;
 export const CON_MENSAJERO_TEMPLATE: string = GUIA_EN_REPARTO.name;
 export const ENTREGADO_TEMPLATE: string = GUIA_ENTREGADA.name;
+export const EN_OFICINA_TEMPLATE: string = GUIA_EN_OFICINA.name;
 export const NOVEDAD_TEMPLATE: string = NOVEDAD_ENTREGA.name;
 export const RECOMPRA_TEMPLATE: string = REMARKETING_RECOMPRA_MES.name;
 export const REABRIR_TEMPLATE: string = REABRIR_V2.name;

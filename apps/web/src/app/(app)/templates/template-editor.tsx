@@ -26,6 +26,7 @@ const TYPE_LABELS: Record<TemplateType, string> = {
   dropi_en_transito: "Dropi · en tránsito",
   dropi_con_mensajero: "Dropi · con mensajero",
   dropi_entregado: "Dropi · entregado",
+  dropi_en_oficina: "Dropi · en oficina",
 };
 
 type Props = {

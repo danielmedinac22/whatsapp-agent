@@ -127,6 +127,13 @@
       "when": 1785411723494,
       "tag": "0017_early_moonstone",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1785412658573,
+      "tag": "0018_magical_james_howlett",
+      "breakpoints": true
     }
   ]
 }

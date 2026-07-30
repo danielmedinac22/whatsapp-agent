@@ -19,6 +19,7 @@ export const templateTypeValues = [
   "dropi_en_transito",
   "dropi_con_mensajero",
   "dropi_entregado",
+  "dropi_en_oficina",
 ] as const;
 export type TemplateType = (typeof templateTypeValues)[number];
 
@@ -50,6 +51,7 @@ export const agentSettingsInput = z.object({
   dropiTemplateEnTransitoId: z.string().uuid().nullable().default(null),
   dropiTemplateConMensajeroId: z.string().uuid().nullable().default(null),
   dropiTemplateEntregadoId: z.string().uuid().nullable().default(null),
+  dropiTemplateEnOficinaId: z.string().uuid().nullable().default(null),
 });
 export type AgentSettingsInput = z.infer<typeof agentSettingsInput>;
 

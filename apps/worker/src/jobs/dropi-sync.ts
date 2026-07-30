@@ -9,7 +9,7 @@ import {
 import { db } from "../db";
 import { logger } from "../lib/logger";
 import { listAllOrders, type DropiOrderRow } from "../dropi/orders";
-import { normalizeDropiStatus } from "../dropi/normalize";
+import { deriveDropiState } from "../dropi/normalize";
 import { maybeNotifyDropiStatus } from "../dropi/notify";
 import { nameSimilarity, normalizePhone } from "../lib/match";
 import { DROPI_SYNC_QUEUE, getBoss } from "./queue";
@@ -120,7 +120,7 @@ function parseCreatedAt(s: string | null): Date | null {
 }
 
 async function upsertDropiOrder(row: DropiOrderRow, windowDays: number) {
-  const { status } = normalizeDropiStatus(row.status);
+  const state = deriveDropiState(row.status, row.raw);
   const phone = normalizePhone(row.customer_phone);
   const createdAt = parseCreatedAt(row.created_at);
 
@@ -145,8 +145,10 @@ async function upsertDropiOrder(row: DropiOrderRow, windowDays: number) {
   }
 
   const patch: Partial<DropiOrder> = {
-    status,
+    status: state.status,
     rawStatus: row.status,
+    lastMovementRaw: state.lastMovement,
+    lastMovementAt: state.lastMovementAt,
     rawPayload: row.raw,
     customerPhone: phone,
     customerName: row.customer_name,

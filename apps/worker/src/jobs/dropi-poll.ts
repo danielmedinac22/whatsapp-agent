@@ -3,7 +3,7 @@ import { agentSettings, dropiOrders, type DropiOrder } from "@wa/db";
 import { db } from "../db";
 import { logger } from "../lib/logger";
 import { listAllOrders, type DropiOrderRow } from "../dropi/orders";
-import { normalizeDropiStatus } from "../dropi/normalize";
+import { deriveDropiState } from "../dropi/normalize";
 import { maybeNotifyDropiStatus } from "../dropi/notify";
 import { DROPI_POLL_QUEUE, getBoss } from "./queue";
 
@@ -22,7 +22,8 @@ async function processRow(
   row: DropiOrderRow,
   s: typeof agentSettings.$inferSelect,
 ): Promise<{ updated: boolean; notified: boolean }> {
-  const { status: newStatus } = normalizeDropiStatus(row.status);
+  const state = deriveDropiState(row.status, row.raw);
+  const newStatus = state.status;
 
   const [existing] = await db
     .select()
@@ -34,7 +35,9 @@ async function processRow(
   const statusChanged = existing.status !== newStatus;
   const guideChanged = existing.guideNumber !== row.guide_number;
   const carrierChanged = existing.carrier !== row.carrier;
-  const anyChange = statusChanged || guideChanged || carrierChanged;
+  const movementChanged = existing.lastMovementRaw !== state.lastMovement;
+  const anyChange =
+    statusChanged || guideChanged || carrierChanged || movementChanged;
 
   if (anyChange) {
     await db
@@ -42,6 +45,8 @@ async function processRow(
       .set({
         status: newStatus,
         rawStatus: row.status,
+        lastMovementRaw: state.lastMovement,
+        lastMovementAt: state.lastMovementAt,
         guideNumber: row.guide_number,
         guidePdfPath: row.guide_pdf_path,
         guidePdfFile: row.guide_pdf_file,

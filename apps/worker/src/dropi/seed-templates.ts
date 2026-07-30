@@ -9,7 +9,8 @@ type DropiSettingsField =
   | "dropiTemplateRecolectadoId"
   | "dropiTemplateEnTransitoId"
   | "dropiTemplateConMensajeroId"
-  | "dropiTemplateEntregadoId";
+  | "dropiTemplateEntregadoId"
+  | "dropiTemplateEnOficinaId";
 
 interface DefaultTemplate {
   name: string;
@@ -48,6 +49,12 @@ const DEFAULTS: DefaultTemplate[] = [
     type: "dropi_entregado",
     agentSettingsField: "dropiTemplateEntregadoId",
     body: "Hola {{nombre}}, muchísimas gracias por tu compra 🙌. Tu pedido ya fue entregado. ¡Esperamos verte de nuevo pronto!",
+  },
+  {
+    name: "dropi_en_oficina",
+    type: "dropi_en_oficina",
+    agentSettingsField: "dropiTemplateEnOficinaId",
+    body: "Hola {{nombre}}, tu pedido con guía {{guia}} quedó en la oficina de {{transportadora}} en {{ciudad}} y te espera ahí para que lo reclames. Responde este mensaje si necesitas la dirección exacta o si prefieres que intentemos entregarlo de nuevo.",
   },
 ];
 

@@ -8,15 +8,18 @@ import {
   shopifyOrders,
   dropiOrders,
   waTemplates,
+  and,
   asc,
   desc,
   eq,
   ilike,
   inArray,
+  isNotNull,
   or,
   sql,
 } from "@wa/db";
 import type { SQL } from "drizzle-orm";
+import { situationByKey } from "@wa/shared";
 
 /**
  * Actividad más reciente de una conversación. GREATEST y no COALESCE: con
@@ -81,27 +84,41 @@ export type ConversationListItem = {
  */
 export async function listConversations(
   search?: string,
+  /** Conversación que debe aparecer aunque quede fuera del corte o del filtro
+   *  (el salto desde Pedidos apunta a una concreta, que puede ser vieja). */
+  pinnedId?: string,
 ): Promise<ConversationListItem[]> {
   const term = search?.trim();
+  const selection = {
+    conversation: conversations,
+    contact: contacts,
+    // "Lo último que le mandamos no llegó", no "alguna vez falló algo":
+    // un fallo viejo ya resuelto no debe marcar la conversación.
+    lastOutboundFailed: sql<boolean>`coalesce((
+      select m.status = 'failed'
+      from ${messages} m
+      where m.conversation_id = ${conversations.id} and m.direction = 'out'
+      order by m.created_at desc
+      limit 1
+    ), false)`,
+  };
   const rows = await db
-    .select({
-      conversation: conversations,
-      contact: contacts,
-      // "Lo último que le mandamos no llegó", no "alguna vez falló algo":
-      // un fallo viejo ya resuelto no debe marcar la conversación.
-      lastOutboundFailed: sql<boolean>`coalesce((
-        select m.status = 'failed'
-        from ${messages} m
-        where m.conversation_id = ${conversations.id} and m.direction = 'out'
-        order by m.created_at desc
-        limit 1
-      ), false)`,
-    })
+    .select(selection)
     .from(conversations)
     .innerJoin(contacts, eq(conversations.contactId, contacts.id))
     .where(term ? conversationSearchFilter(term) : undefined)
     .orderBy(desc(lastActivityAt))
     .limit(200);
+
+  if (pinnedId && !rows.some((r) => r.conversation.id === pinnedId)) {
+    const [pinned] = await db
+      .select(selection)
+      .from(conversations)
+      .innerJoin(contacts, eq(conversations.contactId, contacts.id))
+      .where(eq(conversations.id, pinnedId))
+      .limit(1);
+    if (pinned) rows.unshift(pinned);
+  }
 
   const contactIds = rows.map((r) => r.contact.id);
   if (contactIds.length === 0) {
@@ -271,17 +288,122 @@ export async function listShopifyOrders(limit = 50) {
     .limit(limit);
 }
 
-export async function listShopifyOrdersWithDropi(limit = 200) {
+export type OrderFilters = {
+  /** Texto libre: número de pedido, nombre o teléfono. */
+  q?: string;
+  shopifyStatus?: string;
+  dropiStatus?: string;
+  carrier?: string;
+  match?: string;
+  /** Clave de LOGISTIC_SITUATIONS. */
+  situacion?: string;
+};
+
+/**
+ * Pedidos con su cruce de Dropi, filtrados EN EL SERVIDOR: son 1 195 y la
+ * página solo puede mostrar unos cientos, así que un filtro en el cliente
+ * dejaría fuera justo lo que se busca. Tampoco se envían los rawPayload de
+ * Shopify y Dropi, que hacían el payload enorme sin que la tabla los use.
+ */
+export async function listShopifyOrdersWithDropi(
+  filters: OrderFilters = {},
+  limit = 300,
+) {
+  const where: Array<SQL | undefined> = [];
+
+  const term = filters.q?.trim();
+  if (term) {
+    const like = `%${term}%`;
+    const digits = term.replace(/\D/g, "");
+    const parts: Array<SQL | undefined> = [
+      ilike(shopifyOrders.orderId, like),
+      ilike(shopifyOrders.customerName, like),
+      ilike(dropiOrders.customerName, like),
+      sql`coalesce(${dropiOrders.guideNumber}, '') ilike ${like}`,
+    ];
+    if (digits.length >= 3) {
+      const digitsLike = `%${digits}%`;
+      parts.push(
+        sql`regexp_replace(${shopifyOrders.customerPhone}, '[^0-9]', '', 'g') like ${digitsLike}`,
+      );
+      parts.push(sql`${dropiOrders.dropiOrderId}::text like ${digitsLike}`);
+    }
+    where.push(or(...parts));
+  }
+  if (filters.shopifyStatus) {
+    where.push(sql`${shopifyOrders.status}::text = ${filters.shopifyStatus}`);
+  }
+  if (filters.dropiStatus) {
+    where.push(sql`${dropiOrders.status}::text = ${filters.dropiStatus}`);
+  }
+  if (filters.carrier) {
+    where.push(eq(dropiOrders.carrier, filters.carrier));
+  }
+  if (filters.match) {
+    where.push(
+      filters.match === "none"
+        ? sql`${dropiOrders.id} is null`
+        : sql`${dropiOrders.matchConfidence}::text = ${filters.match}`,
+    );
+  }
+  const situation = filters.situacion
+    ? situationByKey(filters.situacion)
+    : null;
+  if (situation) {
+    // La lista se arma con sql.join: interpolar el array directo hace que
+    // drizzle lo expanda como placeholders sueltos ($1, $2…) y Postgres
+    // rechaza tanto `IN $1, $2` como `any($1, $2)`.
+    const movements = sql.join(
+      situation.movements.map((m) => sql`${m}`),
+      sql`, `,
+    );
+    where.push(
+      sql`upper(coalesce(${dropiOrders.lastMovementRaw}, '')) in (${movements})`,
+    );
+  }
+
   return db
     .select({
-      shopify: shopifyOrders,
-      dropi: dropiOrders,
+      shopify: {
+        id: shopifyOrders.id,
+        orderId: shopifyOrders.orderId,
+        customerName: shopifyOrders.customerName,
+        customerPhone: shopifyOrders.customerPhone,
+        receivedAt: shopifyOrders.receivedAt,
+        status: shopifyOrders.status,
+      },
+      dropi: {
+        id: dropiOrders.id,
+        dropiOrderId: dropiOrders.dropiOrderId,
+        status: dropiOrders.status,
+        guideNumber: dropiOrders.guideNumber,
+        carrier: dropiOrders.carrier,
+        matchConfidence: dropiOrders.matchConfidence,
+        confirmPutAt: dropiOrders.confirmPutAt,
+        confirmDryRunAt: dropiOrders.confirmDryRunAt,
+        guidePdfPath: dropiOrders.guidePdfPath,
+        lastMovementRaw: dropiOrders.lastMovementRaw,
+        lastMovementAt: dropiOrders.lastMovementAt,
+      },
+      // Salto directo al chat del cliente desde el pedido.
+      conversationId: conversations.id,
     })
     .from(shopifyOrders)
-    .leftJoin(
-      dropiOrders,
-      eq(dropiOrders.shopifyOrderRowId, shopifyOrders.id),
-    )
+    .leftJoin(dropiOrders, eq(dropiOrders.shopifyOrderRowId, shopifyOrders.id))
+    .leftJoin(conversations, eq(conversations.contactId, shopifyOrders.contactId))
+    .where(where.length > 0 ? and(...where) : undefined)
     .orderBy(desc(shopifyOrders.receivedAt))
     .limit(limit);
+}
+
+/** Transportadoras presentes en los datos, para poblar el filtro. */
+export async function listCarriers(): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ carrier: dropiOrders.carrier })
+    .from(dropiOrders)
+    .where(isNotNull(dropiOrders.carrier));
+  return rows
+    .map((r) => r.carrier)
+    .filter((c): c is string => Boolean(c))
+    .sort();
 }

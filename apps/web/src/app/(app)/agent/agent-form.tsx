@@ -26,6 +26,7 @@ type Initial = {
   dropiTemplateEnTransitoId: string | null;
   dropiTemplateConMensajeroId: string | null;
   dropiTemplateEntregadoId: string | null;
+  dropiTemplateEnOficinaId: string | null;
 };
 
 type TemplateOption = { id: string; name: string; type: TemplateType };
@@ -332,6 +333,12 @@ export function AgentForm({
           value={v.dropiTemplateEntregadoId}
           onChange={(id) => setV({ ...v, dropiTemplateEntregadoId: id })}
           options={tplFor("dropi_entregado")}
+        />
+        <TemplateRow
+          label="En oficina (por reclamar)"
+          value={v.dropiTemplateEnOficinaId}
+          onChange={(id) => setV({ ...v, dropiTemplateEnOficinaId: id })}
+          options={tplFor("dropi_en_oficina")}
           last
         />
       </section>

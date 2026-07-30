@@ -20,11 +20,11 @@ function lastActivity(
 export default async function InboxPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; c?: string }>;
 }) {
-  const { q } = await searchParams;
+  const { q, c } = await searchParams;
   const [items, [conn], approvedTemplates] = await Promise.all([
-    listConversations(q),
+    listConversations(q, c),
     db
       .select({ assetsBaseUrl: dropiConnection.assetsBaseUrl })
       .from(dropiConnection)
@@ -78,6 +78,7 @@ export default async function InboxPage({
       }))}
       approvedTemplates={approvedTemplates}
       query={q ?? ""}
+      selectedId={c ?? null}
     />
   );
 }
