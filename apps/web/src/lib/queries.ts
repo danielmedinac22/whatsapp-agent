@@ -68,6 +68,8 @@ export type ShopifySummary = {
 export type ConversationListItem = {
   conversation: typeof conversations.$inferSelect;
   contact: typeof contacts.$inferSelect;
+  /** El último mensaje que enviamos no llegó — señal de número malo. */
+  lastOutboundFailed: boolean;
   dropi: DropiSummary | null;
   shopify: ShopifySummary | null;
 };
@@ -85,6 +87,15 @@ export async function listConversations(
     .select({
       conversation: conversations,
       contact: contacts,
+      // "Lo último que le mandamos no llegó", no "alguna vez falló algo":
+      // un fallo viejo ya resuelto no debe marcar la conversación.
+      lastOutboundFailed: sql<boolean>`coalesce((
+        select m.status = 'failed'
+        from ${messages} m
+        where m.conversation_id = ${conversations.id} and m.direction = 'out'
+        order by m.created_at desc
+        limit 1
+      ), false)`,
     })
     .from(conversations)
     .innerJoin(contacts, eq(conversations.contactId, contacts.id))

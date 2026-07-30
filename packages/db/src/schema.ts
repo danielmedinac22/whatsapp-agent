@@ -308,6 +308,8 @@ export const messages = pgTable(
     mediaUrl: text("media_url"),
     mediaMime: text("media_mime"),
     status: messageStatus("status").notNull().default("pending"),
+    /** Motivo legible cuando status = failed (lo que el asesor ve en el hilo). */
+    deliveryError: text("delivery_error"),
     sentByUserId: uuid("sent_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
@@ -601,6 +603,18 @@ export const outboundMessages = pgTable(
     }),
     status: outboundStatus("status").notNull().default("pending"),
     waId: text("wa_id"),
+    /**
+     * Último estado de entrega que Meta reportó por webhook, crudo. Existe
+     * porque el webhook de `delivered` suele llegar ANTES de que espejemos el
+     * mensaje en `messages` (medido: 98,6 % de los casos), y sin esto el chulo
+     * se congelaba en "enviado" para siempre. `status: acked` no sirve: colapsa
+     * delivered y read en un solo valor.
+     */
+    deliveryStatus: messageStatus("delivery_status"),
+    /** Motivo legible del fallo de entrega, para copiarlo al hilo. */
+    deliveryError: text("delivery_error"),
+    deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+    readAt: timestamp("read_at", { withTimezone: true }),
     attempts: integer("attempts").notNull().default(0),
     lastError: text("last_error"),
     lastErrorKind: outboundErrorKind("last_error_kind"),

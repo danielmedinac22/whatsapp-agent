@@ -120,6 +120,13 @@
       "when": 1785200999075,
       "tag": "0016_perfect_war_machine",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1785411723494,
+      "tag": "0017_early_moonstone",
+      "breakpoints": true
     }
   ]
 }

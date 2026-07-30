@@ -7,6 +7,7 @@ import {
   type OutboundMessage,
 } from "@wa/db";
 import { db } from "../db";
+import { events } from "../lib/events";
 import { logger } from "../lib/logger";
 import {
   KapsoApiError,
@@ -15,6 +16,7 @@ import {
   sendTemplate,
   sendText,
 } from "../kapso/client";
+import { isStatusAdvance } from "../kapso/delivery";
 import { getKapsoConnection } from "../kapso/connection";
 import { isTemplateApproved } from "../kapso/provisioning";
 import { renderTemplateBody } from "../kapso/templates";
@@ -142,11 +144,81 @@ function errorDetail(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-async function markPermanent(
-  id: string,
-  err: unknown,
-  attempts: number,
+/**
+ * Motivo en español del fallo de envío, para mostrarlo en el hilo.
+ *
+ * Un rechazo AL ENVIAR casi nunca significa "número malo": son ventana
+ * cerrada o configuración nuestra (WABA, phone_number_id, Kapso). El número
+ * inválido aparece después, como fallo de ENTREGA, y ese texto lo pone
+ * `metaErrorReason`. No los confundimos: el asesor decide a quién volver a
+ * llamar con base en esto.
+ */
+function humanSendError(err: unknown): string {
+  if (err instanceof KapsoApiError) {
+    if (err.status === 422) {
+      return "Fuera de la ventana de 24h — requiere plantilla aprobada.";
+    }
+    if (err.timedOut) return "WhatsApp no respondió al enviar.";
+    if (err.status === 401 || err.status === 403) {
+      return "WhatsApp rechazó las credenciales de envío.";
+    }
+    if (err.status === 404) {
+      return "No hay configuración de WhatsApp activa.";
+    }
+    return `WhatsApp rechazó el envío por un problema de configuración (error ${err.status}).`;
+  }
+  return "No se pudo enviar el mensaje.";
+}
+
+async function resolveConversationId(
+  row: OutboundMessage,
+): Promise<string | null> {
+  if (row.conversationId) return row.conversationId;
+  const [conv] = await db
+    .select({ id: conversations.id })
+    .from(conversations)
+    .innerJoin(contacts, eq(contacts.id, conversations.contactId))
+    .where(eq(contacts.waId, row.toWaId))
+    .limit(1);
+  return conv?.id ?? null;
+}
+
+/**
+ * Espeja un envío que murió en el hilo del chat. Sin esto el mensaje
+ * simplemente no existía para el asesor: veía un chat sin respuesta en vez de
+ * un mensaje marcado como no entregado, que es justo la señal que necesita
+ * para saber si el número está malo.
+ */
+async function mirrorFailedSend(
+  row: OutboundMessage,
+  reason: string,
 ): Promise<void> {
+  const conversationId = await resolveConversationId(row);
+  if (!conversationId) return;
+  const [stored] = await db
+    .insert(messages)
+    .values({
+      conversationId,
+      direction: "out" as const,
+      waId: row.waId, // null cuando nunca llegó a salir
+      body: row.body,
+      status: "failed" as const,
+      deliveryError: reason,
+      fromAgent: row.source === "agent",
+      sentByUserId: row.sentByUserId ?? null,
+    })
+    .onConflictDoNothing({ target: messages.waId })
+    .returning({ id: messages.id });
+  if (stored) {
+    events.emitEvent({
+      type: "message.created",
+      conversationId,
+      messageId: stored.id,
+    });
+  }
+}
+
+async function markPermanent(row: OutboundMessage, err: unknown): Promise<void> {
   await db
     .update(outboundMessages)
     .set({
@@ -154,10 +226,16 @@ async function markPermanent(
       failedAt: new Date(),
       lastError: errorDetail(err),
       lastErrorKind: "permanent",
-      attempts,
+      attempts: row.attempts + 1,
       updatedAt: new Date(),
     })
-    .where(eq(outboundMessages.id, id));
+    .where(eq(outboundMessages.id, row.id));
+  await mirrorFailedSend(row, humanSendError(err)).catch((mirrorErr) =>
+    logger.error(
+      { err: mirrorErr, outboundId: row.id },
+      "outbound: no se pudo espejar el fallo en el hilo",
+    ),
+  );
 }
 
 async function markTransientFailure(
@@ -197,9 +275,8 @@ async function handleOutbound(payload: OutboundJob): Promise<void> {
   // Body length is a permanent error — don't retry.
   if (!row.templateName && row.body.length > MAX_BODY_LEN) {
     await markPermanent(
-      row.id,
+      row,
       new Error(`body too long (${row.body.length} > ${MAX_BODY_LEN})`),
-      row.attempts + 1,
     );
     return;
   }
@@ -284,7 +361,7 @@ async function handleOutbound(payload: OutboundJob): Promise<void> {
   } catch (err) {
     const kind = classifyKapsoError(err);
     if (kind === "permanent") {
-      await markPermanent(row.id, err, row.attempts + 1);
+      await markPermanent(row, err);
       logger.warn(
         { outboundId: row.id, err: errorDetail(err) },
         "outbound: permanent failure, marked dead",
@@ -312,18 +389,9 @@ async function handleOutbound(payload: OutboundJob): Promise<void> {
   // Mirror the outbound into messages so the chat UI shows it for every source.
   // The Cloud API sends no echo of our own messages (statuses only), so this is
   // the single write — no race to resolve.
-  let convId = row.conversationId;
-  if (!convId) {
-    const [conv] = await db
-      .select({ id: conversations.id })
-      .from(conversations)
-      .innerJoin(contacts, eq(contacts.id, conversations.contactId))
-      .where(eq(contacts.waId, row.toWaId))
-      .limit(1);
-    convId = conv?.id ?? null;
-  }
+  const convId = await resolveConversationId(row);
   if (convId) {
-    await db
+    const [stored] = await db
       .insert(messages)
       .values({
         conversationId: convId,
@@ -334,7 +402,8 @@ async function handleOutbound(payload: OutboundJob): Promise<void> {
         fromAgent: row.source === "agent",
         sentByUserId: row.sentByUserId ?? null,
       })
-      .onConflictDoNothing({ target: messages.waId });
+      .onConflictDoNothing({ target: messages.waId })
+      .returning({ id: messages.id });
     await db
       .update(conversations)
       .set({
@@ -342,6 +411,39 @@ async function handleOutbound(payload: OutboundJob): Promise<void> {
         lastMessagePreview: sentBody.slice(0, 200),
       })
       .where(eq(conversations.id, convId));
+
+    // Meta suele confirmar la entrega ANTES de que llegue este insert, y el
+    // webhook no encuentra la fila que acaba de nacer. Aplicamos aquí lo que
+    // ya sepamos del outbound para que el chulo no se quede en "enviado".
+    if (stored) {
+      const [fresh] = await db
+        .select({
+          deliveryStatus: outboundMessages.deliveryStatus,
+          deliveryError: outboundMessages.deliveryError,
+        })
+        .from(outboundMessages)
+        .where(eq(outboundMessages.id, row.id))
+        .limit(1);
+      const advanced = fresh?.deliveryStatus;
+      // "pending" nunca se escribe en esta columna (solo la reporta Meta),
+      // pero el enum lo permite; descartarlo mantiene el tipo honesto.
+      if (advanced && advanced !== "pending" && isStatusAdvance("sent", advanced)) {
+        await db
+          .update(messages)
+          .set({
+            status: advanced,
+            ...(advanced === "failed"
+              ? { deliveryError: fresh.deliveryError }
+              : {}),
+          })
+          .where(eq(messages.id, stored.id));
+      }
+      events.emitEvent({
+        type: "message.created",
+        conversationId: convId,
+        messageId: stored.id,
+      });
+    }
   }
 
   logger.info(

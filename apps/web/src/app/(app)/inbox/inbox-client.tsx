@@ -4,9 +4,13 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { buildReopenOptions, type ReopenOption } from "@/lib/reopen";
 import {
+  AlertCircle,
   AlertTriangle,
   Bot,
+  Check,
+  CheckCheck,
   CheckCircle2,
+  Clock,
   CircleDashed,
   FileText,
   HelpCircle,
@@ -51,6 +55,8 @@ export type ChatItem = {
   orderNumber: string | null;
   producto: string | null;
   agentMode: boolean;
+  /** El último mensaje que enviamos no se entregó. */
+  deliveryFailed: boolean;
   preview: string | null;
   unread: number;
   confirmationStatus: ConfirmationStatus;
@@ -216,7 +222,10 @@ export function InboxClient({
         const ev = JSON.parse((e as MessageEvent).data);
         if (
           ev.type === "message.created" ||
-          ev.type === "conversation.updated"
+          ev.type === "conversation.updated" ||
+          // Los chulos de la lista solo cambian con un fallo; refrescar con
+          // cada delivered/read sería un refresh por cada mensaje enviado.
+          (ev.type === "message.status" && ev.status === "failed")
         ) {
           router.refresh();
         }
@@ -370,6 +379,15 @@ export function InboxClient({
                   {it.dropiStatus && it.dropiStatus !== "unknown" && (
                     <DropiChip status={it.dropiStatus} />
                   )}
+                  {it.deliveryFailed && (
+                    <span
+                      title="El último mensaje que enviamos no se entregó — revisa si el número es válido"
+                      className="inline-flex items-center gap-1 rounded-md border border-red-400/30 bg-red-500/10 px-2 py-0.5 text-[10px] uppercase text-red-200"
+                    >
+                      <AlertCircle className="h-3 w-3" />
+                      no entregado
+                    </span>
+                  )}
                   {it.dropiHasNovedad && it.dropiStatus !== "novedad" && (
                     <span className="inline-flex items-center gap-1 rounded-md border border-red-400/30 bg-red-500/10 px-2 py-0.5 text-[10px] uppercase text-red-200">
                       <AlertTriangle className="h-3 w-3" />
@@ -411,12 +429,48 @@ export function InboxClient({
   );
 }
 
+type MessageStatus = "pending" | "sent" | "delivered" | "read" | "failed";
+
 type Msg = {
   id: string;
   direction: "in" | "out";
   body: string;
   fromAgent: boolean;
+  status: MessageStatus;
+  deliveryError: string | null;
   createdAt: string;
+};
+
+/** Chulos de entrega, como en WhatsApp: reloj → 1 → 2 → 2 azules → error. */
+function DeliveryTicks({
+  status,
+}: {
+  status: MessageStatus;
+}) {
+  if (status === "failed") {
+    return <AlertCircle className="h-3 w-3 text-red-300" />;
+  }
+  if (status === "pending") {
+    return <Clock className="h-3 w-3 text-[var(--color-text-soft)]" />;
+  }
+  if (status === "sent") {
+    return <Check className="h-3 w-3 text-[var(--color-text-soft)]" />;
+  }
+  return (
+    <CheckCheck
+      className={`h-3 w-3 ${
+        status === "read" ? "text-sky-300" : "text-[var(--color-text-soft)]"
+      }`}
+    />
+  );
+}
+
+const STATUS_TITLE: Record<MessageStatus, string> = {
+  pending: "En cola",
+  sent: "Enviado a WhatsApp",
+  delivered: "Entregado en el teléfono del cliente",
+  read: "Leído por el cliente",
+  failed: "No entregado",
 };
 
 const SERVICE_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -518,7 +572,7 @@ function ConversationPane({
       try {
         const ev = JSON.parse((e as MessageEvent).data);
         if (
-          ev.type === "message.created" &&
+          (ev.type === "message.created" || ev.type === "message.status") &&
           ev.conversationId === chat.id
         ) {
           reload();
@@ -631,11 +685,21 @@ function ConversationPane({
                 m.direction === "out"
                   ? "bg-[image:var(--color-bubble-out)]"
                   : "bg-[image:var(--color-bubble-in)]"
+              } ${
+                m.status === "failed" && m.direction === "out"
+                  ? "border border-red-400/40"
+                  : ""
               }`}
             >
               <p className="whitespace-pre-wrap break-words">{m.body}</p>
+              {m.direction === "out" && m.status === "failed" && (
+                <p className="mt-1 text-[11px] leading-4 text-red-200">
+                  ⚠ No entregado
+                  {m.deliveryError ? ` · ${m.deliveryError}` : ""}
+                </p>
+              )}
               <p
-                className="mt-1 text-right text-[10px] uppercase text-[var(--color-text-dim)]"
+                className="mt-1 flex items-center justify-end gap-1 text-[10px] uppercase text-[var(--color-text-dim)]"
                 suppressHydrationWarning
               >
                 {m.fromAgent && "BOT "}
@@ -643,6 +707,11 @@ function ConversationPane({
                   hour: "2-digit",
                   minute: "2-digit",
                 })}
+                {m.direction === "out" && (
+                  <span title={STATUS_TITLE[m.status]} className="ml-0.5 flex">
+                    <DeliveryTicks status={m.status} />
+                  </span>
+                )}
               </p>
             </div>
           </div>

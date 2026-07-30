@@ -56,6 +56,7 @@ export default async function InboxPage({
           i.contact.waId ??
           i.contact.jid,
         agentMode: i.contact.agentMode,
+        deliveryFailed: i.lastOutboundFailed,
         preview: i.conversation.lastMessagePreview,
         unread: i.conversation.unreadCount,
         confirmationStatus: i.conversation.confirmationStatus,

@@ -1,6 +1,7 @@
 import { eq } from "@wa/db";
 import { messages, outboundMessages } from "@wa/db";
 import { db } from "../db";
+import { events } from "../lib/events";
 import { logger } from "../lib/logger";
 import type { ParsedStatusEvent } from "./inbound";
 
@@ -92,6 +93,11 @@ export function formatDeliveryError(s: ParsedStatusEvent): string {
   return `${reason}: ${detail}${code}`.slice(0, 500);
 }
 
+/** Motivo en español para mostrarle al asesor en el hilo (no para logs). */
+export function humanDeliveryError(s: ParsedStatusEvent): string {
+  return metaErrorReason(s.errorCode).text;
+}
+
 /**
  * Apply a delivery-status event to the matching `messages` and
  * `outbound_messages` rows (matched by wamid). Monotonic + idempotent; no-op
@@ -99,7 +105,11 @@ export function formatDeliveryError(s: ParsedStatusEvent): string {
  */
 export async function applyDeliveryStatus(s: ParsedStatusEvent): Promise<void> {
   const [msg] = await db
-    .select({ id: messages.id, status: messages.status })
+    .select({
+      id: messages.id,
+      status: messages.status,
+      conversationId: messages.conversationId,
+    })
     .from(messages)
     .where(eq(messages.waId, s.waMessageId))
     .limit(1);
@@ -107,16 +117,49 @@ export async function applyDeliveryStatus(s: ParsedStatusEvent): Promise<void> {
   if (msg && isStatusAdvance(msg.status, s.status)) {
     await db
       .update(messages)
-      .set({ status: s.status })
+      .set({
+        status: s.status,
+        ...(s.status === "failed"
+          ? { deliveryError: humanDeliveryError(s) }
+          : {}),
+      })
       .where(eq(messages.id, msg.id));
+    events.emitEvent({
+      type: "message.status",
+      conversationId: msg.conversationId,
+      messageId: msg.id,
+      status: s.status,
+    });
   }
 
   const [outbound] = await db
-    .select({ id: outboundMessages.id, status: outboundMessages.status })
+    .select({
+      id: outboundMessages.id,
+      status: outboundMessages.status,
+      deliveryStatus: outboundMessages.deliveryStatus,
+    })
     .from(outboundMessages)
     .where(eq(outboundMessages.waId, s.waMessageId))
     .limit(1);
   if (!outbound) return;
+
+  // El estado crudo se guarda SIEMPRE, aunque el espejo en `messages` no
+  // exista todavía: handleOutbound lo aplica al insertar la fila. Sin esto la
+  // carrera entre el webhook y el espejo perdía el chulo definitivamente.
+  if (isStatusAdvance(outbound.deliveryStatus, s.status)) {
+    await db
+      .update(outboundMessages)
+      .set({
+        deliveryStatus: s.status,
+        ...(s.status === "failed"
+          ? { deliveryError: humanDeliveryError(s) }
+          : {}),
+        ...(s.status === "delivered" ? { deliveredAt: new Date() } : {}),
+        ...(s.status === "read" ? { readAt: new Date() } : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(outboundMessages.id, outbound.id));
+  }
 
   if (s.status === "failed") {
     // Post-accept failure from Meta (e.g. undeliverable): mark it so the
