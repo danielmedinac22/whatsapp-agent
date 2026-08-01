@@ -147,6 +147,33 @@ const GUIA_ENTREGADA: WaTemplateDefinition = {
   footer: FOOTER,
 };
 
+// v2: la v1 se estaba cobrando como MARKETING (~US$0,07/envío, ~US$20/mes) por
+// tres señales — la invitación a volver, el agradecimiento como línea principal
+// y cero datos de la transacción. Es la única del flujo de tracking sin
+// {{guia}}, y es justo la única que Meta reclasificó.
+// Esta versión es puramente transaccional (confirmación + identificadores +
+// soporte post-entrega), que es lo que Meta lee como UTILITY — y una UTILITY
+// dentro de la ventana de 24h abierta no se cobra.
+// El "gracias / vuelve pronto" no se pierde: cualquiera de los dos botones
+// reabre la ventana y se responde en texto libre, gratis. La recompra ya la
+// cubre REMARKETING_RECOMPRA_MES, segmentada y al mes.
+// Bonus COD: detecta paquetes marcados como entregados que el cliente nunca
+// recibió, y "Recibí todo bien" deja constancia útil ante la transportadora.
+const GUIA_ENTREGADA_V2: WaTemplateDefinition = {
+  name: "guia_entregada_v2",
+  language: "es",
+  category: "UTILITY",
+  bodyText:
+    "Hola {{nombre}} ✅ Tu pedido con guía {{guia}} figura como entregado por {{transportadora}}.\nSi no lo recibiste, llegó incompleto o presenta algún daño, responde este mensaje y lo revisamos hoy mismo 🙌",
+  params: [
+    { name: "nombre", example: "María" },
+    { name: "guia", example: "240012345678" },
+    { name: "transportadora", example: "Interrapidísimo" },
+  ],
+  buttons: ["Recibí todo bien", "Tengo un problema"],
+  footer: FOOTER,
+};
+
 // El paquete quedó en la oficina de la transportadora. Dropi no dice CUÁL
 // oficina (el movimiento solo trae nombre y fecha), así que el copy se queda en
 // transportadora + ciudad e invita a responder: dos tercios de estos clientes
@@ -274,6 +301,7 @@ export const VORARE_TEMPLATES: WaTemplateDefinition[] = [
   GUIA_EN_TRANSITO,
   GUIA_EN_REPARTO,
   GUIA_ENTREGADA,
+  GUIA_ENTREGADA_V2,
   GUIA_EN_OFICINA,
   NOVEDAD_ENTREGA,
   GUIA_GENERADA_V2,
