@@ -89,7 +89,7 @@ function metaTemplateFor(
         params: [nombre, guia, transportadora, ciudad],
       };
     case "entregado":
-      return { name: ENTREGADO_TEMPLATE, params: [nombre] };
+      return { name: ENTREGADO_TEMPLATE, params: [nombre, guia, transportadora] };
     default:
       return null;
   }
