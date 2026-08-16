@@ -1,0 +1,459 @@
+<title>Sebastián para Vorare</title>
+
+<style>
+  :root {
+    --paper:      #F3F5F4;
+    --surface:    #FFFFFF;
+    --ink:        #11201D;
+    --ink-soft:   #475854;
+    --ink-faint:  #788985;
+    --line:       #DCE3E1;
+    --line-soft:  #E9EEED;
+    --accent:     #0E7C6B;
+    --accent-bg:  #E4F0ED;
+    --flag:       #9B4722;
+    --flag-bg:    #F7EAE4;
+
+    --f-display: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --f-body: Georgia, "Iowan Old Style", "Palatino Linotype", Palatino, serif;
+    --f-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:     #0D1413;
+      --surface:   #141E1C;
+      --ink:       #E6ECEA;
+      --ink-soft:  #A6B5B1;
+      --ink-faint: #7C8D89;
+      --line:      #263432;
+      --line-soft: #1C2825;
+      --accent:    #48BCA4;
+      --accent-bg: #123029;
+      --flag:      #DB8F68;
+      --flag-bg:   #2E1D16;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper:     #0D1413;
+    --surface:   #141E1C;
+    --ink:       #E6ECEA;
+    --ink-soft:  #A6B5B1;
+    --ink-faint: #7C8D89;
+    --line:      #263432;
+    --line-soft: #1C2825;
+    --accent:    #48BCA4;
+    --accent-bg: #123029;
+    --flag:      #DB8F68;
+    --flag-bg:   #2E1D16;
+  }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--f-body);
+    font-size: 17px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .doc {
+    max-width: 41rem;
+    margin: 0 auto;
+    padding: clamp(2.5rem, 7vw, 5.5rem) clamp(1.15rem, 5vw, 2rem) 6rem;
+    display: flex;
+    flex-direction: column;
+    gap: 3.25rem;
+  }
+
+  section { display: flex; flex-direction: column; gap: 1.1rem; }
+
+  .eyebrow {
+    font-family: var(--f-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  h1 {
+    font-family: var(--f-display);
+    font-size: clamp(2.1rem, 6.5vw, 3rem);
+    line-height: 1.06;
+    letter-spacing: -0.033em;
+    font-weight: 700;
+    text-wrap: balance;
+    margin: 0.55rem 0 0;
+  }
+
+  h2 {
+    font-family: var(--f-display);
+    font-size: clamp(1.3rem, 3.4vw, 1.6rem);
+    line-height: 1.2;
+    letter-spacing: -0.021em;
+    font-weight: 700;
+    text-wrap: balance;
+    margin: 0;
+  }
+
+  h3 {
+    font-family: var(--f-display);
+    font-size: 0.98rem;
+    letter-spacing: -0.006em;
+    font-weight: 700;
+    margin: 0;
+  }
+
+  p { margin: 0; }
+  .lede { font-size: 1.12rem; color: var(--ink-soft); }
+  strong { font-weight: 700; color: var(--ink); }
+  em { font-style: italic; }
+
+  .rule { height: 1px; background: var(--line); border: 0; margin: 0; }
+
+  /* ── ficha ───────────────────────────────────────────────── */
+  .ficha {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-top: 3px solid var(--accent);
+    padding: 1.5rem 1.6rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+    gap: 1.35rem 1.6rem;
+  }
+  .ficha div { display: flex; flex-direction: column; gap: 0.3rem; }
+  .ficha dt {
+    font-family: var(--f-mono);
+    font-size: 0.66rem;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+  .ficha dd {
+    margin: 0;
+    font-family: var(--f-display);
+    font-weight: 700;
+    font-size: 1.02rem;
+    line-height: 1.28;
+    letter-spacing: -0.014em;
+    font-variant-numeric: tabular-nums;
+  }
+  .ficha .big { font-size: 1.4rem; color: var(--accent); letter-spacing: -0.03em; }
+
+  /* ── recorrido numerado ──────────────────────────────────── */
+  ol.pasos { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1.05rem; counter-reset: paso; }
+  ol.pasos li {
+    counter-increment: paso;
+    display: grid;
+    grid-template-columns: 1.9rem 1fr;
+    gap: 0.9rem;
+    align-items: start;
+  }
+  ol.pasos li::before {
+    content: counter(paso);
+    font-family: var(--f-mono);
+    font-size: 0.74rem;
+    font-weight: 600;
+    color: var(--accent);
+    background: var(--accent-bg);
+    width: 1.9rem; height: 1.9rem;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    margin-top: 0.12rem;
+  }
+
+  /* ── tablas ──────────────────────────────────────────────── */
+  .tabla-wrap { overflow-x: auto; border: 1px solid var(--line); background: var(--surface); }
+  table { width: 100%; border-collapse: collapse; font-size: 0.94rem; }
+  caption { text-align: left; padding: 0 0 0.7rem; color: var(--ink-faint); font-size: 0.87rem; }
+  th, td { text-align: left; padding: 0.72rem 1rem; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+  thead th {
+    font-family: var(--f-mono);
+    font-size: 0.66rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    font-weight: 500;
+    border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.pieza { font-family: var(--f-display); font-weight: 700; font-size: 0.9rem; white-space: nowrap; }
+  td.num, th.num { text-align: right; font-family: var(--f-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  tr.total td { border-top: 1px solid var(--line); font-weight: 700; }
+
+  /* ── listas ──────────────────────────────────────────────── */
+  ul.marcada { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.75rem; }
+  ul.marcada li { position: relative; padding-left: 1.5rem; }
+  ul.marcada li::before {
+    content: "";
+    position: absolute;
+    left: 0.32rem;
+    top: 0.62rem;
+    width: 0.42rem; height: 0.42rem;
+    box-sizing: border-box;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+  ul.excluye li::before { background: none; border: 1.5px solid var(--flag); }
+
+  .caja-excluye {
+    background: var(--flag-bg);
+    border-left: 3px solid var(--flag);
+    padding: 1.3rem 1.5rem;
+    display: flex; flex-direction: column; gap: 1rem;
+  }
+  .caja-excluye .eyebrow { color: var(--flag); }
+
+  /* ── fases ───────────────────────────────────────────────── */
+  ol.fases { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0; counter-reset: fase; }
+  ol.fases li {
+    counter-increment: fase;
+    border-left: 2px solid var(--line);
+    padding: 0 0 1.9rem 1.55rem;
+    position: relative;
+    display: flex; flex-direction: column; gap: 0.45rem;
+  }
+  ol.fases li:last-child { padding-bottom: 0; border-left-color: transparent; }
+  ol.fases li::before {
+    content: "";
+    position: absolute; left: -0.36rem; top: 0.42rem;
+    width: 0.6rem; height: 0.6rem; border-radius: 50%;
+    background: var(--accent);
+  }
+  .fase-cab { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.6rem; }
+  .fase-num { font-family: var(--f-mono); font-size: 0.68rem; letter-spacing: 0.13em; text-transform: uppercase; color: var(--ink-faint); }
+  .fase-dur { font-family: var(--f-mono); font-size: 0.76rem; color: var(--accent); margin-left: auto; }
+  ol.fases p { font-size: 0.94rem; color: var(--ink-soft); }
+
+  .nota {
+    font-size: 0.88rem;
+    color: var(--ink-soft);
+    border-top: 1px solid var(--line);
+    padding-top: 1rem;
+  }
+
+  footer { color: var(--ink-faint); font-size: 0.82rem; font-family: var(--f-mono); border-top: 1px solid var(--line); padding-top: 1.4rem; }
+
+  a { color: var(--accent); }
+  a:focus-visible, li:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+
+<main class="doc">
+
+  <header>
+    <p class="eyebrow">Propuesta · WaiChat para Vorare</p>
+    <h1>Sebastián, tu vendedor en WhatsApp</h1>
+    <p class="lede" style="margin-top:1rem">
+      Katherine ya se encarga de todo lo que pasa <em>después</em> de la venta: confirma el pedido,
+      hace seguimiento a la guía y acompaña hasta la entrega. Sebastián se encarga de lo que pasa
+      <em>antes</em>: atiende a la gente que llega por tus anuncios, les vende, y deja el pedido
+      cargado en Shopify listo para que Katherine lo tome.
+    </p>
+  </header>
+
+  <dl class="ficha">
+    <div>
+      <dt>Inversión</dt>
+      <dd class="big">$200.000<span style="font-size:0.72rem; font-weight:400; color:var(--ink-soft); letter-spacing:0"> COP / mes</span></dd>
+    </div>
+    <div>
+      <dt>Modalidad</dt>
+      <dd>Mes a mes,<br>sin permanencia</dd>
+    </div>
+    <div>
+      <dt>Costos de plataforma</dt>
+      <dd>A cuenta<br>de Vorare</dd>
+    </div>
+    <div>
+      <dt>Entrega</dt>
+      <dd>3 fases<br>~2 semanas</dd>
+    </div>
+  </dl>
+
+  <section>
+    <p class="eyebrow">Cómo funciona</p>
+    <h2>El recorrido de un cliente, de principio a fin</h2>
+    <ol class="pasos">
+      <li><p>Alguien ve tu anuncio en Facebook o Instagram, hace clic y cae directo en WhatsApp.</p></li>
+      <li><p>Sebastián reconoce de qué producto viene ese anuncio y carga toda su información: descripción, especificaciones, fotos y videos.</p></li>
+      <li><p>Conversa. Resuelve dudas, manda los apoyos visuales del producto, maneja objeciones y empuja al cierre.</p></li>
+      <li><p>Cuando el cliente decide comprar, le pide los datos de envío y los valida en el momento.</p></li>
+      <li><p>Crea el pedido en Shopify automáticamente, con pago contraentrega.</p></li>
+      <li><p>Le avisa que confirmaciones lo va a contactar. Diez minutos después, Katherine le escribe desde el número de siempre para verificar la dirección.</p></li>
+    </ol>
+    <p class="nota">
+      Todo esto ocurre en un <strong>número de WhatsApp dedicado a ventas</strong>, separado del de
+      confirmación. Un asesor humano puede tomar cualquier chat en cualquier momento y devolvérselo
+      a Sebastián después.
+    </p>
+  </section>
+
+  <hr class="rule">
+
+  <section>
+    <p class="eyebrow">Alcance</p>
+    <h2>Qué incluye</h2>
+    <p>Cada pieza se da por entregada cuando cumple una condición observable, no cuando "está lista".</p>
+    <div class="tabla-wrap">
+      <table>
+        <thead>
+          <tr><th>Pieza</th><th>Entregada cuando</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="pieza">Número de ventas</td><td>Un mensaje al número de ventas entra al panel y Sebastián responde, sin tocar el flujo de Katherine.</td></tr>
+          <tr><td class="pieza">Reconocimiento<br>de producto</td><td>Con el anuncio registrado, identifica el producto sin preguntar. Si no lo tiene registrado, pregunta con una lista corta. Tras dos intentos sin resolverlo, escala a un asesor.</td></tr>
+          <tr><td class="pieza">Apoyos visuales</td><td>Envía las fotos y videos que ustedes hayan marcado como enviables para ese producto.</td></tr>
+          <tr><td class="pieza">Captura de datos</td><td>Nombre, apellido, teléfono, ciudad, departamento y dirección quedan capturados y validados. El teléfono con formato correcto, la ciudad y el departamento contra la lista de Colombia, y dirección o reclamo en oficina — nunca ambos.</td></tr>
+          <tr><td class="pieza">Pedido en Shopify</td><td>Se crea con producto, cantidad, cliente, dirección y pago contraentrega. Si el cierre se dispara dos veces, no se duplica el pedido.</td></tr>
+          <tr><td class="pieza">Si Shopify falla</td><td>El pedido entra a una cola de reintentos y el equipo recibe una alerta. Una venta cerrada nunca se pierde en silencio.</td></tr>
+          <tr><td class="pieza">Entrega a<br>confirmaciones</td><td>El pedido creado entra al flujo de Katherine y a los diez minutos sale un mensaje que reconoce la compra y verifica los datos de envío.</td></tr>
+          <tr><td class="pieza">Panel · vendedor</td><td>Ustedes editan el nombre, los mensajes base, el límite de descuento y el tono, y el cambio aplica en la siguiente conversación.</td></tr>
+          <tr><td class="pieza">Panel · catálogo</td><td>Ustedes conectan un producto de Shopify o crean uno directamente en el panel, le asocian sus anuncios y marcan qué archivos puede enviar Sebastián.</td></tr>
+          <tr><td class="pieza">Tomar el chat</td><td>El asesor ve las conversaciones de Sebastián, toma cualquiera —Sebastián se pausa— y se la devuelve cuando quiera.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="nota">
+      <strong>Sobre los descuentos.</strong> El límite lo definen ustedes desde el panel, y se aplica
+      de verdad: si Sebastián llegara a pactar un descuento por fuera de ese límite, el pedido se crea
+      al precio válido y el caso pasa a un asesor. El límite no es una sugerencia que el vendedor pueda
+      pasar por alto.
+    </p>
+  </section>
+
+  <section>
+    <div class="caja-excluye">
+      <p class="eyebrow">Fuera de alcance</p>
+      <h3>Qué no incluye</h3>
+      <ul class="marcada excluye">
+        <li><strong>Pagos en línea.</strong> El modelo es contraentrega, como hoy.</li>
+        <li><strong>Creación automática de la guía en Dropi.</strong> La guía sigue naciendo de la integración que ya tienen entre Shopify y Dropi, exactamente igual que hoy. Sebastián deja el pedido en Shopify; de ahí en adelante nada cambia.</li>
+        <li><strong>Un solo número visible.</strong> Ventas y confirmación son dos números distintos. Unificarlos es un desarrollo aparte.</li>
+        <li><strong>Otras tiendas o clientes.</strong> Esta propuesta cubre Vorare.</li>
+        <li><strong>Registro automático de anuncios.</strong> Los anuncios se asocian a cada producto desde el panel, no se importan solos desde Meta.</li>
+      </ul>
+    </div>
+  </section>
+
+  <hr class="rule">
+
+  <section>
+    <p class="eyebrow">Dependencias</p>
+    <h2>Lo que pone Vorare</h2>
+    <p>Nada de esto lo podemos resolver nosotros, y la Fase 1 no arranca sin lo primero.</p>
+    <ul class="marcada">
+      <li><strong>El número de WhatsApp dedicado a ventas</strong>, ya aprobado en su Business Manager.</li>
+      <li><strong>Cuenta propia de Kapso</strong> (plan Pro) <strong>y de OpenRouter.</strong> Nosotros las configuramos; las facturas les llegan a ustedes directamente, sin intermediarios ni sobrecosto.</li>
+      <li><strong>La información de cada producto cargada en Shopify</strong>: descripción, especificaciones, fotos y videos. Sebastián vende con lo que encuentre ahí.</li>
+      <li><strong>Los identificadores de sus anuncios</strong>, pegados en el panel cada vez que lancen uno nuevo. Es copiar y pegar desde el Administrador de anuncios.</li>
+    </ul>
+  </section>
+
+  <section>
+    <p class="eyebrow">Costos variables</p>
+    <h2>Lo que se factura a sus cuentas</h2>
+    <p>
+      Los mensajes de WhatsApp y el consumo de inteligencia artificial se cobran por uso y van
+      directamente a sus cuentas. No pasan por nosotros ni llevan margen.
+    </p>
+    <div class="tabla-wrap">
+      <table>
+        <caption>Estimado mensual en pesos colombianos, según cuántos clientes atienda Sebastián.</caption>
+        <thead>
+          <tr>
+            <th>Clientes al mes</th>
+            <th class="num">Plataforma</th>
+            <th class="num">Mensajes + IA</th>
+            <th class="num">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>100</td><td class="num">$78.750</td><td class="num">$7.200</td><td class="num">$86.000</td></tr>
+          <tr><td>500</td><td class="num">$78.750</td><td class="num">$36.200</td><td class="num">$115.000</td></tr>
+          <tr><td>2.000</td><td class="num">$78.750</td><td class="num">$145.000</td><td class="num">$224.000</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="nota">
+      Los clientes que llegan por anuncios de WhatsApp entran por una ventana gratuita de 72 horas:
+      toda la conversación de venta con Sebastián cae dentro de ella y no genera costo de mensajería.
+      Por eso el costo se mantiene bajo incluso con volumen alto.
+    </p>
+  </section>
+
+  <hr class="rule">
+
+  <section>
+    <p class="eyebrow">Inversión</p>
+    <h2>$200.000 COP al mes</h2>
+    <p>
+      Cubre el desarrollo completo del módulo y su mantenimiento continuo. <strong>No hay cobro de
+      implementación</strong> ni cuota de entrada.
+    </p>
+
+    <h3 style="margin-top:0.7rem">Incluido en el mantenimiento</h3>
+    <ul class="marcada">
+      <li>Corrección de fallas.</li>
+      <li>Ajustes a la forma de vender de Sebastián.</li>
+      <li>Carga de productos y anuncios nuevos.</li>
+      <li>Ajustes a los mensajes base.</li>
+      <li>Monitoreo del funcionamiento.</li>
+    </ul>
+
+    <h3 style="margin-top:0.9rem">No incluido</h3>
+    <ul class="marcada excluye">
+      <li>Funciones nuevas que no estén en este documento.</li>
+      <li>Integraciones nuevas.</li>
+      <li>Números adicionales.</li>
+      <li>Otras tiendas o clientes.</li>
+    </ul>
+
+    <p class="nota">
+      Contrato mes a mes, sin permanencia.
+    </p>
+  </section>
+
+  <section>
+    <p class="eyebrow">Cronograma</p>
+    <h2>Entrega por fases</h2>
+    <ol class="fases">
+      <li>
+        <div class="fase-cab"><span class="fase-num">Fase 1</span><h3>Cimientos y conversación</h3><span class="fase-dur">Semana 1</span></div>
+        <p>Número de ventas conectado, catálogo de productos con sus anuncios y archivos enviables, reconocimiento de producto, y Sebastián conversando con apoyos visuales.</p>
+      </li>
+      <li>
+        <div class="fase-cab"><span class="fase-num">Fase 2</span><h3>Cierre y entrega a confirmaciones</h3><span class="fase-dur">Semana 2</span></div>
+        <p>Captura y validación de datos, creación del pedido en Shopify con cola de reintentos y alerta, y entrega al flujo de Katherine.</p>
+      </li>
+      <li>
+        <div class="fase-cab"><span class="fase-num">Fase 3</span><h3>Operación y control</h3><span class="fase-dur">Semana 2</span></div>
+        <p>Configuración del vendedor —nombre, mensajes base, límite de descuento y tono— y la vista de conversaciones de ventas con la opción de tomar el chat.</p>
+      </li>
+    </ol>
+  </section>
+
+  <hr class="rule">
+
+  <section>
+    <p class="eyebrow">Condiciones</p>
+    <h2>Supuestos</h2>
+    <ul class="marcada">
+      <li><strong>Los tiempos son estimados</strong> y corren desde que esté disponible el número de ventas.</li>
+      <li><strong>El mensaje nuevo de Katherine requiere aprobación de Meta.</strong> Ese trámite no depende de nosotros y puede mover la Fase 2.</li>
+      <li><strong>El reconocimiento por anuncio está pendiente de una verificación técnica</strong> que necesita un anuncio activo y un clic real. Si el mecanismo no resultara viable, Sebastián identifica el producto preguntando — el módulo funciona igual, con un paso más para el cliente.</li>
+      <li><strong>Los costos variables tienen vigencia hasta el 30 de septiembre de 2026.</strong> Meta actualiza sus tarifas el 1 de octubre y publica las definitivas el 1 de septiembre; la tabla se actualiza entonces.</li>
+      <li><strong>Este documento no compromete resultados comerciales</strong> —tasa de cierre, volumen de ventas— porque dependen del producto, del anuncio y del mercado. Compromete el comportamiento descrito en el alcance.</li>
+    </ul>
+  </section>
+
+  <footer>
+    <p>WaiChat · Propuesta para Vorare · 16 de agosto de 2026</p>
+  </footer>
+
+</main>

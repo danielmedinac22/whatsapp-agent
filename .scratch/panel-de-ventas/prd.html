@@ -1,0 +1,648 @@
+<title>PRD Panel de Ventas</title>
+
+<style>
+  :root {
+    --paper:     #F1F4F6;
+    --surface:   #FFFFFF;
+    --sunk:      #E8ECF0;
+    --ink:       #121A21;
+    --ink-soft:  #4A5966;
+    --ink-faint: #7B8996;
+    --line:      #D7DFE5;
+    --line-soft: #E6EBEF;
+    --accent:    #1F4E79;
+    --accent-bg: #E2EBF3;
+    --ok:        #12684C;
+    --ok-bg:     #DDEFE7;
+    --warn:      #86560A;
+    --warn-bg:   #F6EBD7;
+
+    --f-display: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --f-body: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --f-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:     #0B1015;
+      --surface:   #121A21;
+      --sunk:      #0F171D;
+      --ink:       #E2E9EE;
+      --ink-soft:  #9EAEBB;
+      --ink-faint: #74838F;
+      --line:      #223039;
+      --line-soft: #1A242C;
+      --accent:    #77ADDC;
+      --accent-bg: #142634;
+      --ok:        #47AF8B;
+      --ok-bg:     #102C23;
+      --warn:      #D5A44F;
+      --warn-bg:   #2C2213;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper:     #0B1015;
+    --surface:   #121A21;
+    --sunk:      #0F171D;
+    --ink:       #E2E9EE;
+    --ink-soft:  #9EAEBB;
+    --ink-faint: #74838F;
+    --line:      #223039;
+    --line-soft: #1A242C;
+    --accent:    #77ADDC;
+    --accent-bg: #142634;
+    --ok:        #47AF8B;
+    --ok-bg:     #102C23;
+    --warn:      #D5A44F;
+    --warn-bg:   #2C2213;
+  }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--f-body);
+    font-size: 15.5px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .doc {
+    max-width: 50rem;
+    margin: 0 auto;
+    padding: clamp(2rem, 6vw, 4rem) clamp(1.1rem, 4vw, 2rem) 6rem;
+    display: flex;
+    flex-direction: column;
+    gap: 2.75rem;
+  }
+
+  section { display: flex; flex-direction: column; gap: 0.95rem; }
+
+  h1 {
+    font-family: var(--f-display);
+    font-size: clamp(1.85rem, 5vw, 2.5rem);
+    line-height: 1.08;
+    letter-spacing: -0.032em;
+    font-weight: 700;
+    text-wrap: balance;
+    margin: 0.4rem 0 0;
+  }
+
+  h2 {
+    font-family: var(--f-display);
+    font-size: clamp(1.15rem, 2.9vw, 1.35rem);
+    line-height: 1.22;
+    letter-spacing: -0.019em;
+    font-weight: 700;
+    text-wrap: balance;
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.6rem;
+  }
+  h2 .sec {
+    font-family: var(--f-mono);
+    font-size: 0.78rem;
+    font-weight: 500;
+    letter-spacing: 0;
+    color: var(--accent);
+  }
+
+  h3 {
+    font-family: var(--f-display);
+    font-size: 0.95rem;
+    font-weight: 700;
+    letter-spacing: -0.005em;
+    margin: 0.5rem 0 0;
+  }
+
+  p { margin: 0; }
+  .lede { font-size: 1.05rem; color: var(--ink-soft); }
+  strong { font-weight: 650; color: var(--ink); }
+  code {
+    font-family: var(--f-mono);
+    font-size: 0.855em;
+    background: var(--sunk);
+    border: 1px solid var(--line-soft);
+    padding: 0.08em 0.34em;
+    border-radius: 3px;
+    white-space: nowrap;
+  }
+
+  .eyebrow {
+    font-family: var(--f-mono);
+    font-size: 0.69rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  .rule { height: 1px; background: var(--line); border: 0; margin: 0; }
+
+  /* estado */
+  .chip {
+    font-family: var(--f-mono);
+    font-size: 0.62rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 0.2em 0.55em;
+    border-radius: 2px;
+    white-space: nowrap;
+    font-weight: 500;
+  }
+  .chip-ok   { background: var(--ok-bg);     color: var(--ok); }
+  .chip-ver  { background: var(--accent-bg); color: var(--accent); }
+  .chip-pen  { background: var(--warn-bg);   color: var(--warn); }
+
+  .estado {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    padding: 1.15rem 1.35rem;
+    display: flex; flex-direction: column; gap: 0.7rem;
+  }
+  .estado p { font-size: 0.92rem; color: var(--ink-soft); }
+
+  /* tablas */
+  .tabla-wrap { overflow-x: auto; border: 1px solid var(--line); background: var(--surface); }
+  table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  th, td { text-align: left; padding: 0.62rem 0.85rem; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+  thead th {
+    font-family: var(--f-mono);
+    font-size: 0.63rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    font-weight: 500;
+    border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.k { font-weight: 650; white-space: nowrap; }
+  td.num, th.num { text-align: right; font-family: var(--f-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  /* listas */
+  ul, ol.plain { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 0.6rem; }
+  ul li { position: relative; padding-left: 1.15rem; }
+  ul li::before {
+    content: "";
+    position: absolute; left: 0.15rem; top: 0.62rem;
+    width: 0.34rem; height: 0.34rem;
+    box-sizing: border-box;
+    background: var(--ink-faint);
+  }
+  ul.no li::before { background: none; border: 1px solid var(--warn); }
+
+  ol.pasos { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 0.75rem; counter-reset: p; }
+  ol.pasos li { counter-increment: p; position: relative; padding-left: 2rem; }
+  ol.pasos li::before {
+    content: counter(p);
+    position: absolute; left: 0; top: 0.06rem;
+    font-family: var(--f-mono); font-size: 0.72rem; font-weight: 600;
+    color: var(--accent); background: var(--accent-bg);
+    width: 1.4rem; height: 1.4rem;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  .nota {
+    font-size: 0.87rem;
+    color: var(--ink-soft);
+    background: var(--sunk);
+    border-left: 2px solid var(--line);
+    padding: 0.75rem 1rem;
+  }
+  .nota.riesgo { border-left-color: var(--warn); background: var(--warn-bg); color: var(--ink); }
+
+  footer { color: var(--ink-faint); font-size: 0.79rem; font-family: var(--f-mono); border-top: 1px solid var(--line); padding-top: 1.2rem; }
+  a { color: var(--accent); }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+
+<main class="doc">
+
+  <header>
+    <p class="eyebrow">WaiChat · Documento interno · v1.0 final</p>
+    <h1>Panel de Ventas — agente comercial Sebastián</h1>
+    <p class="lede" style="margin-top:0.9rem">
+      Versión final del PRD para Vorare. Reemplaza el borrador v0.1: las cuatro decisiones que
+      quedaban abiertas están cerradas, y cada afirmación sobre el sistema actual fue verificada
+      contra el código o contra la base de producción.
+    </p>
+  </header>
+
+  <div class="estado">
+    <p style="display:flex; flex-wrap:wrap; gap:0.45rem; align-items:center">
+      <span class="chip chip-ok">10 decisiones cerradas</span>
+      <span class="chip chip-pen">1 pendiente</span>
+      <span class="chip chip-ver">hechos verificados 16-ago-2026</span>
+    </p>
+    <p>
+      El único pendiente es la verificación empírica de que el objeto de atribución de anuncios llega
+      al worker (§5). Todo lo demás está decidido. La cotización cara-cliente derivada de este
+      documento ya está publicada aparte.
+    </p>
+  </div>
+
+  <hr class="rule">
+
+  <section>
+    <h2><span class="sec">§1</span> Contexto y objetivo</h2>
+    <p>
+      WaiChat opera hoy <strong>100% postventa</strong>: el agente <em>Katherine</em> confirma pedidos,
+      hace seguimiento por estado de guía y acompaña hasta la entrega, desde el número de confirmación.
+    </p>
+    <p>
+      Este módulo agrega un frente <strong>preventa</strong> que no existe: <em>Sebastián</em>, un agente
+      que atiende leads de anuncios Meta Click-to-WhatsApp, vende, cierra, crea la orden en Shopify
+      automáticamente y deja el pedido listo para que el flujo de Katherine lo tome.
+    </p>
+    <p class="nota">
+      <strong>Cliente:</strong> Vorare, tienda Shopify colombiana con pago contraentrega.
+      <strong>Precio:</strong> 200.000 COP/mes por este módulo, construcción y mantenimiento incluidos,
+      sin cobro de implementación. Los costos variables (Kapso y OpenRouter) van a cuentas propias de Vorare.
+    </p>
+  </section>
+
+  <section>
+    <h2><span class="sec">§2</span> Alcance</h2>
+    <h3>Dentro de v1</h3>
+    <ul>
+      <li>Sección <strong>Panel de Ventas</strong> en WaiChat: vendedor, productos, número.</li>
+      <li>Número de WhatsApp de ventas <strong>dedicado</strong>, separado del de confirmación.</li>
+      <li>Ingesta de leads CTWA y reconocimiento de producto (§5).</li>
+      <li>Catálogo con doble fuente: producto de Shopify o producto nativo del panel.</li>
+      <li>Persona configurable y conversación de venta con envío de apoyos visuales.</li>
+      <li>Captura y validación de datos de cierre (§6).</li>
+      <li>Creación automática de la orden en Shopify, idempotente y con cola de reintentos (§7).</li>
+      <li>Handoff al flujo de Katherine (§8).</li>
+      <li>Takeover humano.</li>
+    </ul>
+
+    <h3>Fuera de v1</h3>
+    <ul class="no">
+      <li><strong>Pagos en línea</strong> — el modelo es contraentrega.</li>
+      <li><strong>Creación automática de la orden en Dropi.</strong> Decidido al trazar el mapa: el worker hoy solo lista y confirma pedidos de Dropi, nunca los crea. La guía nace de una integración Shopify↔Dropi ajena a WaiChat y sigue igual. Construirlo sería un segundo integrador completo (auth, catálogo, ciudades, tarifas).</li>
+      <li><strong>Handoff en un mismo número visible</strong> — v1 usa números separados.</li>
+      <li><strong>Multi-cliente</strong> — el modelo de datos se prepara, el alcance cotizado cubre solo Vorare.</li>
+      <li><strong>Auto-registro de IDs de anuncio</strong> vía Meta Ads API.</li>
+      <li><strong>Prompt caching</strong> — con el modelo elegido el ahorro absoluto son decenas de dólares al mes y OpenRouter no documenta soporte. Mejora futura.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2><span class="sec">§3</span> Actores</h2>
+    <div class="tabla-wrap">
+      <table>
+        <thead><tr><th>Actor</th><th>Rol</th></tr></thead>
+        <tbody>
+          <tr><td class="k">Lead</td><td>Persona que llega desde el anuncio de Meta.</td></tr>
+          <tr><td class="k">Sebastián</td><td>Agente IA de ventas. Conversa, resuelve, cierra, carga en Shopify.</td></tr>
+          <tr><td class="k">Asesor</td><td>Humano que toma el chat cuando hace falta.</td></tr>
+          <tr><td class="k">Katherine</td><td>Agente de confirmación existente. Toma el pedido tras el cierre.</td></tr>
+          <tr><td class="k">Admin</td><td>Configura productos, persona, número y reglas.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="sec">§4</span> Flujo end-to-end</h2>
+    <ol class="pasos">
+      <li>Clic en anuncio CTWA. El primer mensaje entra al número de ventas trayendo el objeto <code>referral</code> con la metadata del anuncio.</li>
+      <li>El router resuelve el producto según la cascada del §5 y <strong>persiste la atribución</strong>.</li>
+      <li>Sebastián carga el contexto del producto y su persona.</li>
+      <li>Conversa: resuelve dudas, envía apoyos visuales, maneja objeciones, empuja al cierre.</li>
+      <li>Captura los datos de cierre y los valida (§6).</li>
+      <li>Crea la orden en Shopify (§7).</li>
+      <li>Envía el mensaje de embudo: <em>«Gracias por tu compra, nuestro equipo de confirmaciones te escribirá.»</em></li>
+      <li>El webhook de Shopify dispara el pipeline existente. A los <strong>10 minutos</strong> sale la plantilla de ventas desde el número de confirmación (§8).</li>
+    </ol>
+    <p class="nota">El takeover humano puede ocurrir en cualquier punto (§10).</p>
+  </section>
+
+  <hr class="rule">
+
+  <section>
+    <h2><span class="sec">§5</span> Reconocimiento de producto <span class="chip chip-ok">Decidido</span></h2>
+    <p><strong>Cascada fija de tres niveles, con el ID de anuncio como primario.</strong> Lo decidió la ambigüedad del catálogo, no la escala.</p>
+
+    <h3>El dato que decidió</h3>
+    <p>
+      Consulta de solo lectura a producción: <strong>1.640 pedidos</strong> entre el 29-abr y el
+      15-ago-2026 (~470/mes) sobre <strong>17 productos</strong>. <code>REVITALHAIR – DHT ANTICALVICIE</code>
+      concentra el <strong>77%</strong> del volumen y los tres primeros el <strong>96%</strong>.
+    </p>
+    <p>
+      Con 17 productos, cargar IDs de anuncio a mano es trivial — la escala nunca fue el problema.
+      El problema es que Vorare vende <strong>cuatro SKUs de nombre casi idéntico</strong>
+      (<code>DHT ANTICALVICIE</code>, <code>DHT BLOCKER ANTICALVICIE</code>, <code>COMBO DHT + SERUM 360</code>,
+      <code>Hair Recovery 3X</code>) y el match semántico sobre el copy del anuncio no los distingue con
+      confianza. Es exactamente donde está el 77% del volumen.
+    </p>
+
+    <h3>Mecanismo</h3>
+    <ol class="pasos">
+      <li><strong><code>referral.source_id</code> → conjunto de productos.</strong> La relación anuncio→producto es <strong>N:M</strong>. Un solo producto en el conjunto resuelve; varios pasan al nivel 3 con la lista corta <em>de ese anuncio</em>.</li>
+      <li><strong>Match semántico</strong> sobre <code>headline</code> + <code>body</code>, solo cuando el <code>source_id</code> no está registrado. <strong>Nunca desempata entre nombres casi idénticos</strong>: con baja confianza cae al nivel 3 en vez de adivinar.</li>
+      <li><strong>Preguntar</strong> con lista corta. Tras <strong>dos intentos</strong> sin producto identificado, escala a humano.</li>
+    </ol>
+
+    <h3>Decisiones de soporte</h3>
+    <ul>
+      <li><strong>Atribución persistida en el primer contacto.</strong> <code>referral</code> solo llega en el primer mensaje, nunca en respuestas de botón o lista. Si no se guarda ahí, se pierde.</li>
+      <li><strong>Cascada fija, sin perillas.</strong> Vorare configura solo el catálogo y el mapeo anuncio→productos. No se pueden prender, apagar ni reordenar niveles, ni tocar umbrales. Cada perilla es superficie de falla y soporte no cotizado a precio fijo.</li>
+      <li><strong>No existe el concepto de «familia» de productos.</strong> Se verificó que los cuatro REVITALHAIR son cuatro <code>product_id</code> distintos en Shopify, sin variantes. La agrupación la expresa el mapeo N:M: el anuncio de la familia mapea a los cuatro. Los productos quedan 1:1 con Shopify — sin schema nuevo y sin reestructurar el catálogo.</li>
+      <li><strong>Vorare carga los IDs de anuncio</strong> desde el panel. Es quien lanza campañas; absorber eso convertiría cada lanzamiento suyo en trabajo no cotizado.</li>
+    </ul>
+
+    <p class="nota riesgo">
+      <strong>Pendiente.</strong> Kapso documenta que entrega <code>referral</code> con
+      <code>source_id</code>, <code>headline</code>, <code>body</code>, <code>source_url</code> y
+      <code>ctwa_clid</code> en <code>message.received</code>. Pero <strong>la ruta exacta del campo no
+      está en ninguna spec</strong>, y se comprobó que el serializador recorta campos que Meta sí manda
+      (<code>from_user_id</code> viaja de Meta a Kapso pero no llega al worker). Falta un clic real en un
+      anuncio activo para verificarlo. Si el campo se recorta, la salida es un webhook
+      <code>kind: "meta"</code> (passthrough sin modificación), con estas advertencias: el
+      <code>kind</code> no se cambia tras crear el webhook, es uno por número, sin buffering, y la
+      firma HMAC en ese modo no está documentada.
+    </p>
+  </section>
+
+  <section>
+    <h2><span class="sec">§6</span> Datos de cierre</h2>
+    <div class="tabla-wrap">
+      <table>
+        <thead><tr><th>Grupo</th><th>Campos</th></tr></thead>
+        <tbody>
+          <tr><td class="k">Requeridos</td><td>Nombre · apellido · teléfono · ciudad · departamento · dirección <strong>o</strong> «reclame en oficina»</td></tr>
+          <tr><td class="k">Opcional</td><td>Correo</td></tr>
+          <tr><td class="k">Derivados</td><td>Producto (+ variante) · cantidad · valor · método de pago = COD</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <h3>Validaciones</h3>
+    <ul>
+      <li>Teléfono en formato válido.</li>
+      <li>Ciudad y departamento contra lista de Colombia.</li>
+      <li>Dirección y «reclame en oficina» son <strong>mutuamente excluyentes</strong>.</li>
+    </ul>
+    <p><strong>Estados del lead:</strong> <code>nuevo</code> → <code>en_conversacion</code> → <code>cerrado</code> → <code>cargado_shopify</code> → <code>entregado_confirmacion</code></p>
+  </section>
+
+  <section>
+    <h2><span class="sec">§7</span> Creación de la orden en Shopify</h2>
+    <p>
+      <span class="chip chip-ver">Verificado</span>
+      <code>apps/worker/src/shopify/admin.ts</code> hoy <strong>solo lee</strong> (<code>getProductsByIds</code>,
+      <code>pingShopify</code>). Crear órdenes es código nuevo, no un flag.
+    </p>
+    <ul>
+      <li><strong>Line items:</strong> producto, variante, cantidad.</li>
+      <li><strong>Customer:</strong> nombre, apellido, teléfono, correo si hay.</li>
+      <li><strong>Shipping address:</strong> dirección, ciudad, departamento — o tag <code>reclame_oficina</code>.</li>
+      <li><strong>Financial status:</strong> <code>pending</code> (COD).</li>
+      <li><strong>Tags:</strong> <code>waichat-ventas</code> y el nombre del vendedor.</li>
+      <li><strong>Idempotencia:</strong> referencia única del lead; dos disparos del cierre no crean dos órdenes.</li>
+      <li><strong>Fallo de Shopify:</strong> cola de reintentos y alerta al equipo. <strong>Es alcance de v1, no mejor esfuerzo</strong> — sin eso una venta cerrada se pierde en silencio, y eso es defecto, no funcionalidad faltante.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2><span class="sec">§8</span> Handoff a Katherine <span class="chip chip-ok">Decidido</span></h2>
+    <p><strong>No necesita código nuevo: entra por el camino que ya existe.</strong></p>
+    <p>
+      <span class="chip chip-ver">Verificado</span>
+      <code>apps/worker/src/routes/shopify.ts</code> ya recibe el webhook con validación HMAC, hace insert
+      idempotente por <code>order_id</code> y agenda followup (5 min por defecto) y remarketing (3 h).
+      La orden que cree Sebastián por la Admin API dispara ese mismo webhook y el pipeline la recoge sola.
+    </p>
+    <h3>Lo que sí cambia</h3>
+    <ul>
+      <li>Los pedidos con tag <code>waichat-ventas</code> disparan una <strong>plantilla distinta</strong>, que reconoce la conversación previa y se enfoca en verificar los datos de envío.</li>
+      <li>El followup de esos pedidos sale a los <strong>10 minutos</strong>, no a los 5 de hoy.</li>
+    </ul>
+    <p>
+      El razonamiento: dejarlo idéntico le pide al cliente confirmar lo que acaba de confirmar comprando,
+      y el sistema se ve roto. Pero <strong>saltarse la confirmación entera no es opción</strong>: es donde
+      se valida la dirección, y en contraentrega ahí es donde se caen las entregas.
+    </p>
+    <p class="nota riesgo">
+      <strong>Camino crítico.</strong> El primer toque cae fuera de la ventana de 24 h, así que es
+      plantilla y necesita <strong>aprobación de Meta</strong> — trámite que no controlamos. Además,
+      <code>followupDelayMs</code> es hoy un campo único en la fila única de <code>agent_settings</code>:
+      un tiempo distinto por origen del pedido es campo aparte o lógica nueva.
+    </p>
+  </section>
+
+  <section>
+    <h2><span class="sec">§9</span> Configuración de Sebastián <span class="chip chip-ok">Decidido</span></h2>
+    <h3>Una sola persona</h3>
+    <p>Sebastián, no varias. Tres productos concentran el 96% del volumen: varias personas serían UI, tablas y confusión para un problema que Vorare no tiene. Si hace falta, es fase posterior cotizable.</p>
+
+    <h3>Configuración híbrida</h3>
+    <p>Ni todo estructurado (mucha UI a precio fijo) ni todo prompt libre (una edición del cliente rompe al vendedor sin que nadie se entere).</p>
+    <ul>
+      <li><strong>Estructurado</strong> lo que tiene consecuencia: nombre visible, mensajes base (saludo, empuje al cierre, mensaje de embudo) y límite de descuento.</li>
+      <li><strong>Campo libre</strong> para tono e instrucciones de personalidad.</li>
+    </ul>
+
+    <h3>El descuento es regla dura, con el valor configurable</h3>
+    <p>
+      El límite <strong>se aplica en código al crear la orden</strong>. El prompt propone, el código valida.
+      El valor sale de un campo del panel — incluido 0% — pero <strong>la validación siempre corre</strong>:
+      no es una perilla que se pueda apagar. Fuera de rango, la orden <strong>se crea al precio válido y
+      escala a humano</strong>.
+    </p>
+    <p class="nota">
+      A un LLM al que se le escribe «puedes dar hasta 10%», un cliente insistente eventualmente le saca 20%.
+      Un límite que solo vive en el prompt no es un límite, es una sugerencia — y la diferencia la paga Vorare
+      en cada pedido.
+    </p>
+  </section>
+
+  <section>
+    <h2><span class="sec">§10</span> Takeover</h2>
+    <ul>
+      <li>Vista de conversaciones de ventas donde el asesor ve los chats de Sebastián.</li>
+      <li>Botón <strong>Tomar chat</strong> (pausa a Sebastián) y <strong>Devolver a Sebastián</strong>.</li>
+      <li>Triggers de escalamiento: descuento fuera de rango, dos intentos sin identificar producto, petición fuera de reglas, objeción repetida, o palabra clave («humano», «asesor»).</li>
+    </ul>
+    <p class="nota">Puede resolverse como pantalla nueva o como pestaña filtrada del inbox existente. La diferencia de esfuerzo es grande y cae entera dentro de la fase 3.</p>
+  </section>
+
+  <hr class="rule">
+
+  <section>
+    <h2><span class="sec">§11</span> Modelo y costos <span class="chip chip-ok">Decidido</span></h2>
+    <p><strong>Sebastián corre sobre <code>openai/gpt-5.6-terra</code> con reasoning effort bajo.</strong></p>
+    <div class="tabla-wrap">
+      <table>
+        <thead><tr><th>Modelo</th><th class="num">Input /1M</th><th class="num">Output /1M</th><th>Rol</th></tr></thead>
+        <tbody>
+          <tr><td class="k">GPT-5.6 Luna</td><td class="num">$0,10</td><td class="num">$0,60</td><td>Descartado para ventas. Candidato para Katherine.</td></tr>
+          <tr><td class="k">gpt-5.4-mini</td><td class="num">$0,75</td><td class="num">$4,50</td><td>El que corre hoy en producción.</td></tr>
+          <tr><td class="k">GPT-5.6 Terra</td><td class="num">$1,00</td><td class="num">$6,00</td><td><strong>Sebastián.</strong></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      Costo por lead: Luna ~$0,0023 · mini ~$0,017 · <strong>Terra ~$0,023</strong>. A 2.000 leads/mes la
+      prima de Terra sobre Luna es <strong>~$130.000 COP</strong> — literalmente una venta extra al mes.
+      En un agente cuyo output es ingreso, errar del lado caro cuesta una cifra visible y pequeña; errar
+      del lado barato cuesta ventas que nadie ve perderse.
+    </p>
+
+    <h3>Reasoning effort: bajo, no medio</h3>
+    <p>
+      Persuadir no es razonar — el modelo no tiene que deducir nada, tiene que conversar bien. Y
+      <code>medium</code> agrega segundos de latencia: en un chat con un lead que acaba de hacer clic en
+      un anuncio, esperar 15 segundos cuesta más ventas que cualquier mejora de fraseo.
+    </p>
+
+    <h3>Costo variable mensual para Vorare</h3>
+    <div class="tabla-wrap">
+      <table>
+        <thead><tr><th>Leads/mes</th><th class="num">Kapso Pro</th><th class="num">IA + Meta</th><th class="num">Total COP</th></tr></thead>
+        <tbody>
+          <tr><td>100</td><td class="num">$78.750</td><td class="num">$7.200</td><td class="num">$86.000</td></tr>
+          <tr><td>500</td><td class="num">$78.750</td><td class="num">$36.200</td><td class="num">$115.000</td></tr>
+          <tr><td>2.000</td><td class="num">$78.750</td><td class="num">$145.000</td><td class="num">$224.000</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <ul>
+      <li><strong>Kapso</strong> cobra por mensaje, no por conversación. Pro ($25/mes, 100.000 msg) alcanza en los tres escenarios y pasa los cobros de Meta <strong>a costo, sin markup</strong>.</li>
+      <li><strong>Meta Colombia</strong> cobra por mensaje desde el 1-jul-2025. Marketing $0,0125 · utility y auth $0,0008 · service gratis. El free entry point de CTWA da <strong>72 h gratis</strong> desde que el negocio responde, y ahí cae toda la conversación de venta.</li>
+      <li><strong>Facturar Meta en COP cuesta 17,7% más</strong> que en USD: su rate card en COP usa una tasa implícita de ~$3.682. No migrar la cuenta.</li>
+    </ul>
+    <p class="nota riesgo">
+      <strong>Vigencia.</strong> Meta sube tarifas el <strong>1-oct-2026</strong> — empieza a cobrar mensajes
+      de servicio y termina la gratuidad de plantillas utility en ventana (+2% a +7% del variable). Las
+      definitivas se publican el 1-sep. Además, OpenRouter no documenta si los tokens de razonamiento se
+      facturan como output; con effort bajo el riesgo es chico, pero la estimación lo asume.
+      TRM usada: $3.150 COP/USD.
+    </p>
+  </section>
+
+  <section>
+    <h2><span class="sec">§12</span> Cambios al modelo de datos <span class="chip chip-ver">Verificado</span></h2>
+    <p>Dos tablas singleton bloquean el módulo, y <strong>se resuelven de forma distinta</strong> porque su radio de impacto no se parece:</p>
+    <ul>
+      <li>
+        <code>kapso_connection</code> — <strong>fila única, 10 referencias.</strong> Radio chico: se le agrega
+        rol y el accesor actual sigue devolviendo la conexión de confirmación. Expand simple, sin tocar
+        llamadores existentes.
+      </li>
+      <li>
+        <code>agent_settings</code> — <strong>fila única, 65 referencias en 15 archivos.</strong> Medido:
+        la mayoría son campos de Katherine (plantillas de Dropi, demoras de seguimiento, acuse de
+        confirmación). <strong>No es «configuración de agente»: es la configuración de Katherine con
+        nombre genérico.</strong> Generalizarla a multi-fila obligaría a un expand–contract sobre los 65
+        call sites para que Sebastián use una fracción de las columnas.
+        <strong>Decisión: tabla hermana para el vendedor</strong>, con solo sus campos. Radio de impacto
+        sobre lo existente: cero. El único punto que aprende que hay dos agentes es el constructor de
+        prompt efectivo.
+      </li>
+    </ul>
+    <p>Además, entidades nuevas: producto del panel, mapeo anuncio→productos (N:M), assets enviables, atribución del lead, y estado del lead de ventas.</p>
+    <p class="nota">Aunque v1 arranca solo con Vorare, el modelo debe prepararse para multi-tienda para evitar re-trabajo.</p>
+  </section>
+
+  <section>
+    <h2><span class="sec">§13</span> Criterios de aceptación</h2>
+    <p><strong>Todos son condiciones observables de comportamiento. Ninguno es métrica de resultado</strong> — no se compromete tasa de cierre ni porcentaje de reconocimiento, porque eso sería absorber el riesgo comercial de Vorare a precio fijo.</p>
+    <div class="tabla-wrap">
+      <table>
+        <thead><tr><th>Pieza</th><th>Entregada cuando</th></tr></thead>
+        <tbody>
+          <tr><td class="k">Número de ventas</td><td>Un mensaje entra al panel y Sebastián responde, sin tocar el flujo de Katherine.</td></tr>
+          <tr><td class="k">Reconocimiento</td><td>Con anuncio registrado identifica sin preguntar; sin registrar pregunta con lista corta; tras 2 intentos escala.</td></tr>
+          <tr><td class="k">Apoyos visuales</td><td>Envía las imágenes y videos marcados como enviables del producto identificado.</td></tr>
+          <tr><td class="k">Captura de datos</td><td>Los seis requeridos capturados y validados, con dirección y reclamo en oficina mutuamente excluyentes.</td></tr>
+          <tr><td class="k">Orden en Shopify</td><td>Se crea completa. Dos cierres no crean dos órdenes.</td></tr>
+          <tr><td class="k">Fallo de Shopify</td><td>El pedido entra a cola de reintentos y el equipo recibe alerta.</td></tr>
+          <tr><td class="k">Handoff</td><td>La orden dispara el pipeline existente y a los 10 min sale la plantilla de ventas.</td></tr>
+          <tr><td class="k">Panel · persona</td><td>Se editan nombre, mensajes base, límite de descuento y tono, y aplica en la siguiente conversación.</td></tr>
+          <tr><td class="k">Panel · catálogo</td><td>Se conecta un producto de Shopify o se crea uno nativo, con IDs de anuncio y assets enviables.</td></tr>
+          <tr><td class="k">Takeover</td><td>El asesor ve los chats, toma uno (Sebastián se pausa) y lo devuelve.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="nota">Sin ventana formal de aceptación por fase.</p>
+  </section>
+
+  <section>
+    <h2><span class="sec">§14</span> Fases</h2>
+    <div class="tabla-wrap">
+      <table>
+        <thead><tr><th>Fase</th><th>Contenido</th><th class="num">Tiempo</th></tr></thead>
+        <tbody>
+          <tr><td class="k">1 · Cimientos<br>y conversación</td><td>Número de ventas conectado · catálogo con IDs de anuncio y assets enviables · reconocimiento de producto · Sebastián conversando con apoyos visuales.</td><td class="num">Semana 1</td></tr>
+          <tr><td class="k">2 · Cierre</td><td>Captura y validación · orden en Shopify idempotente con cola de reintentos · handoff con la plantilla nueva.</td><td class="num">Semana 2</td></tr>
+          <tr><td class="k">3 · Operación</td><td>Configuración de la persona · vista de conversaciones de ventas con takeover.</td><td class="num">Semana 2</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="nota riesgo">
+      <strong>El cronograma es agresivo.</strong> El catálogo está en la fase 1 porque el reconocimiento
+      depende de él. La fase 1 no arranca sin el número, que provee Vorare. Y la aprobación de la
+      plantilla de Meta cae dentro de la semana 2 sin que la controlemos — es el riesgo principal
+      de este cronograma.
+    </p>
+  </section>
+
+  <hr class="rule">
+
+  <section>
+    <h2><span class="sec">§15</span> Riesgos abiertos</h2>
+    <div class="tabla-wrap">
+      <table>
+        <thead><tr><th>Riesgo</th><th>Estado</th></tr></thead>
+        <tbody>
+          <tr><td class="k">Ruta de <code>referral</code></td><td>Documentado por Kapso pero no verificado. Necesita un clic real en un anuncio activo. Plan alterno: Sebastián identifica preguntando.</td></tr>
+          <tr><td class="k">Plantilla de Meta</td><td>Requiere aprobación externa dentro de la semana 2.</td></tr>
+          <tr><td class="k">Plan Kapso</td><td>La cuenta topó el plan Free el 4-ago-2026: hubo envíos marcados <code>dead</code> con <code>'Free plan message limit'</code>. Existe <code>resend-dead-402.ts</code> para reencolarlos, <strong>sin commitear</strong>, y no consta si se corrió ni si el plan se subió. Ajeno a este módulo, pero condiciona el arranque.</td></tr>
+          <tr><td class="k">Tarifas Meta</td><td>Suben el 1-oct-2026. La tabla de costos tiene vigencia al 30-sep.</td></tr>
+          <tr><td class="k">Video por WhatsApp</td><td>~16 MB máximo. Validar tamaño y formato de los adjuntos nativos.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <h3>Fuera de este módulo, pero vale plata</h3>
+    <p class="nota">
+      Mover a <strong>Katherine</strong> de <code>gpt-5.4-mini</code> a <strong>GPT-5.6 Luna</strong> le
+      cortaría el costo <strong>7,5x</strong> con un modelo de generación más nueva, y confirmar y
+      clasificar es exactamente lo que Luna describe hacer bien. Es el servicio que ya opera, no el
+      módulo cotizado.
+    </p>
+  </section>
+
+  <section>
+    <h2><span class="sec">§16</span> Anexo · hechos verificados</h2>
+    <p class="eyebrow">Contra el código, 16-ago-2026</p>
+    <ul>
+      <li><code>shopify/admin.ts</code> solo lee. Crear órdenes es código nuevo.</li>
+      <li><code>dropi/orders.ts</code> expone <code>listOrders</code>, <code>listAllOrders</code> y <code>confirmOrder</code> — <strong>no crea</strong> pedidos en Dropi.</li>
+      <li><code>routes/shopify.ts</code> valida HMAC, hace insert idempotente y agenda followup + remarketing.</li>
+      <li><code>kapso_connection</code> y <code>agent_settings</code> son tablas de fila única.</li>
+      <li><strong>No existe</strong> manejo de <code>referral</code> / CTWA en el código.</li>
+      <li>Sin <code>cache_control</code> ni tool calls en el runner del agente.</li>
+    </ul>
+    <p class="eyebrow" style="margin-top:0.6rem">Contra producción, solo lectura</p>
+    <ul>
+      <li>1.640 pedidos entre 29-abr y 15-ago-2026 (~470/mes) sobre 17 productos.</li>
+      <li>Concentración: 77% en un SKU, 96% en los tres primeros.</li>
+      <li>Cuatro <code>product_id</code> REVITALHAIR distintos, sin variantes.</li>
+      <li>Modelo real en <code>agent_settings</code>: <code>openai/gpt-5.4-mini</code> — no el default <code>claude-sonnet-4.6</code> del schema.</li>
+      <li>System prompt de 7.728 caracteres (~2.000 tokens), re-pagado en cada turno.</li>
+      <li><strong>Tasa de confirmación: 88,4%</strong> (1.449 de 1.640).</li>
+    </ul>
+  </section>
+
+  <footer>
+    <p>WaiChat · PRD Panel de Ventas v1.0 · 16 de agosto de 2026 · reemplaza v0.1</p>
+  </footer>
+
+</main>
