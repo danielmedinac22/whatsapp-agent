@@ -330,7 +330,7 @@ export function OrdersTable({
                       {row.conversationId ? (
                         <Link
                           href={`/inbox?c=${row.conversationId}`}
-                          className="inline-flex items-center gap-1.5 text-[var(--color-accent)] hover:underline"
+                          className="inline-flex min-h-9 items-center gap-1.5 text-[var(--color-accent)] hover:underline lg:min-h-0"
                           title="Abrir la conversación de este cliente"
                         >
                           <MessageSquare className="h-3.5 w-3.5" />
@@ -457,7 +457,7 @@ function FilterSelect({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       title={label}
-      className={`h-8 rounded-md border px-2 text-xs outline-none transition ${
+      className={`h-9 rounded-md border px-2 text-xs outline-none transition lg:h-8 ${
         value
           ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-200"
           : "border-[var(--color-border)] bg-[rgba(8,21,30,0.72)] text-[var(--color-text-dim)] hover:border-[rgba(110,231,183,0.3)]"
@@ -495,7 +495,7 @@ function ConfirmButton({
       onClick={onClick}
       disabled={busy}
       title={tooltip}
-      className={`inline-flex h-6 w-6 items-center justify-center rounded-full border text-xs transition disabled:opacity-50 ${
+      className={`inline-flex h-9 w-9 items-center justify-center rounded-full border text-xs transition disabled:opacity-50 lg:h-6 lg:w-6 ${
         shopifyConfirmed
           ? "border-emerald-400/50 bg-emerald-500/20 text-emerald-200 hover:bg-emerald-500/30"
           : "border-zinc-500/40 bg-zinc-500/10 text-zinc-300 hover:bg-zinc-500/20"

@@ -74,7 +74,9 @@
   }
 
   .app-main {
-    @apply min-h-screen lg:h-screen lg:min-h-0 lg:overflow-y-auto;
+    /* min-w-0: es item de grid, y sin esto su mínimo lo fija el contenido
+       (una línea con white-space:nowrap basta para empujar el documento). */
+    @apply min-h-screen min-w-0 lg:h-screen lg:min-h-0 lg:overflow-y-auto;
   }
 
   .app-page {

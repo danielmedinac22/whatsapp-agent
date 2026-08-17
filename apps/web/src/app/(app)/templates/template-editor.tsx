@@ -198,7 +198,7 @@ export function TemplateEditor({
                 type="button"
                 onClick={() => insertVariable(v.key)}
                 title={`${v.description} · ej: ${v.example}`}
-                className="group inline-flex items-center gap-1 rounded-full border border-[var(--color-border)] bg-[rgba(110,231,183,0.06)] px-2.5 py-1 text-xs text-[var(--color-text)] transition hover:border-[var(--color-accent)] hover:bg-[rgba(110,231,183,0.14)]"
+                className="group inline-flex min-h-9 items-center gap-1 rounded-full border border-[var(--color-border)] bg-[rgba(110,231,183,0.06)] px-2.5 py-1 text-xs text-[var(--color-text)] transition hover:border-[var(--color-accent)] hover:bg-[rgba(110,231,183,0.14)] lg:min-h-0"
               >
                 <span className="text-[var(--color-accent)]">+</span>
                 <span className="font-medium">{v.label}</span>
@@ -301,9 +301,9 @@ export function TemplateEditor({
         {templates.map((t) => (
           <div key={t.id} className="app-card space-y-2 p-4">
             <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-2">
-                  <p className="font-medium">{t.name}</p>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="min-w-0 break-words font-medium">{t.name}</p>
                   <span className="rounded-full border border-[var(--color-border)] px-2 py-0.5 text-[10px] uppercase tracking-wide text-[var(--color-text-soft)]">
                     {TYPE_LABELS[t.type]}
                   </span>
@@ -318,7 +318,7 @@ export function TemplateEditor({
                 <button
                   type="button"
                   onClick={() => startEditing(t)}
-                  className="rounded-md border border-[var(--color-border)] px-2 py-1 text-xs text-[var(--color-text-dim)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-text)]"
+                  className="min-h-9 rounded-md border border-[var(--color-border)] px-2 py-1 text-xs text-[var(--color-text-dim)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-text)] lg:min-h-0"
                 >
                   Editar
                 </button>
@@ -326,7 +326,7 @@ export function TemplateEditor({
                   <input type="hidden" name="id" value={t.id} />
                   <button
                     type="submit"
-                    className="rounded-md border border-red-500/20 px-2 py-1 text-xs text-red-200 transition hover:bg-red-950/30"
+                    className="min-h-9 rounded-md border border-red-500/20 px-2 py-1 text-xs text-red-200 transition hover:bg-red-950/30 lg:min-h-0"
                   >
                     Eliminar
                   </button>

@@ -158,7 +158,7 @@ export function AgentForm({
                 key={m.slug}
                 type="button"
                 onClick={() => setV({ ...v, model: m.slug })}
-                className={`rounded-md border px-2.5 py-1 text-xs transition ${
+                className={`min-h-9 rounded-md border px-2.5 py-1 text-xs transition lg:min-h-0 ${
                   active
                     ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-200"
                     : "border-[var(--color-border)] text-[var(--color-text-dim)] hover:border-emerald-400/30"
@@ -472,7 +472,9 @@ function Switch({
       role="switch"
       aria-checked={checked}
       onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition ${
+      /* El before: es área de toque, no aspecto: sube el objetivo de 36x20 a
+         52x36 en móvil sin cambiar un pixel de cómo se ve el interruptor. */
+      className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition before:absolute before:-inset-2 before:content-[''] lg:before:hidden ${
         checked
           ? "bg-emerald-500/70"
           : "bg-[rgba(255,255,255,0.12)]"

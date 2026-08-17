@@ -203,7 +203,7 @@ function TabButton({
     <button
       type="button"
       onClick={onClick}
-      className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition ${
+      className={`flex min-h-9 items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition lg:min-h-0 ${
         active
           ? "bg-emerald-500/15 text-emerald-200"
           : "text-[var(--color-text-dim)] hover:text-[var(--color-text)]"
