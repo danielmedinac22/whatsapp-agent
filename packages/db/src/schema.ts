@@ -142,6 +142,49 @@ export const waTemplateStatus = pgEnum("wa_template_status", [
   "paused",
 ]);
 
+/**
+ * `inactive` es la operación que existe pero no atiende: se usa para dar de
+ * alta un país antes de que abra (Colombia) sin que nada empiece a operar por
+ * el solo hecho de existir la fila.
+ */
+export const operationStatus = pgEnum("operation_status", [
+  "active",
+  "inactive",
+]);
+
+// ────────────────────────────────────────────────────────────────────────────
+// operations — un país donde el negocio opera
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * De cada operación cuelgan su número de WhatsApp, su tienda, su logística y
+ * su configuración de agente. Hoy solo existe Guatemala y las conexiones
+ * siguen siendo singletons `id = 1`: la referencia se agrega al lado (nullable)
+ * y se vuelve obligatoria cuando ya nadie lea el singleton.
+ */
+export const operations = pgTable(
+  "operations",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    /** Nombre visible en el panel: "Guatemala". */
+    name: text("name").notNull(),
+    /** ISO 3166-1 alfa-2 en mayúsculas: "GT", "CO". */
+    countryCode: text("country_code").notNull(),
+    /** ISO 4217: "GTQ", "COP". Mismo vocabulario que `shopify_orders.currency`. */
+    currency: text("currency").notNull(),
+    status: operationStatus("status").notNull().default("active"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  // Una operación es un país: el índice único evita la segunda "Guatemala" que
+  // partiría en dos la operación que hoy factura.
+  (t) => [uniqueIndex("operations_country_code_idx").on(t.countryCode)],
+);
+
 // ────────────────────────────────────────────────────────────────────────────
 // users
 // ────────────────────────────────────────────────────────────────────────────
@@ -184,6 +227,10 @@ export const waSession = pgTable("wa_session", {
 
 export const kapsoConnection = pgTable("kapso_connection", {
   id: integer("id").primaryKey().default(1),
+  /** Nullable hasta el contract: los accesores de hoy siguen leyendo `id = 1`. */
+  operationId: uuid("operation_id").references(() => operations.id, {
+    onDelete: "restrict",
+  }),
   phoneNumberId: text("phone_number_id"),
   businessAccountId: text("business_account_id"),
   displayPhoneNumber: text("display_phone_number"),
@@ -400,6 +447,10 @@ export const templates = pgTable(
 
 export const agentSettings = pgTable("agent_settings", {
   id: integer("id").primaryKey().default(1),
+  /** Nullable hasta el contract: las lecturas de hoy siguen filtrando `id = 1`. */
+  operationId: uuid("operation_id").references(() => operations.id, {
+    onDelete: "restrict",
+  }),
   systemPrompt: text("system_prompt").notNull().default(""),
   model: text("model").notNull().default("anthropic/claude-sonnet-4.6"),
   debounceMs: integer("debounce_ms").notNull().default(8000),
@@ -482,6 +533,10 @@ export const agentPromptVersions = pgTable(
 
 export const shopifyConnection = pgTable("shopify_connection", {
   id: integer("id").primaryKey().default(1),
+  /** Nullable hasta el contract; la tabla está vacía, el backfill no la toca. */
+  operationId: uuid("operation_id").references(() => operations.id, {
+    onDelete: "restrict",
+  }),
   shopDomain: text("shop_domain"),
   adminAccessToken: text("admin_access_token"),
   apiVersion: text("api_version").notNull().default("2025-01"),
@@ -539,6 +594,10 @@ export const shopifyOrders = pgTable(
 
 export const dropiConnection = pgTable("dropi_connection", {
   id: integer("id").primaryKey().default(1),
+  /** Nullable hasta el contract: los accesores de hoy siguen leyendo `id = 1`. */
+  operationId: uuid("operation_id").references(() => operations.id, {
+    onDelete: "restrict",
+  }),
   apiBaseUrl: text("api_base_url")
     .notNull()
     .default("https://api.dropi.gt/api"),
@@ -735,6 +794,8 @@ export const agentRuns = pgTable(
 // types
 // ────────────────────────────────────────────────────────────────────────────
 
+export type Operation = typeof operations.$inferSelect;
+export type NewOperation = typeof operations.$inferInsert;
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Contact = typeof contacts.$inferSelect;
