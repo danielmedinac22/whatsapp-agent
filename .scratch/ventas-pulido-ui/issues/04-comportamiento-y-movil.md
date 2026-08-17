@@ -4,7 +4,7 @@
 
 **Blocked by:** None — can start immediately.
 
-**Status:** claimed — worktree `ui-comportamiento`, tanda del 16-ago-2026
+**Status:** resolved — worktree `ui-comportamiento`, veredicto del usuario el 17-ago-2026 («la UI me parece bien por ahora»)
 
 Pedido del usuario el 16-ago-2026, en paralelo con la migración multi-operación.
 
