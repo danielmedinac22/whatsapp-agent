@@ -1,8 +1,9 @@
 import { eq, and, gte } from "@wa/db";
 import {
-  agentSettings,
+  agentSettingsScope,
   contacts,
   conversations,
+  getAgentSettings,
   messages,
   shopifyOrders,
 } from "@wa/db";
@@ -70,11 +71,11 @@ async function handleFollowup({ orderId }: FollowupPayload) {
       .limit(1);
     if (reply) {
       logger.info({ orderId }, "customer replied — skipping follow-up");
-      const [s] = await db
-        .select()
-        .from(agentSettings)
-        .where(eq(agentSettings.id, 1))
-        .limit(1);
+      // Solo cambia de dónde sale la configuración: la del dueño de esta
+      // conversación. El heurístico de arriba —«hay entrante posterior al
+      // pedido, luego confirmado»— es el riesgo R1 y se corrige en
+      // `ventas-cierre-orden 05`, no aquí.
+      const s = await getAgentSettings(agentSettingsScope(conv.operationId));
       await db
         .update(shopifyOrders)
         .set({ status: "confirmed", confirmedAt: new Date() })

@@ -5,7 +5,14 @@ import {
   agentPromptInput,
   agentSettingsInput,
 } from "@wa/shared";
-import { db, agentSettings, eq } from "../db";
+import {
+  db,
+  agentSettings,
+  eq,
+  getAgentSettings,
+  GLOBAL_AGENT_SETTINGS,
+  GLOBAL_AGENT_SETTINGS_ID,
+} from "../db";
 import { logger } from "../lib/logger";
 import { previewAgentReply } from "../agent/preview";
 import {
@@ -24,13 +31,15 @@ function actorEmail(c: { req: { header: (n: string) => string | undefined } }) {
   return trimmed.length > 0 && trimmed.length <= 200 ? trimmed : null;
 }
 
-async function loadSettings() {
-  const [row] = await db
-    .select()
-    .from(agentSettings)
-    .where(eq(agentSettings.id, 1))
-    .limit(1);
-  return row ?? null;
+/**
+ * El panel todavía edita la configuración global: no tiene selector de
+ * operación —eso es otro ticket— así que aquí el ámbito se declara explícito
+ * en vez de quedar implícito en un `id = 1` suelto. Las escrituras de abajo
+ * apuntan a la misma fila por `GLOBAL_AGENT_SETTINGS_ID`, que es lo que el
+ * contract (ticket 06) sale a buscar.
+ */
+function loadSettings() {
+  return getAgentSettings(GLOBAL_AGENT_SETTINGS);
 }
 
 agent.get("/settings", async (c) => {
@@ -67,7 +76,7 @@ agent.put("/settings", async (c) => {
   };
   await db
     .insert(agentSettings)
-    .values({ id: 1, ...fields })
+    .values({ id: GLOBAL_AGENT_SETTINGS_ID, ...fields })
     .onConflictDoUpdate({ target: agentSettings.id, set: fields });
 
   // El prompt cambió desde la pantalla de configuración: queda en el historial.
@@ -98,7 +107,7 @@ agent.put("/prompt", async (c) => {
   await db
     .update(agentSettings)
     .set({ systemPrompt: prompt, updatedAt: new Date() })
-    .where(eq(agentSettings.id, 1));
+    .where(eq(agentSettings.id, GLOBAL_AGENT_SETTINGS_ID));
 
   if (previous.systemPrompt !== prompt) {
     await recordPromptVersion({
@@ -129,7 +138,7 @@ agent.post("/prompt/versions/:id/restore", async (c) => {
   await db
     .update(agentSettings)
     .set({ systemPrompt: row.prompt, updatedAt: new Date() })
-    .where(eq(agentSettings.id, 1));
+    .where(eq(agentSettings.id, GLOBAL_AGENT_SETTINGS_ID));
 
   if (previous?.systemPrompt !== row.prompt) {
     const when = row.createdAt.toLocaleString("es-CO", {

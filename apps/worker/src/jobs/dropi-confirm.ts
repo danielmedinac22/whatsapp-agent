@@ -1,5 +1,10 @@
 import { eq, and } from "@wa/db";
-import { agentSettings, dropiOrders, shopifyOrders } from "@wa/db";
+import {
+  dropiOrders,
+  getAgentSettings,
+  GLOBAL_AGENT_SETTINGS,
+  shopifyOrders,
+} from "@wa/db";
 import { db } from "../db";
 import { logger } from "../lib/logger";
 import { confirmOrder } from "../dropi/orders";
@@ -12,17 +17,14 @@ interface DropiConfirmPayload {
 
 const RETRY_DELAY_S = 15 * 60;
 
-async function getSettings() {
-  const [s] = await db
-    .select()
-    .from(agentSettings)
-    .where(eq(agentSettings.id, 1))
-    .limit(1);
-  return s ?? null;
-}
-
 async function handleDropiConfirm({ shopifyOrderRowId }: DropiConfirmPayload) {
-  const s = await getSettings();
+  // Ámbito global y no por operación: lo que decide si se confirma en
+  // logística —`dropiEnabled`, `dropiDryRun`— pertenece a la conexión de
+  // Dropi, y esa conexión todavía no dice de qué operación es (ticket 04).
+  // Resolverlo aquí por el contacto del pedido crearía una segunda fuente de
+  // verdad que contradiría a la conexión. Con una sola operación es la misma
+  // fila que se leía antes.
+  const s = await getAgentSettings(GLOBAL_AGENT_SETTINGS);
   if (!s?.dropiEnabled) {
     logger.info({ shopifyOrderRowId }, "dropi confirm: disabled, skipping");
     return;
@@ -120,7 +122,8 @@ export async function confirmDropiOrderById(
   dropiRowId: string,
   opts: { force?: boolean } = {},
 ): Promise<{ ok: true; dryRun: boolean; alreadyDone: boolean }> {
-  const s = await getSettings();
+  // Global por lo mismo que el job de arriba: la bandera es de la conexión.
+  const s = await getAgentSettings(GLOBAL_AGENT_SETTINGS);
   if (!s?.dropiEnabled) {
     throw new Error("Integración Dropi deshabilitada (toggle en /agente)");
   }

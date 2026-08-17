@@ -1,8 +1,9 @@
 import { eq, and, isNull, gte, lte, sql, like } from "@wa/db";
 import {
-  agentSettings,
   contacts,
   dropiOrders,
+  getAgentSettings,
+  GLOBAL_AGENT_SETTINGS,
   shopifyOrders,
   type DropiOrder,
 } from "@wa/db";
@@ -182,15 +183,6 @@ async function upsertDropiOrder(row: DropiOrderRow, windowDays: number) {
   return inserted!.id;
 }
 
-async function getSettings() {
-  const [s] = await db
-    .select()
-    .from(agentSettings)
-    .where(eq(agentSettings.id, 1))
-    .limit(1);
-  return s ?? null;
-}
-
 export interface DropiSyncResult {
   fetched: number;
   upserted: number;
@@ -202,7 +194,9 @@ export async function runDropiSync(opts?: {
   windowDays?: number;
   pageSize?: number;
 }): Promise<DropiSyncResult> {
-  const s = await getSettings();
+  // Global: el sync barre los pedidos de la conexión de Dropi, que todavía no
+  // dice de qué operación es (ticket 04). Misma fila que se leía antes.
+  const s = await getAgentSettings(GLOBAL_AGENT_SETTINGS);
   if (!s?.dropiEnabled) {
     logger.info("dropi sync: disabled in agent_settings, skipping");
     return { fetched: 0, upserted: 0, matched: 0, errors: 0 };
@@ -271,7 +265,8 @@ export async function startDropiSyncWorker() {
 
 export async function scheduleDropiSync(): Promise<void> {
   const boss = await getBoss();
-  const s = await getSettings();
+  // El cron del sync es uno solo por proceso: ámbito global.
+  const s = await getAgentSettings(GLOBAL_AGENT_SETTINGS);
   const minutes = s?.dropiSyncIntervalMin ?? 15;
   // pg-boss schedule: cron-like. */N * * * *
   const cron = `*/${Math.max(1, minutes)} * * * *`;

@@ -1,5 +1,10 @@
 import { and, eq, isNull } from "@wa/db";
-import { agentSettings, templates } from "@wa/db";
+import {
+  agentSettings,
+  getAgentSettings,
+  templates,
+  type AgentSettingsScope,
+} from "@wa/db";
 import type { TemplateType } from "@wa/shared";
 import { db } from "../db";
 import { logger } from "../lib/logger";
@@ -66,10 +71,23 @@ function extractVars(body: string): string[] {
   return [...set];
 }
 
-export async function ensureDropiTemplates(): Promise<{
+/**
+ * Crea las plantillas de logística que falten y las asigna a la configuración
+ * **de un solo ámbito**.
+ *
+ * Las seis FK a `templates` son por operación: cada operación elige qué
+ * plantilla usa para «guía generada» y para «entregado». El seed asigna las
+ * suyas y no toca las de las demás — una plantilla guatemalteca en la fila
+ * colombiana es la fuga que este spec existe para impedir. Por eso el ámbito
+ * es un parámetro obligatorio y no un `id = 1` implícito.
+ */
+export async function ensureDropiTemplates(
+  scope: AgentSettingsScope,
+): Promise<{
   inserted: number;
   assigned: number;
 }> {
+  const settings = await getAgentSettings(scope);
   let inserted = 0;
   let assigned = 0;
   for (const t of DEFAULTS) {
@@ -97,19 +115,21 @@ export async function ensureDropiTemplates(): Promise<{
     if (!templateId) continue;
 
     // Auto-assign only when the corresponding agent_settings field is null
-    // (don't override an operator's manual choice).
+    // (don't override an operator's manual choice), y solo sobre la fila del
+    // ámbito pedido: sin fila no hay a quién asignarle nada.
+    if (!settings) continue;
     const col = agentSettings[t.agentSettingsField];
     const res = await db
       .update(agentSettings)
       .set({ [t.agentSettingsField]: templateId, updatedAt: new Date() })
-      .where(and(eq(agentSettings.id, 1), isNull(col)));
+      .where(and(eq(agentSettings.id, settings.id), isNull(col)));
     // pg-postgres doesn't return rowCount uniformly; treat any update as a
     // best-effort assignment.
     void res;
     assigned++;
   }
   logger.info(
-    { inserted, candidates: DEFAULTS.length },
+    { inserted, assigned, candidates: DEFAULTS.length },
     "dropi templates ensured",
   );
   return { inserted, assigned };

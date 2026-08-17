@@ -4,7 +4,6 @@ import {
   conversations,
   messages,
   templates,
-  agentSettings,
   shopifyOrders,
   dropiOrders,
   waTemplates,
@@ -220,14 +219,12 @@ export async function listTemplates() {
   return db.select().from(templates).orderBy(asc(templates.name));
 }
 
-export async function getAgentSettings() {
-  const [row] = await db
-    .select()
-    .from(agentSettings)
-    .where(eq(agentSettings.id, 1))
-    .limit(1);
-  return row ?? null;
-}
+/**
+ * La configuración de agente ya no se lee aquí: el accesor único vive en
+ * `@wa/db` y obliga a decir de qué operación se la quiere. Se re-exporta para
+ * que las páginas lo sigan importando desde `@/lib/queries`.
+ */
+export { getAgentSettings } from "@wa/db";
 
 /**
  * Conversaciones recientes para el selector del banco de pruebas del prompt:
