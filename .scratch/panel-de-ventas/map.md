@@ -14,6 +14,14 @@ El mapa termina cuando ese artefacto está publicado y el link está en manos de
 
 **Dominio.** WhatsApp Business vía Kapso; Shopify como catálogo y sistema de órdenes; Dropi como capa logística (guías, novedades, tracking); pago contraentrega (COD) en Colombia. Dos agentes: *Katherine* (postventa, ya existe en producción) y *Sebastián* (preventa, es lo que se cotiza).
 
+**Estado de construcción (17-ago-2026).** La **migración multi-operación está terminada**: tickets 01–06 de [Operaciones](../ventas-multi-operacion/spec.md) construidos, mergeados y con las migraciones `0020` y `0021` aplicadas a producción. Existe la entidad Operación, Guatemala está registrada (`GT`/`GTQ`/`active`), y **ningún accesor devuelve una conexión o configuración sin decir de qué operación es** — cero `eq(<tabla>.id, 1)` en toda la base. La suite pasó de 41 tests en 4 archivos a 73 en 7. Guatemala no cambió de comportamiento en ningún paso: los tres greps de verificación quedaron vacíos y la lectura contra producción devuelve la misma fila byte a byte por los cuatro accesores.
+
+Lo que eso cambia para lo que sigue:
+
+- **El ticket 07 (selector de operación) es bloqueante duro del 08 (crear Colombia).** El panel usa un puente que **lanza con dos operaciones activas**: ocho pantallas dejan de funcionar el día que Colombia se ponga `active`. Crear Colombia en `inactive` es seguro; activarla sin selector, no.
+- **Queda un bug latente conocido y documentado**: `shopify_orders.order_id` tiene único global y el número de pedido de Shopify es por tienda. No muerde hasta la segunda tienda, y arreglarlo exige saber de qué tienda vino el pedido — es trabajo del ticket 08, no de antes.
+- **`dropi_dry_run` sigue en `true`, y se confirmó que es intencional**: es el default del esquema, está expuesto como interruptor en el panel, y `84b62c0` quitó el auto-confirm dejando el botón manual como único camino. En producción hay 5 simulacros de mayo y 3 confirmaciones reales por el botón. Copiarlo a Colombia reproduce una decisión, no arrastra un olvido.
+
 **Aguas abajo.** El mapa llegó a su destino y las decisiones se convirtieron en cuatro specs, listos para tickets:
 [ingesta y reconocimiento](../ventas-ingesta-reconocimiento/spec.md) ·
 [conversación de venta](../ventas-conversacion/spec.md) ·
