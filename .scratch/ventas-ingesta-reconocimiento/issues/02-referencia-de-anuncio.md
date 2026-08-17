@@ -31,3 +31,37 @@ El token de la app de Meta trae `whatsapp_business_management` y `whatsapp_busin
 **No existe ningún endpoint para recuperar la referencia después del hecho.** Si no se captura en el webhook, el identificador de clic se pierde para siempre.
 
 **Cada peso de pauta que corra antes de que esto funcione es atribución perdida.** Este ticket va antes de invertir en anuncios, no en paralelo.
+
+## Answer — esquema puesto por la `0022` (17-ago-2026), el parser sigue abierto
+
+El worktree `esquema-0022` dejó las columnas de atribución aplicadas en producción, **en `conversations` y no en `messages`**, como decidió el spec: la referencia llega solo en el primer mensaje, se guarda asociada a la conversación en cuanto llega y el resto del sistema la lee de ahí. **Este ticket no genera migración.**
+
+### Columnas nuevas en `conversations` (todas nullable — 1.692 filas existentes no tienen anuncio)
+
+| columna | tipo | campo de Meta (`referral.*`) | para qué |
+| -- | -- | -- | -- |
+| `ad_id` | text | `source_id` | el identificador del anuncio; **clave del mapeo `product_ads`** (nivel 1 de la cascada) |
+| `ad_headline` | text | `headline` | titular |
+| `ad_body` | text | `body` | cuerpo |
+| `ad_source_url` | text | `source_url` | URL de origen |
+| `ctwa_clid` | text | `ctwa_clid` | **el identificador de clic**; distinto del de anuncio, es lo que después permite reportarle la venta a Meta (CAPI). Va con el nombre exacto de Meta porque así se llama el parámetro que CAPI recibe |
+| `ad_referral_at` | timestamptz | — | cuándo llegó la referencia (timestamp del mensaje que la trajo). **Lo lee el ruteo**: «atribución más reciente que el último pedido» → ventas |
+| `ad_referral_raw` | jsonb | el objeto completo | seguro contra recortes: no existe endpoint para recuperar la referencia después del hecho, y el serializador del proveedor ya recortó campos que Meta sí manda. Guarda el `referral` tal cual llegó, aunque la ruta exacta cambie |
+
+En drizzle: `conversations.adId`, `adHeadline`, `adBody`, `adSourceUrl`, `ctwaClid`, `adReferralAt`, `adReferralRaw`.
+
+### Semántica que hereda quien escriba
+
+- **Un clic nuevo sobrescribe la referencia anterior.** Hay una conversación por contacto para siempre (índice único sobre `contact_id`), y el ruteo quiere «la más reciente»: el recomprador que hace clic en un anuncio nuevo vuelve a ventas. Si un día hace falta el historial de clics, es una tabla append-only aparte — no una columna más aquí.
+- **`ad_referral_at` lo pone quien escribe**, no la base: no tiene default para que una fila sin referencia quede en `null` de verdad («una conversación sin referencia simplemente no tiene identificador, sin inventar uno», ticket CAPI 01).
+- **`ctwa_clid` se escribe junto con `ad_id`, en la misma escritura.** Perderlo es irreversible.
+- El **producto** que la cascada resuelva va en `conversations.product_id` (→ `products`, `set null`); ver el `## Answer` del ticket 03. No lo escribe este ticket: lo escribe el 04.
+- `messages` no cambió: la referencia no se persiste por mensaje.
+
+### Lo que sigue siendo de este ticket
+
+Todo lo del checklist: exponer el `referral` en `parseKapsoInbound` (o donde viva el parser hoy), tests con y sin referencia, y la verificación contra un anuncio real de que Kapso no recorta el campo — con la salida alterna documentada arriba si lo recorta. El esquema no cambia en ninguno de los dos casos: `ad_referral_raw` absorbe la forma que llegue.
+
+### Verificado en producción tras aplicar
+
+Las siete columnas existen, son nullable y ninguna conversación tiene valor en ellas (`0` filas con `ad_id`, `product_id` o `assigned_user_id` no nulos). Conteo de conversaciones 1.692 → 1.693 durante la migración: producción siguió operando.

@@ -155,6 +155,13 @@
       "when": 1786936819820,
       "tag": "0021_contract_operacion_obligatoria",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1786976643143,
+      "tag": "0022_expand_ventas",
+      "breakpoints": true
     }
   ]
 }

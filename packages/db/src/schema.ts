@@ -12,6 +12,9 @@ import {
   index,
   uniqueIndex,
   primaryKey,
+  foreignKey,
+  unique,
+  check,
   customType,
 } from "drizzle-orm/pg-core";
 
@@ -26,7 +29,24 @@ const bytea = customType<{ data: Buffer; driverData: Buffer }>({
 // enums
 // ────────────────────────────────────────────────────────────────────────────
 
-export const userRole = pgEnum("user_role", ["admin", "operator"]);
+/**
+ * `sales` y `operations` entran en la `0022` (expand): ventas alcanza el módulo
+ * del vendedor, operaciones el de confirmación, admin ambos. `operator` es el
+ * valor heredado —nadie lo tiene en producción, los tres usuarios son `admin`—
+ * y se conserva porque un valor de enum no se quita sin recrear el tipo. Los
+ * valores nuevos **no se usan en la misma migración que los agrega**: Postgres
+ * lo rechaza dentro de una transacción, y el migrator corre en una.
+ *
+ * `operations` es el equipo que confirma pedidos, no la tabla `operations`
+ * (el país): la colisión es del lenguaje del negocio —«ventas» y
+ * «operaciones»— y se prefirió respetarlo a inventar un sinónimo.
+ */
+export const userRole = pgEnum("user_role", [
+  "admin",
+  "operator",
+  "sales",
+  "operations",
+]);
 
 export const waStatus = pgEnum("wa_status", [
   "disconnected",
@@ -151,6 +171,13 @@ export const operationStatus = pgEnum("operation_status", [
   "active",
   "inactive",
 ]);
+
+/**
+ * De dónde sale la información de un producto del catálogo de ventas:
+ * `shopify` la lee de la tienda en tiempo de uso (no la copia), `native` la
+ * guarda el panel porque el producto todavía no existe en la tienda.
+ */
+export const productSource = pgEnum("product_source", ["shopify", "native"]);
 
 // ────────────────────────────────────────────────────────────────────────────
 // operations — un país donde el negocio opera
@@ -376,6 +403,67 @@ export const conversations = pgTable(
     confirmationUpdatedAt: timestamp("confirmation_updated_at", {
       withTimezone: true,
     }),
+
+    // ── Atribución del anuncio (CTWA) · expand `0022` ──────────────────────
+    //
+    // La referencia del anuncio llega **solo en el primer mensaje** de la
+    // conversación, nunca en respuestas de botón o lista. Se persiste aquí, en
+    // la conversación y no en el mensaje, y el resto del sistema la lee de
+    // aquí. Como hay una conversación por contacto para siempre (índice único
+    // sobre `contact_id`), un clic nuevo **sobrescribe** la anterior: es lo
+    // que quiere el ruteo —«atribución más reciente que el último pedido» va
+    // a ventas—, y por eso `ad_referral_at` es columna y no se infiere del
+    // mensaje. Todo nullable: 1.692 filas existentes no tienen anuncio.
+    //
+    // No existe endpoint de Meta para recuperar la referencia después del
+    // hecho: lo que no se guarde aquí se pierde. Por eso además de las columnas
+    // tipadas va el objeto crudo — el serializador del proveedor ya recortó
+    // campos que Meta sí manda, y la ruta exacta del `referral` en su payload
+    // no está documentada.
+
+    /** `referral.source_id`: el identificador del anuncio. Clave del mapeo `product_ads`. */
+    adId: text("ad_id"),
+    /** `referral.headline`: titular del anuncio. */
+    adHeadline: text("ad_headline"),
+    /** `referral.body`: cuerpo del anuncio. */
+    adBody: text("ad_body"),
+    /** `referral.source_url`: URL de origen del anuncio. */
+    adSourceUrl: text("ad_source_url"),
+    /**
+     * `referral.ctwa_clid`: el identificador de clic. Distinto del de anuncio:
+     * el de anuncio reconoce el producto; este es lo que después permite
+     * reportarle la venta a Meta (CAPI). Va con el nombre exacto de Meta porque
+     * así se llama el parámetro que CAPI recibe.
+     */
+    ctwaClid: text("ctwa_clid"),
+    /** Cuándo llegó la referencia (timestamp del mensaje que la trajo). */
+    adReferralAt: timestamp("ad_referral_at", { withTimezone: true }),
+    /** El objeto `referral` completo, tal cual llegó. Seguro contra recortes. */
+    adReferralRaw: jsonb("ad_referral_raw"),
+
+    /**
+     * El producto que el reconocimiento resolvió para esta conversación —por
+     * id de anuncio, por match semántico o preguntando—, para que una respuesta
+     * de botón, que no trae referencia, siga sabiendo de qué producto se habla.
+     * `null` mientras no esté identificado. `set null` al borrar el producto:
+     * la conversación sobrevive al catálogo.
+     */
+    productId: uuid("product_id").references(() => products.id, {
+      onDelete: "set null",
+    }),
+
+    // ── Asignación · expand `0022` ─────────────────────────────────────────
+    //
+    // Lo único que se **guarda** del ruteo: quién está trabajando la
+    // conversación, porque eso el sistema no lo puede deducir. A qué bandeja
+    // pertenece se deriva y no tiene columna. Soltar es poner las dos en null.
+
+    /** El asesor que la está trabajando. `set null`: borrar el usuario la libera. */
+    assignedUserId: uuid("assigned_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    assignedAt: timestamp("assigned_at", { withTimezone: true }),
+
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -559,6 +647,180 @@ export const agentPromptVersions = pgTable(
       .defaultNow(),
   },
   (t) => [index("agent_prompt_versions_created_idx").on(t.createdAt)],
+);
+
+// ────────────────────────────────────────────────────────────────────────────
+// sales agent settings — la configuración del vendedor (una por operación)
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Tabla hermana de `agent_settings`, **no** una generalización. `agent_settings`
+ * tiene 65 referencias y la mayoría son campos de Katherine —plantillas de
+ * logística, demoras de seguimiento, acuse de confirmación—: es la
+ * configuración de la confirmación con nombre genérico. Generalizarla habría
+ * obligado a un expand–contract sobre esos call sites para que el vendedor use
+ * una fracción de las columnas. Esta tabla tiene solo lo que el vendedor usa y
+ * su radio de impacto sobre lo existente es cero.
+ *
+ * Una fila por operación (índice único), `id` uuid como en `operations` — no
+ * hereda el entero `default 1` del singleton porque nunca fue singleton.
+ *
+ * Los textos son `NOT NULL default ''` como `agent_settings.system_prompt`: la
+ * fila puede existir con solo la operación y el panel la va llenando. El
+ * límite de descuento arranca en **cero**, que prohíbe descuentos: es el valor
+ * seguro, y la validación (en el constructor de orden) corre siempre. El
+ * modelo es de gama media y el esfuerzo de razonamiento bajo, y son campos, no
+ * constantes: subirlo es cambiar un valor.
+ */
+export const salesAgentSettings = pgTable(
+  "sales_agent_settings",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    operationId: uuid("operation_id")
+      .notNull()
+      .references(() => operations.id, { onDelete: "restrict" }),
+    /** Nombre visible del vendedor: «Sebastián». */
+    displayName: text("display_name").notNull().default(""),
+    /** Mensajes base — los momentos que el admin controla palabra por palabra. */
+    greeting: text("greeting").notNull().default(""),
+    closingPush: text("closing_push").notNull().default(""),
+    funnelMessage: text("funnel_message").notNull().default(""),
+    /** Texto libre: personalidad y tono. */
+    toneInstructions: text("tone_instructions").notNull().default(""),
+    /**
+     * Hasta qué porcentaje puede bajar el vendedor. Se aplica en código al
+     * construir la orden; el prompt propone, la validación decide. `0` prohíbe.
+     */
+    discountLimitPct: integer("discount_limit_pct").notNull().default(0),
+    /** Slug de OpenRouter, como `agent_settings.model`. */
+    model: text("model").notNull().default("openai/gpt-5.4-mini"),
+    /** `low` | `medium` | `high` — vocabulario del proveedor, por eso texto y no enum. */
+    reasoningEffort: text("reasoning_effort").notNull().default("low"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("sales_agent_settings_operation_idx").on(t.operationId),
+    check(
+      "sales_agent_settings_discount_limit_check",
+      sql`${t.discountLimitPct} between 0 and 100`,
+    ),
+  ],
+);
+
+// ────────────────────────────────────────────────────────────────────────────
+// products — el catálogo de ventas (por operación)
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * El mínimo de catálogo que el reconocimiento necesita para existir. **Por
+ * operación**: un producto guatemalteco no aparece en el catálogo colombiano,
+ * y la cascada de reconocimiento solo consulta los de la operación del lead.
+ *
+ * Dos orígenes, declarados en `source`:
+ *   · `shopify` — conectado a la tienda. Guarda **solo** el id de Shopify y lee
+ *     nombre, descripción y precio de la tienda en tiempo de uso
+ *     (`getProductsByIds`), no los copia: editarlo allá se refleja acá sin
+ *     desincronización silenciosa. Por eso `name` es nullable.
+ *   · `native` — creado en el panel porque aún no existe en la tienda. Lleva su
+ *     nombre y descripción aquí.
+ * El `CHECK` hace cumplir que cada origen traiga lo suyo.
+ *
+ * Los productos quedan uno a uno con los de la tienda (único parcial sobre
+ * `(operation_id, shopify_product_id)`); no hay concepto de familia ni de
+ * agrupación — eso lo expresa el mapeo `product_ads`.
+ *
+ * Deliberadamente fuera de la `0022`: assets enviables (imágenes, videos), que
+ * necesitan decidir dónde viven los binarios; precio de producto nativo; y
+ * archivado. Los piden tickets de olas posteriores.
+ */
+export const products = pgTable(
+  "products",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    operationId: uuid("operation_id")
+      .notNull()
+      .references(() => operations.id, { onDelete: "restrict" }),
+    source: productSource("source").notNull(),
+    /**
+     * GID de Shopify (`gid://shopify/Product/NNN`), como lo devuelve
+     * `ShopifyProduct.id`; `getProductsByIds` acepta también el numérico.
+     * Obligatorio si `source = 'shopify'`, nulo si `native`.
+     */
+    shopifyProductId: text("shopify_product_id"),
+    /** Obligatorio si `source = 'native'`; nulo para los conectados (se lee de la tienda). */
+    name: text("name"),
+    description: text("description"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    // Uno a uno con la tienda: el mismo producto de Shopify no se conecta dos
+    // veces en la misma operación. Parcial: los nativos no tienen id de tienda.
+    uniqueIndex("products_operation_shopify_idx")
+      .on(t.operationId, t.shopifyProductId)
+      .where(sql`${t.shopifyProductId} is not null`),
+    // Único sobre (operación, id): es el destino de la clave foránea compuesta
+    // de `product_ads`, y de paso sirve para listar el catálogo por operación.
+    // Restricción y no índice a propósito: drizzle-kit la emite dentro del
+    // `CREATE TABLE`, antes de las FKs; como índice suelto salía después de la
+    // FK que la necesita y Postgres rechazaba la migración (42830).
+    unique("products_operation_id_unique").on(t.operationId, t.id),
+    check(
+      "products_source_check",
+      sql`(${t.source} = 'native' and ${t.name} is not null and ${t.shopifyProductId} is null) or (${t.source} = 'shopify' and ${t.shopifyProductId} is not null)`,
+    ),
+  ],
+);
+
+// ────────────────────────────────────────────────────────────────────────────
+// product ads — mapeo anuncio→productos, N:M en ambos sentidos
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Un anuncio puede apuntar a varios productos (anuncios de familia o de combo,
+ * sin inventar productos falsos) y un producto puede tener varios anuncios.
+ * El anuncio no tiene entidad propia: es su identificador de Meta
+ * (`referral.source_id`), que el admin pega en el panel. Nivel 1 de la
+ * cascada de reconocimiento: `ad_id` → productos de **esta** operación.
+ *
+ * `operation_id` está aquí y no solo en `products` para que el aislamiento sea
+ * una consulta directa (`where operation_id = ? and ad_id = ?`) y no una regla
+ * de código; la clave foránea compuesta `(operation_id, product_id)` →
+ * `products (operation_id, id)` garantiza que no puede mentir: un mapeo no
+ * puede apuntar a un producto de otra operación. `cascade`: borrar el producto
+ * se lleva sus mapeos.
+ */
+export const productAds = pgTable(
+  "product_ads",
+  {
+    operationId: uuid("operation_id")
+      .notNull()
+      .references(() => operations.id, { onDelete: "restrict" }),
+    productId: uuid("product_id").notNull(),
+    /** Identificador del anuncio de Meta, tal como llega en `referral.source_id`. */
+    adId: text("ad_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.productId, t.adId] }),
+    index("product_ads_operation_ad_idx").on(t.operationId, t.adId),
+    foreignKey({
+      name: "product_ads_product_operation_fk",
+      columns: [t.operationId, t.productId],
+      foreignColumns: [products.operationId, products.id],
+    }).onDelete("cascade"),
+  ],
 );
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -872,6 +1134,12 @@ export type Template = typeof templates.$inferSelect;
 export type AgentSettings = typeof agentSettings.$inferSelect;
 export type AgentPromptVersion = typeof agentPromptVersions.$inferSelect;
 export type NewAgentPromptVersion = typeof agentPromptVersions.$inferInsert;
+export type SalesAgentSettings = typeof salesAgentSettings.$inferSelect;
+export type NewSalesAgentSettings = typeof salesAgentSettings.$inferInsert;
+export type Product = typeof products.$inferSelect;
+export type NewProduct = typeof products.$inferInsert;
+export type ProductAd = typeof productAds.$inferSelect;
+export type NewProductAd = typeof productAds.$inferInsert;
 export type ShopifyOrder = typeof shopifyOrders.$inferSelect;
 export type NewShopifyOrder = typeof shopifyOrders.$inferInsert;
 export type WaSession = typeof waSession.$inferSelect;
