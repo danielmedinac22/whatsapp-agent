@@ -14,6 +14,9 @@ function operacion(id: string, countryCode: string, currency: string): Operation
     countryCode,
     currency,
     status: "active",
+    // Lo agregó la 0023: el destino de conversiones de la operación. Nulo en el
+    // fixture porque nada de este módulo lo mira.
+    capiDatasetId: null,
     createdAt: new Date(0),
     updatedAt: new Date(0),
   };
