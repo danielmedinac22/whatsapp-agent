@@ -309,7 +309,7 @@ export function InboxClient({
             Conversaciones en vivo
           </p>
         </div>
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
           <SummaryCard
             label="Conversaciones"
             value={String(items.length)}
@@ -336,7 +336,10 @@ export function InboxClient({
       </header>
 
       <div className="grid min-h-0 flex-1 gap-3 xl:grid-cols-[336px_1fr]">
-        <aside className="app-card flex min-h-[520px] flex-col overflow-hidden">
+        {/* Debajo de xl la altura la fija el viewport, no el contenido: sin esto
+            las 200 conversaciones estiran la lista y el hilo queda 21.000 px
+            más abajo. min-w-0 deja que el `truncate` de cada fila funcione. */}
+        <aside className="app-card flex h-[55vh] min-h-[320px] min-w-0 flex-col overflow-hidden xl:h-auto xl:min-h-[520px]">
           <div className="flex flex-col gap-2 border-b border-[var(--color-border)] px-3 py-2.5">
             <div className="relative">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--color-text-soft)]" />
@@ -344,7 +347,7 @@ export function InboxClient({
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Buscar nombre, teléfono o mensaje…"
-                className="app-input h-8 w-full pl-8 pr-8 text-xs"
+                className="app-input h-9 w-full pl-8 pr-8 text-xs lg:h-8"
               />
               {search && (
                 <button
@@ -365,7 +368,7 @@ export function InboxClient({
               <select
                 value={filter}
                 onChange={(e) => setFilter(e.target.value as FilterKey)}
-                className="h-7 rounded-md border border-[var(--color-border)] bg-[rgba(8,21,30,0.72)] px-2 text-xs text-[var(--color-text-dim)] outline-none transition hover:border-[rgba(110,231,183,0.3)] focus:border-[rgba(110,231,183,0.5)]"
+                className="h-9 rounded-md border border-[var(--color-border)] bg-[rgba(8,21,30,0.72)] px-2 text-xs text-[var(--color-text-dim)] outline-none transition hover:border-[rgba(110,231,183,0.3)] focus:border-[rgba(110,231,183,0.5)] lg:h-7"
               >
                 <option value="all">Todas ({items.length})</option>
                 <option value="pending">Pendientes ({pendingCount})</option>
@@ -464,7 +467,7 @@ export function InboxClient({
         </ul>
         </aside>
 
-        <section className="flex min-h-0 flex-col">
+        <section className="flex h-[80vh] min-h-[420px] min-w-0 flex-col xl:h-auto xl:min-h-0">
         {selected ? (
           <ConversationPane
             key={selected.id}
@@ -680,7 +683,7 @@ function ConversationPane({
           <ConfirmationMenu chat={chat} />
           <button
             onClick={toggleAgent}
-            className={`inline-flex h-8 items-center gap-2 rounded-md border px-3 text-xs uppercase ${
+            className={`inline-flex h-9 items-center gap-2 rounded-md border px-3 text-xs uppercase lg:h-8 ${
               chat.agentMode
                 ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-200"
                 : "border-[var(--color-border)] text-[var(--color-text-dim)]"
@@ -993,7 +996,7 @@ function ConfirmationMenu({ chat }: { chat: ChatItem }) {
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        className={`inline-flex h-8 items-center gap-2 rounded-md border px-3 text-xs uppercase ${meta.classes}`}
+        className={`inline-flex h-9 items-center gap-2 rounded-md border px-3 text-xs uppercase lg:h-8 ${meta.classes}`}
         disabled={busy}
       >
         <Icon className="h-3.5 w-3.5" />
