@@ -175,6 +175,15 @@
   .adid { font-variant-numeric:tabular-nums; font-weight:600; font-size:12.5px; }
   .adtargets { display:flex; gap:6px; flex-wrap:wrap; }
   .adtarget { font-size:11px; padding:3px 8px; border-radius:6px; border:1px solid var(--border); color:var(--text-dim); }
+  /* Un anuncio compartido no puede parecer exclusivo (ticket 03). */
+  .adchip { display:flex; align-items:center; gap:9px; padding:6px 9px; border-radius:7px;
+            border:1px solid var(--border); font-size:11.5px; color:var(--text-dim); }
+  .adchip.shared { border-color:var(--op-line); background:var(--op-faint); }
+  .adshare { font-size:10.5px; color:var(--op); }
+  /* Un producto sin anuncios no es incompleto: es una fuga de reconocimiento. */
+  .leak { padding:10px 11px; border-radius:9px; font-size:11.5px; line-height:1.55;
+          border:1px solid rgba(244,193,109,.35); background:rgba(244,193,109,.07); color:#f0d6a4; }
+  .leak strong { display:block; color:var(--highlight); margin-bottom:3px; }
   .quickadd { display:flex; gap:8px; padding:12px 14px; border-bottom:1px solid var(--border); background:rgba(167,139,250,.05); align-items:center; }
   .qinput { flex:1; padding:8px 11px; border-radius:8px; border:1px solid var(--op-line); background:rgba(14,29,40,.9); color:var(--text); font-size:12.5px; }
   .qinput::placeholder { color:var(--text-soft); }
@@ -363,7 +372,7 @@ const PRODUCTS = {
 };
 
 const VARIANTS = [
-  {id:"A",label:"Tabla densa",       tag:"todo el catálogo a la vista; el origen es una columna", ref:"Dovetail · Whop"},
+  {id:"A",label:"Tabla densa ✓",     tag:"ELEGIDA · el origen es una columna, no una insignia",   ref:"Dovetail · Whop"},
   {id:"B",label:"Dos secciones",     tag:"la tienda arriba, el panel abajo — no se pueden confundir", ref:"separación estructural"},
   {id:"C",label:"Tarjetas",          tag:"lo que el vendedor manda, al frente",                   ref:"Air · Whop"},
   {id:"D",label:"El anuncio manda",  tag:"la pantalla es de anuncios; registrar es la acción",    ref:"el ticket 03"},
@@ -440,13 +449,28 @@ function detail() {
   ads.appendChild(q);
   if (p.ads.length) {
     const list = el("div");
-    list.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;margin-top:3px";
-    p.ads.forEach(a => list.appendChild(el("span","adtarget num",`${esc(a)} <span class="soft" style="margin-left:4px">×</span>`)));
+    list.style.cssText = "display:flex;flex-direction:column;gap:5px;margin-top:3px";
+    p.ads.forEach(a => {
+      // El ticket 03 pide que se vea claramente a cuáles apunta un anuncio
+      // compartido. Desde la ficha del producto, un anuncio N:M parece
+      // exclusivo — y no lo es.
+      const otros = prods().filter(x => x.id !== p.id && x.ads.includes(a));
+      const chip = el("div","adchip" + (otros.length ? " shared" : ""));
+      chip.innerHTML = `<span class="num">${esc(a)}</span>
+        ${otros.length
+          ? `<span class="adshare">también apunta a ${otros.map(o => esc(o.name.replace("REVITALHAIR – ",""))).join(", ")}</span>`
+          : ""}
+        <span class="soft" style="margin-left:auto;cursor:pointer">×</span>`;
+      list.appendChild(chip);
+    });
     ads.appendChild(list);
   } else {
-    ads.appendChild(el("p","soft",`<span style="font-size:11.5px;line-height:1.5">
-      Sin anuncios registrados. Los leads de este producto van a caer en reconocimiento ambiguo
-      junto a los otros tres nombres de la familia.</span>`));
+    // Q35 · propuesta: decir la consecuencia, no la ausencia.
+    ads.appendChild(el("div","leak",
+      `<strong>Los leads de este producto no se van a reconocer.</strong>
+       Sin un anuncio registrado, el matcher tiene que adivinar entre los cuatro
+       nombres REVITALHAIR — y ahí está el 77% del volumen. Registrar el ID lo
+       resuelve para siempre.`));
   }
   box.appendChild(ads);
 
