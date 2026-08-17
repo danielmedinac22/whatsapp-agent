@@ -1,6 +1,6 @@
 import type { Contact } from "@wa/db";
 import { logger } from "../lib/logger";
-import { getDropiConnection } from "./config";
+import { findOperationByDropiAdminPhone } from "./config";
 import { submitDropi2FACode } from "./auth";
 import { enqueueOutbound } from "../jobs/outbound";
 
@@ -15,6 +15,10 @@ function normalize(phone: string | null | undefined): string {
  * dígitos, y hay un challenge 2FA pendiente, lo canjea por el JWT real y
  * responde por WhatsApp con el resultado. Devuelve `true` si el mensaje
  * fue interceptado (no debe seguir a confirmation-ack ni al agente).
+ *
+ * La operación se resuelve por el dato, no por el llamador: un código que
+ * llega por WhatsApp no trae más contexto que quién lo mandó, así que se busca
+ * la operación cuya logística tiene ese teléfono de administrador.
  */
 export async function tryHandleDropi2FAInbound(input: {
   contact: Contact;
@@ -23,21 +27,22 @@ export async function tryHandleDropi2FAInbound(input: {
   const text = input.body.trim();
   if (!CODE_REGEX.test(text)) return false;
 
-  const conn = await getDropiConnection();
-  if (!conn?.adminPhone) return false;
-  if (!conn.pending2faToken) return false;
-
-  const adminDigits = normalize(conn.adminPhone);
   const senderDigits = normalize(input.contact.phone);
-  if (!adminDigits || adminDigits !== senderDigits) return false;
+  if (!senderDigits) return false;
+
+  const found = await findOperationByDropiAdminPhone(senderDigits);
+  if (!found) return false;
+  const { operation, connection } = found;
+  if (!connection.pending2faToken) return false;
+  const adminDigits = normalize(connection.adminPhone);
 
   // Es del admin, hay challenge pendiente, parece un código.
   logger.info(
-    { contactId: input.contact.id },
+    { contactId: input.contact.id, operation: operation.countryCode },
     "dropi.2fa code received from admin — submitting",
   );
 
-  const result = await submitDropi2FACode(text);
+  const result = await submitDropi2FACode(operation, text);
   let reply: string;
   if (result.ok) {
     reply = `✅ Token Dropi renovado · user ${result.auth.userId}`;

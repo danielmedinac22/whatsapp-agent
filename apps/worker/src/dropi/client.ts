@@ -1,3 +1,4 @@
+import type { Operation } from "@wa/db";
 import { logger } from "../lib/logger";
 import { invalidateDropiConnectionCache } from "./config";
 import { getValidDropiAuth, type DropiAuth } from "./auth";
@@ -62,18 +63,27 @@ async function doFetch<T>(
   }
 }
 
+/**
+ * Toda llamada a Dropi sale con la autenticación de su operación: el token, la
+ * URL base y el usuario son de la conexión de esa operación, no de «la»
+ * conexión.
+ */
 export async function dropiFetch<T = unknown>(
+  op: Operation,
   path: string,
   opts: DropiFetchOptions = {},
 ): Promise<T> {
-  let auth = await getValidDropiAuth();
+  let auth = await getValidDropiAuth(op);
   try {
     return await doFetch<T>(auth, path, opts);
   } catch (err) {
     if (err instanceof DropiHttpError && err.status === 401) {
-      logger.warn("dropi 401 — invalidating token cache and retrying once");
-      invalidateDropiConnectionCache();
-      auth = await getValidDropiAuth();
+      logger.warn(
+        { operation: op.countryCode },
+        "dropi 401 — invalidating token cache and retrying once",
+      );
+      invalidateDropiConnectionCache(op);
+      auth = await getValidDropiAuth(op);
       return doFetch<T>(auth, path, opts);
     }
     throw err;

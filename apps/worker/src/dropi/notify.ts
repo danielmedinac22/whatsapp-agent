@@ -6,6 +6,7 @@ import {
   dropiOrders,
   shopifyOrders,
   type DropiOrder,
+  type Operation,
 } from "@wa/db";
 import { db } from "../db";
 import { logger } from "../lib/logger";
@@ -22,7 +23,7 @@ import {
   sanitizeParam,
 } from "../kapso/templates";
 import { enqueueOutbound } from "../jobs/outbound";
-import { getDropiConnection } from "./config";
+import { resolveDropiConnection } from "./config";
 import { extractNovedadReason } from "./novedad";
 import { enqueueNovedadNotify } from "../jobs/dropi-novedad-notify";
 
@@ -95,7 +96,10 @@ function metaTemplateFor(
   }
 }
 
-async function sendStatusNotification(order: DropiOrder): Promise<boolean> {
+async function sendStatusNotification(
+  op: Operation,
+  order: DropiOrder,
+): Promise<boolean> {
   if (!order.contactId) {
     logger.warn(
       { dropiOrderId: order.dropiOrderId, status: order.status },
@@ -136,7 +140,8 @@ async function sendStatusNotification(order: DropiOrder): Promise<boolean> {
     }
   }
 
-  const conn = await getDropiConnection();
+  // El PDF de la guía vive en el CDN de la logística de esta operación.
+  const conn = await resolveDropiConnection(op);
   const assetsBase = (conn?.assetsBaseUrl ?? "").replace(/\/$/, "");
   const pdfGuia =
     assetsBase && order.guidePdfPath
@@ -170,7 +175,10 @@ async function sendStatusNotification(order: DropiOrder): Promise<boolean> {
     body: renderTemplateBody(tpl.name, tpl.params),
     source: "dropi_status",
     sourceRef: order.id,
-    dedupKey: `dropi:${order.dropiOrderId}:${order.status}`,
+    // La clave lleva el uuid de la fila, no el id de Dropi: ese id es único
+    // dentro de una cuenta y no entre cuentas, así que dos operaciones con el
+    // mismo número se taparían el mensaje una a la otra.
+    dedupKey: `dropi:${order.id}:${order.status}`,
     conversationId: conv?.id ?? null,
     template: tpl,
   });
@@ -190,6 +198,7 @@ export interface MaybeNotifyResult {
  * concurrent sync/poll observations.
  */
 export async function maybeNotifyDropiStatus(
+  op: Operation,
   order: DropiOrder,
   s: typeof agentSettings.$inferSelect,
 ): Promise<MaybeNotifyResult> {
@@ -246,7 +255,7 @@ export async function maybeNotifyDropiStatus(
     return { notified: false, escalated: false, skipped: "no_template" };
   }
 
-  const ok = await sendStatusNotification(order);
+  const ok = await sendStatusNotification(op, order);
   if (ok) {
     await db
       .update(dropiOrders)

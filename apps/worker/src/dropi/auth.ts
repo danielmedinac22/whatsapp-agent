@@ -1,7 +1,8 @@
+import type { Operation } from "@wa/db";
 import { logger } from "../lib/logger";
 import {
-  getDropiConnection,
   invalidateDropiConnectionCache,
+  resolveDropiConnection,
   upsertDropiConnection,
 } from "./config";
 import { DROPI_DEFAULT_HEADERS } from "./headers";
@@ -163,16 +164,19 @@ async function dropiPost(
 }
 
 
-async function persistAutoLoginError(message: string): Promise<void> {
+async function persistAutoLoginError(
+  op: Operation,
+  message: string,
+): Promise<void> {
   try {
-    await upsertDropiConnection({
+    await upsertDropiConnection(op, {
       lastAutoLoginAt: new Date(),
       lastAutoLoginError: message.slice(0, 1000),
     });
-    invalidateDropiConnectionCache();
+    invalidateDropiConnectionCache(op);
   } catch (err) {
     logger.error(
-      { err: String(err) },
+      { err: String(err), operation: op.countryCode },
       "failed to persist dropi auto-login error",
     );
   }
@@ -287,7 +291,11 @@ function jwtToAuth(baseUrl: string, token: string): DropiAuth {
   return { baseUrl, token, userId };
 }
 
-async function persistDropiToken(token: string): Promise<DropiAuth> {
+async function persistDropiToken(
+  op: Operation,
+  baseUrl: string,
+  token: string,
+): Promise<DropiAuth> {
   const claims = decodeJwt(token);
   const expiresAt = claims?.exp ? new Date(claims.exp * 1000) : null;
   const userId =
@@ -299,7 +307,7 @@ async function persistDropiToken(token: string): Promise<DropiAuth> {
   if (!userId) {
     throw new Error("dropi JWT missing sub claim");
   }
-  await upsertDropiConnection({
+  await upsertDropiConnection(op, {
     bearerToken: token,
     tokenExpiresAt: expiresAt,
     userId,
@@ -309,9 +317,10 @@ async function persistDropiToken(token: string): Promise<DropiAuth> {
     pending2faExpiresAt: null,
     pending2faRequestedAt: null,
   });
-  invalidateDropiConnectionCache();
-  const conn = await getDropiConnection();
-  return { baseUrl: conn?.apiBaseUrl ?? "https://api.dropi.gt/api", token, userId };
+  // El `baseUrl` viene de la conexión de esta operación, no de una constante:
+  // el valor por defecto del esquema es guatemalteco.
+  invalidateDropiConnectionCache(op);
+  return { baseUrl, token, userId };
 }
 
 /**
@@ -321,10 +330,12 @@ async function persistDropiToken(token: string): Promise<DropiAuth> {
  * admin_phone configurado. El token vigente (si lo hay) NO se borra: el
  * sync sigue funcionando hasta que llegue el código y se canjee.
  */
-async function loginAndPersist(): Promise<DropiAuth> {
-  const conn = await getDropiConnection();
+async function loginAndPersist(op: Operation): Promise<DropiAuth> {
+  const conn = await resolveDropiConnection(op);
   if (!conn) {
-    throw new Error("dropi_connection not configured");
+    throw new Error(
+      `dropi_connection not configured for operation ${op.countryCode}`,
+    );
   }
   if (!conn.email || !conn.password) {
     throw new Error(
@@ -339,14 +350,14 @@ async function loginAndPersist(): Promise<DropiAuth> {
     result = await attemptLogin(baseUrl, conn.email, conn.password, ipAddress);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    await persistAutoLoginError(msg);
+    await persistAutoLoginError(op, msg);
     throw err;
   }
 
   if (result.kind === "ok" && result.auth) {
-    await persistDropiToken(result.auth.token);
+    await persistDropiToken(op, baseUrl, result.auth.token);
     logger.info(
-      { userId: result.auth.userId },
+      { userId: result.auth.userId, operation: op.countryCode },
       "dropi.auto-login ok (no 2FA)",
     );
     return result.auth;
@@ -354,14 +365,14 @@ async function loginAndPersist(): Promise<DropiAuth> {
 
   // 2FA pendiente — persiste challenge + dispara ping a admin
   if (result.kind === "2fa" && result.challengeToken) {
-    await upsertDropiConnection({
+    await upsertDropiConnection(op, {
       pending2faToken: result.challengeToken,
       pending2faExpiresAt: result.challengeExpiresAt ?? null,
       pending2faRequestedAt: new Date(),
       lastAutoLoginAt: new Date(),
       lastAutoLoginError: "2FA pending — waiting for OTP from admin",
     });
-    invalidateDropiConnectionCache();
+    invalidateDropiConnectionCache(op);
 
     if (conn.adminPhone) {
       // Import dinámico para evitar ciclo (outbound importa pg-boss).
@@ -381,12 +392,14 @@ async function loginAndPersist(): Promise<DropiAuth> {
         `_Válido hasta ~${expiresLabel}._`;
       // Bucket horario: los crons de Dropi reintentan el login constantemente
       // mientras hay 2FA pendiente — sin esto se generaban cientos de pings.
+      // La operación entra en la clave: dos logísticas pidiendo código en la
+      // misma hora no pueden taparse una a la otra.
       const hourBucket = Math.floor(Date.now() / 3_600_000);
       await enqueueOutbound({
         to: conn.adminPhone.replace(/\D/g, ""),
         body,
         source: "dropi_2fa",
-        dedupKey: `dropi-2fa-${hourBucket}`,
+        dedupKey: `dropi-2fa-${op.countryCode}-${hourBucket}`,
         // Si el admin no ha chateado con el bot en 24h, cae a plantilla.
         // El texto del código va en el parámetro (Meta solo revisa el
         // texto estático de la plantilla, no los params de envío).
@@ -401,9 +414,13 @@ async function loginAndPersist(): Promise<DropiAuth> {
       }).catch((err) => {
         logger.error({ err: String(err) }, "dropi.2fa ping enqueue failed");
       });
-      logger.info({ adminPhone: conn.adminPhone }, "dropi.2fa ping sent");
+      logger.info(
+        { adminPhone: conn.adminPhone, operation: op.countryCode },
+        "dropi.2fa ping sent",
+      );
     } else {
       logger.warn(
+        { operation: op.countryCode },
         "dropi.2fa challenge received but no admin_phone configured",
       );
     }
@@ -419,9 +436,10 @@ async function loginAndPersist(): Promise<DropiAuth> {
  * de UI como fallback manual.
  */
 export async function submitDropi2FACode(
+  op: Operation,
   code: string,
 ): Promise<{ ok: true; auth: DropiAuth } | { ok: false; error: string }> {
-  const conn = await getDropiConnection();
+  const conn = await resolveDropiConnection(op);
   if (!conn) return { ok: false, error: "dropi_connection not configured" };
   if (!conn.pending2faToken) {
     return { ok: false, error: "no hay challenge 2FA pendiente" };
@@ -455,7 +473,7 @@ export async function submitDropi2FACode(
   );
   if (!verifyRes.ok) {
     const msg = `verify falló: ${verifyRes.status} ${verifyRes.text.slice(0, 200)}`;
-    await persistAutoLoginError(msg);
+    await persistAutoLoginError(op, msg);
     return { ok: false, error: msg };
   }
 
@@ -468,7 +486,7 @@ export async function submitDropi2FACode(
   };
   if (verifyBody.isSuccess === false) {
     const msg = `código 2FA inválido: ${verifyBody.message ?? "sin detalle"}`;
-    await persistAutoLoginError(msg);
+    await persistAutoLoginError(op, msg);
     return { ok: false, error: msg };
   }
 
@@ -511,13 +529,13 @@ export async function submitDropi2FACode(
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      await persistAutoLoginError(msg);
+      await persistAutoLoginError(op, msg);
       return { ok: false, error: msg };
     }
     if (second.kind !== "ok" || !second.auth) {
       const msg =
         "verify ok pero el segundo /login (con otp) no devolvió un JWT DROPI";
-      await persistAutoLoginError(msg);
+      await persistAutoLoginError(op, msg);
       return { ok: false, error: msg };
     }
     dropiJwt = second.auth.token;
@@ -527,24 +545,29 @@ export async function submitDropi2FACode(
   const claims = decodeJwt(dropiJwt);
   if (claims?.aud !== "DROPI") {
     const msg = `el JWT recibido tiene aud=${claims?.aud}, esperado DROPI`;
-    await persistAutoLoginError(msg);
+    await persistAutoLoginError(op, msg);
     return { ok: false, error: msg };
   }
 
-  const auth = await persistDropiToken(dropiJwt);
-  logger.info({ userId: auth.userId }, "dropi.2fa verify ok");
+  const auth = await persistDropiToken(op, baseUrl, dropiJwt);
+  logger.info(
+    { userId: auth.userId, operation: op.countryCode },
+    "dropi.2fa verify ok",
+  );
   return { ok: true, auth };
 }
 
-export async function refreshDropiAuth(): Promise<DropiAuth> {
-  invalidateDropiConnectionCache();
-  return loginAndPersist();
+export async function refreshDropiAuth(op: Operation): Promise<DropiAuth> {
+  invalidateDropiConnectionCache(op);
+  return loginAndPersist(op);
 }
 
-export async function getValidDropiAuth(): Promise<DropiAuth> {
-  const conn = await getDropiConnection();
+export async function getValidDropiAuth(op: Operation): Promise<DropiAuth> {
+  const conn = await resolveDropiConnection(op);
   if (!conn) {
-    throw new Error("dropi_connection not configured");
+    throw new Error(
+      `dropi_connection not configured for operation ${op.countryCode}`,
+    );
   }
   const baseUrl = conn.apiBaseUrl;
 
@@ -570,7 +593,7 @@ export async function getValidDropiAuth(): Promise<DropiAuth> {
     if (exp > now + REFRESH_BUFFER_MS && sub) {
       // Persist derived metadata so we don't decode every call.
       if (!conn.userId || !conn.tokenExpiresAt) {
-        await upsertDropiConnection({
+        await upsertDropiConnection(op, {
           userId: sub,
           tokenExpiresAt: new Date(exp),
         });
@@ -579,7 +602,10 @@ export async function getValidDropiAuth(): Promise<DropiAuth> {
     }
   }
 
-  logger.info("dropi token missing/expired — attempting login refresh");
-  return loginAndPersist();
+  logger.info(
+    { operation: op.countryCode },
+    "dropi token missing/expired — attempting login refresh",
+  );
+  return loginAndPersist(op);
 }
 

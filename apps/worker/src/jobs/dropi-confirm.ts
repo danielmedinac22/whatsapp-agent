@@ -9,6 +9,7 @@ import { db } from "../db";
 import { logger } from "../lib/logger";
 import { confirmOrder } from "../dropi/orders";
 import { DropiHttpError } from "../dropi/client";
+import { resolveOperationForContact } from "../dropi/config";
 import { DROPI_CONFIRM_QUEUE, getBoss } from "./queue";
 
 interface DropiConfirmPayload {
@@ -80,8 +81,10 @@ async function handleDropiConfirm({ shopifyOrderRowId }: DropiConfirmPayload) {
     return;
   }
 
+  // La confirmación viaja a la logística de la operación del pedido.
+  const op = await resolveOperationForContact(shop.contactId);
   try {
-    await confirmOrder(match.dropiOrderId);
+    await confirmOrder(op, match.dropiOrderId);
   } catch (err) {
     if (err instanceof DropiHttpError && err.status >= 400 && err.status < 500) {
       logger.error(
@@ -150,11 +153,12 @@ export async function confirmDropiOrderById(
     return { ok: true, dryRun: true, alreadyDone: false };
   }
 
+  const op = await resolveOperationForContact(match.contactId);
   try {
-    await confirmOrder(match.dropiOrderId);
+    await confirmOrder(op, match.dropiOrderId);
   } catch (err) {
     logger.error(
-      { err, dropiOrderId: match.dropiOrderId },
+      { err, dropiOrderId: match.dropiOrderId, operation: op.countryCode },
       "dropi confirm (manual): PUT failed",
     );
     throw err;

@@ -1,5 +1,6 @@
+import type { Operation } from "@wa/db";
 import { logger } from "../lib/logger";
-import { getDropiConnection } from "../dropi/config";
+import { resolveDropiConnection, listActiveOperations } from "../dropi/config";
 import { Dropi2FAPendingError, refreshDropiAuth } from "../dropi/auth";
 import { DROPI_AUTH_REFRESH_QUEUE, getBoss } from "./queue";
 
@@ -10,13 +11,18 @@ import { DROPI_AUTH_REFRESH_QUEUE, getBoss } from "./queue";
  */
 const REFRESH_THRESHOLD_MS = 90 * 60 * 1000; // 90 min
 
-export async function runDropiAuthRefresh(): Promise<{
+export interface DropiAuthRefreshResult {
   skipped: boolean;
   reason?: string;
   userId?: number;
   pending2fa?: boolean;
-}> {
-  const conn = await getDropiConnection();
+}
+
+/** Renueva el token de la logística de UNA operación. */
+export async function runDropiAuthRefreshForOperation(
+  op: Operation,
+): Promise<DropiAuthRefreshResult> {
+  const conn = await resolveDropiConnection(op);
   if (!conn?.email || !conn?.password) {
     return {
       skipped: true,
@@ -44,7 +50,7 @@ export async function runDropiAuthRefresh(): Promise<{
   }
 
   try {
-    const auth = await refreshDropiAuth();
+    const auth = await refreshDropiAuth(op);
     return { skipped: false, userId: auth.userId };
   } catch (err) {
     if (err instanceof Dropi2FAPendingError) {
@@ -54,28 +60,66 @@ export async function runDropiAuthRefresh(): Promise<{
   }
 }
 
+/**
+ * Renueva el token de cada operación activa. Cada una tiene su propia cuenta,
+ * su propio vencimiento y su propio 2FA: se recorren de una en una y el fallo
+ * de una no impide intentar la siguiente.
+ */
+export async function runDropiAuthRefresh(): Promise<
+  Array<DropiAuthRefreshResult & { operation: string }>
+> {
+  const ops = await listActiveOperations();
+  const results: Array<DropiAuthRefreshResult & { operation: string }> = [];
+  for (const op of ops) {
+    try {
+      const r = await runDropiAuthRefreshForOperation(op);
+      results.push({ ...r, operation: op.countryCode });
+    } catch (err) {
+      logger.error(
+        { err: String(err), operation: op.countryCode },
+        "dropi.auth.refresh failed",
+      );
+      results.push({
+        skipped: true,
+        reason: err instanceof Error ? err.message : String(err),
+        operation: op.countryCode,
+      });
+    }
+  }
+  return results;
+}
+
 export async function startDropiAuthRefreshWorker(): Promise<void> {
   const boss = await getBoss();
   await boss.work(DROPI_AUTH_REFRESH_QUEUE, async (raw) => {
     const list = (Array.isArray(raw) ? raw : [raw]) as Array<{ id?: string }>;
     for (const job of list) {
       try {
-        const result = await runDropiAuthRefresh();
-        if (result.skipped) {
-          logger.info(
-            { reason: result.reason, jobId: job?.id },
-            "dropi.auth.refresh skipped",
-          );
-        } else if (result.pending2fa) {
-          logger.info(
-            { jobId: job?.id },
-            "dropi.auth.refresh awaiting 2FA OTP from admin",
-          );
-        } else {
-          logger.info(
-            { userId: result.userId, jobId: job?.id },
-            "dropi.auth.refresh ok",
-          );
+        for (const result of await runDropiAuthRefresh()) {
+          if (result.skipped) {
+            logger.info(
+              {
+                reason: result.reason,
+                operation: result.operation,
+                jobId: job?.id,
+              },
+              "dropi.auth.refresh skipped",
+            );
+          } else if (result.pending2fa) {
+            logger.info(
+              { operation: result.operation, jobId: job?.id },
+              "dropi.auth.refresh awaiting 2FA OTP from admin",
+            );
+          } else {
+            logger.info(
+              {
+                userId: result.userId,
+                operation: result.operation,
+                jobId: job?.id,
+              },
+              "dropi.auth.refresh ok",
+            );
+          }
         }
       } catch (err) {
         // Do NOT rethrow: failing this job should not stop the cron series
