@@ -256,10 +256,10 @@
     </div>
 
     <p class="pk-hint">
-      <kbd>←</kbd> <kbd>→</kbd> alternan. Las cinco <strong>extienden el Inbox
-      que ya existe</strong> — el control sigue siendo «Agente: ON/OFF», no un
-      concepto nuevo. Mirá también con el módulo en Katherine: nada de lo que
-      agrega ventas debería estorbarle.
+      <strong>Grupo cerrado</strong> — la variante 1 es la decidida; A–E quedan
+      como registro. El control sigue siendo «Agente: ON/OFF», no un concepto
+      nuevo. Mirá en Katherine: nada de lo que agrega ventas la estorba.
+      <kbd>←</kbd> <kbd>→</kbd> alternan.
     </p>
   </div>
 </div>
@@ -312,6 +312,7 @@ const CHATS = {
 };
 
 const VARIANTS = [
+  {id:"X",label:"Elegida ✓",           tag:"vistas en la barra + eventos en el hilo, fila casi intacta", ref:"A + D, sin el panel de la C"},
   {id:"A",label:"Vistas en la barra",   tag:"Sebastián es un grupo de vistas con contador",   ref:"Intercom · Gorgias · Featurebase"},
   {id:"B",label:"Cintas sobre la lista",tag:"los mismos cortes, como filtros encima",          ref:"Zillow · GoDaddy"},
   {id:"C",label:"Panel de contexto",    tag:"tercer panel: producto, anuncio, campaña",        ref:"Intercom · Lemni · Gorgias"},
@@ -484,13 +485,15 @@ function inboxScreen() {
 
   const grid = el("div", "inbox");
   const withCtx = (v === "C" || v === "E");
-  const events  = (v === "D" || v === "E");
+  const events  = (v === "D" || v === "E" || v === "X");
   grid.style.gridTemplateColumns = withCtx ? "330px 1fr 268px" : "360px 1fr";
 
   grid.appendChild(listPanel({
     chips: v === "B",
     noSales: v === "D",          // D no toca la fila: el hilo lo cuenta
-    thin: v === "C" || v === "E" // con panel derecho, la fila no repite el producto
+    // X y las de panel no repiten el producto en la fila. En X queda solo la
+    // insignia de reconocimiento cuando NO es limpio: marcar todo es no marcar.
+    thin: v === "C" || v === "E" || v === "X"
   }));
   grid.appendChild(threadPanel({ events }));
   if (withCtx) grid.appendChild(ctxPanel());
@@ -536,7 +539,7 @@ function navFor(m) {
     if (state.screen === s.key && state.module === m) b.setAttribute("aria-current","page");
     b.onclick = () => { state.module = m; state.screen = s.key; render(); };
     box.appendChild(b);
-    if (isConv && (V().id === "A" || V().id === "E") && state.module === "ventas") {
+    if (isConv && ["A","E","X"].includes(V().id) && state.module === "ventas") {
       const sub = el("div");
       sub.style.cssText = "display:flex;flex-direction:column;gap:1px;padding-left:22px;margin:2px 0 4px";
       [["attn","Necesitan atención",K.attn],["auto","Las lleva Sebastián",K.auto],["all","Todas",K.all]].forEach(([k,l,n]) => {
