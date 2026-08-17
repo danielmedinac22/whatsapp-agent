@@ -10,6 +10,23 @@ import {
   Shapes,
 } from "lucide-react";
 import { ConnectionIndicator } from "./connection-indicator";
+import { resolveAccess } from "@/access/resolve";
+
+/**
+ * El menú entero. Cada entrada se muestra solo si el rol alcanza su ruta, y
+ * quien lo decide es la misma función que el borde (`src/proxy.ts`): así el
+ * menú no puede ofrecer una pantalla que rebota, ni esconder una que sí abre.
+ *
+ * Esconder el enlace **no es el control de acceso** —quien escribe la URL a
+ * mano no pasa por aquí—; es solo no ofrecer una puerta cerrada.
+ */
+const NAV = [
+  { href: "/inbox", label: "Inbox", icon: Inbox },
+  { href: "/templates", label: "Plantillas", icon: Shapes },
+  { href: "/agent", label: "Agente", icon: Bot },
+  { href: "/orders", label: "Pedidos", icon: Package2 },
+  { href: "/connection", label: "Conexión", icon: Cable },
+] as const;
 
 export default async function AppLayout({
   children,
@@ -18,6 +35,10 @@ export default async function AppLayout({
 }) {
   const session = await auth();
   if (!session) redirect("/login");
+
+  const nav = NAV.filter(
+    (item) => resolveAccess(session.user.role, item.href).allowed,
+  );
 
   return (
     <div className="app-shell">
@@ -38,11 +59,14 @@ export default async function AppLayout({
         </div>
 
         <nav className="flex gap-2 overflow-x-auto pb-1 text-sm lg:flex-col lg:overflow-visible">
-          <NavLink href="/inbox" label="Inbox" icon={Inbox} />
-          <NavLink href="/templates" label="Plantillas" icon={Shapes} />
-          <NavLink href="/agent" label="Agente" icon={Bot} />
-          <NavLink href="/orders" label="Pedidos" icon={Package2} />
-          <NavLink href="/connection" label="Conexión" icon={Cable} />
+          {nav.map((item) => (
+            <NavLink
+              key={item.href}
+              href={item.href}
+              label={item.label}
+              icon={item.icon}
+            />
+          ))}
         </nav>
 
         <div className="my-3">

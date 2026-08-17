@@ -4,13 +4,38 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { users, eq } from "@wa/db";
+// El import es lo que mete `next-auth/jwt` en el programa; sin él TypeScript no
+// encuentra el módulo que se aumenta más abajo y falla con TS2664.
+import type { JWT } from "next-auth/jwt";
+import type { Role } from "@/access/resolve";
 
+/**
+ * El rol viaja en el JWT y de ahí sale a la sesión. Es {@link Role} —el tipo
+ * del enum real— y no una unión escrita a mano: antes decía
+ * `"admin" | "operator"` con casts, así que un usuario `sales` pasaba por aquí
+ * con un tipo que mentía.
+ *
+ * Es opcional en los tres sitios porque de verdad puede faltar: un token
+ * emitido antes de que la sesión llevara rol no trae ninguno, y decir que
+ * siempre está sería la misma mentira en otro lugar. Quién alcanza qué con un
+ * rol ausente lo decide `resolveAccess`, en un solo sitio.
+ */
 declare module "next-auth" {
+  interface User {
+    role?: Role;
+  }
   interface Session {
     user: {
       id: string;
-      role: "admin" | "operator";
+      role?: Role;
     } & DefaultSession["user"];
+  }
+}
+
+declare module "next-auth/jwt" {
+  interface JWT {
+    id?: string;
+    role?: Role;
   }
 }
 
@@ -64,14 +89,13 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
-        token.role = (user as { role: "admin" | "operator" }).role;
+        token.role = user.role;
       }
       return token;
     },
     async session({ session, token }) {
-      if (token.id) session.user.id = token.id as string;
-      if (token.role)
-        session.user.role = token.role as "admin" | "operator";
+      if (token.id) session.user.id = token.id;
+      if (token.role) session.user.role = token.role;
       return session;
     },
   },
