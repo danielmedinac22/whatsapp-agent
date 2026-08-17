@@ -7,7 +7,8 @@ import {
 } from "@wa/db";
 import { db } from "../db";
 import { openrouter } from "./openrouter";
-import { buildEffectiveSystemPrompt, loadHistory } from "./runner";
+import { buildEffectiveSystemPrompt } from "./effective-prompt";
+import { loadHistory } from "./runner";
 
 export interface PreviewInput {
   prompt: string;
@@ -58,10 +59,16 @@ export async function previewAgentReply(
     }
   }
 
-  const effectiveSystemPrompt = await buildEffectiveSystemPrompt(
-    input.prompt,
+  // El banco de pruebas es el del agente de confirmación: prueba borradores de
+  // `agent_settings.system_prompt`, que es un campo de texto que el admin
+  // escribe. El del vendedor no se compone de un prompt sino de campos —nombre,
+  // tono, mensajes base—, así que probarlo es otra pantalla y otro spec (el del
+  // Panel), no un borrador que pegar aquí.
+  const effectiveSystemPrompt = await buildEffectiveSystemPrompt({
+    agent: "confirmation",
+    basePrompt: input.prompt,
     contactId,
-  );
+  });
 
   const messages: ModelMessage[] = [
     ...history,
