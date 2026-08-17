@@ -26,8 +26,10 @@ events.get("/", (c) =>
       });
     };
 
-    // initial snapshot — connection state now lives in kapso_connection
-    const conn = await getKapsoConnection().catch(() => null);
+    // initial snapshot — connection state now lives in kapso_connection.
+    // El panel todavía muestra una sola conexión: `null` es la operación única.
+    // El día que el panel elija operación, ese id entra por aquí.
+    const conn = await getKapsoConnection(null).catch(() => null);
     await send({
       type: "status",
       status: conn?.phoneNumberId ? "connected" : "disconnected",

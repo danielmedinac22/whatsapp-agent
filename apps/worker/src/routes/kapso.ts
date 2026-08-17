@@ -81,8 +81,10 @@ kapsoWebhook.post("/webhook", async (c) => {
 /** Admin API (behind the Bearer middleware, /api/kapso/*). */
 export const kapsoAdmin = new Hono();
 
+// El panel de administración todavía muestra una sola conexión: `null` es la
+// operación única. Cuando el panel deje elegir operación, ese id entra por aquí.
 kapsoAdmin.get("/status", async (c) => {
-  const conn = await getKapsoConnection();
+  const conn = await getKapsoConnection(null);
   const templates = conn?.businessAccountId
     ? await db
         .select({
@@ -102,25 +104,33 @@ kapsoAdmin.get("/numbers", async (c) => {
   return c.json({ numbers: await listPhoneNumbers() });
 });
 
-const connectSchema = z.object({ phoneNumberId: z.string().min(3) });
+const connectSchema = z.object({
+  phoneNumberId: z.string().min(3),
+  /** A qué operación pertenece el número. Omitido = la operación única. */
+  operationId: z.string().uuid().optional(),
+});
 
 kapsoAdmin.post("/connect", async (c) => {
   const parsed = connectSchema.safeParse(await c.req.json());
   if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
-  const conn = await connectKapsoNumber(parsed.data.phoneNumberId);
+  const conn = await connectKapsoNumber(
+    parsed.data.phoneNumberId,
+    parsed.data.operationId,
+  );
+  const operationId = conn.operationId;
   // Sandbox numbers have no real WABA review flow; template submit may fail
   // there — logged, non-fatal.
-  await ensureKapsoTemplates().catch((err) =>
+  await ensureKapsoTemplates(operationId).catch((err) =>
     logger.warn({ err: String(err) }, "kapso connect: template submit failed"),
   );
-  await refreshKapsoTemplateStatuses().catch(() => {});
+  await refreshKapsoTemplateStatuses(operationId).catch(() => {});
   return c.json({ ok: true, connection: conn });
 });
 
 kapsoAdmin.post("/templates/sync", async (c) => {
-  await ensureKapsoTemplates();
-  await refreshKapsoTemplateStatuses();
-  const conn = await getKapsoConnection();
+  await ensureKapsoTemplates(null);
+  await refreshKapsoTemplateStatuses(null);
+  const conn = await getKapsoConnection(null);
   const templates = conn?.businessAccountId
     ? await db
         .select({ name: waTemplates.name, status: waTemplates.status })

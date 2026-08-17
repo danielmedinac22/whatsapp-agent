@@ -16,7 +16,9 @@ import { handleInboundConfirmation } from "../jobs/confirmation-ack";
 import { tryHandleDropi2FAInbound } from "../dropi/2fa-inbound";
 import { markNovedadCustomerReply } from "../dropi/novedad-reply";
 import { fetchKapsoMedia, markRead } from "../kapso/client";
+import { resolveInboundOperation } from "../kapso/connection";
 import type { ParsedInboundMessage } from "../kapso/inbound";
+import type { OperationId } from "../operations";
 import { upsertContactByWaId } from "./contacts";
 
 /**
@@ -51,16 +53,37 @@ async function storeInboundAudio(
   }
 }
 
-async function ensureConversation(contactId: string): Promise<Conversation> {
+/**
+ * La conversación del contacto, con su operación.
+ *
+ * «La conversación guarda su operación y la conserva de principio a fin»: una
+ * conversación que ya tiene operación **no se reescribe**, ni siquiera si el
+ * entrante llegó por otro número. Cambiarle el país a una conversación viva
+ * movería su historial de operación a mitad de camino; si eso llega a pasar es
+ * un caso a mirar, no algo que el pipeline deba resolver solo.
+ */
+async function ensureConversation(
+  contactId: string,
+  operationId: OperationId | null,
+): Promise<Conversation> {
   const existing = await db
     .select()
     .from(conversations)
     .where(eq(conversations.contactId, contactId))
     .limit(1);
-  if (existing[0]) return existing[0];
+  const conv = existing[0];
+  if (conv) {
+    if (conv.operationId || !operationId) return conv;
+    const [updated] = await db
+      .update(conversations)
+      .set({ operationId })
+      .where(eq(conversations.id, conv.id))
+      .returning();
+    return updated ?? conv;
+  }
   const [created] = await db
     .insert(conversations)
-    .values({ contactId })
+    .values({ contactId, operationId })
     .returning();
   return created!;
 }
@@ -74,10 +97,43 @@ async function ensureConversation(contactId: string): Promise<Conversation> {
 export async function handleInbound(parsed: ParsedInboundMessage): Promise<void> {
   const hasAudio = parsed.kind === "audio";
 
+  // A qué operación pertenece el mensaje, según el número que lo recibió.
+  // Este es el primer punto del sistema donde el `phone_number_id` del webhook
+  // decide algo: antes solo servía para el acuse de lectura.
+  //
+  // La resolución es estricta, pero el pipeline NO descarta. Un número que no
+  // reconocemos deja un error en el log y el mensaje sigue su curso con la
+  // operación única: un entrante descartado en silencio es la operación muda
+  // sin que salte ninguna alarma. Si la resolución falla del todo, el mensaje
+  // se procesa igual, sin operación.
+  const decision = await resolveInboundOperation(parsed.phoneNumberId).catch(
+    (err): null => {
+      logger.error(
+        { err: String(err), phoneNumberId: parsed.phoneNumberId },
+        "inbound: no se pudo resolver la operación; el mensaje se procesa igual",
+      );
+      return null;
+    },
+  );
+  if (decision?.connectionIsUnknown) {
+    logger.error(
+      {
+        phoneNumberId: parsed.phoneNumberId,
+        waId: parsed.waMessageId,
+        operationId: decision.operationId,
+        atendidoPorLaOperacionUnica: decision.usedSingleOperationFallback,
+      },
+      "inbound: el número que recibió el mensaje no pertenece a ninguna conexión conocida",
+    );
+  }
+
   const contact = await upsertContactByWaId(parsed.from, {
     pushName: parsed.contactName,
   });
-  const conv = await ensureConversation(contact.id);
+  const conv = await ensureConversation(
+    contact.id,
+    decision?.operationId ?? null,
+  );
 
   // Los audios se copian a nuestro almacenamiento: la URL de Kapso exige API
   // key, así que el navegador del asesor no puede reproducirla directamente.

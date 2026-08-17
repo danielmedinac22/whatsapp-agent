@@ -15,8 +15,12 @@ export async function startKapsoTemplateWorker(): Promise<void> {
   const boss = await getBoss();
   const workerId = await boss.work(KAPSO_TEMPLATE_POLL_QUEUE, async () => {
     if (!isKapsoConfigured()) return;
-    await ensureKapsoTemplates();
-    await refreshKapsoTemplateStatuses();
+    // `null` = la operación única. El cron no nace de una conversación, así que
+    // no tiene de dónde sacar la operación; mientras haya una sola, poner la
+    // única es exacto. Cuando exista la segunda hay que recorrerlas — es parte
+    // del ticket de contract, no de la migración de la conexión.
+    await ensureKapsoTemplates(null);
+    await refreshKapsoTemplateStatuses(null);
   });
   logger.info({ workerId }, "kapso template poll worker started");
 }
