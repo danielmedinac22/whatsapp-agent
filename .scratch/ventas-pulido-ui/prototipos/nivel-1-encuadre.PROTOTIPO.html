@@ -2,25 +2,31 @@
 
 <!--
   PROTOTIPO DESECHABLE — no es código de producción, no se integra.
-  Nivel 1 del árbol de diseño: cómo se manifiesta la operación activa (el país)
-  y cómo se lee que el módulo (Katherine / Sebastián) está anidado dentro.
 
-  Cinco resoluciones distintas del mismo problema. El veredicto lo da Daniel.
-  Ticket: .scratch/ventas-pulido-ui/issues/01-nivel-1-conjunto-y-operacion-activa.md
+  RONDA 2 · Nivel 1. El encuadre ya está elegido: marco teñido por operación
+  + riel de operaciones (modelo Slack completo). Ver ## Answer del ticket.
+
+  Lo que esta ronda decide es lo que los referentes NO zanjan:
+    · hasta dónde llega el tinte dentro del cromo — Slack pinta la barra
+      lateral, AWS pinta el borde superior; hay que elegir.
+    · qué dos tonos, sabiendo que no pueden ser jerárquicos ni colisionar
+      con menta (correcto), ámbar (atención) ni rojo (peligro).
+
+  Los cinco llevan riel y tinte. La paleta es un control ortogonal para
+  poder juzgar un eje sin que el otro contamine.
+
+  Ronda 1 (cinco encuadres distintos): commit 2080fe6.
 -->
 
 <style>
   /* ------------------------------------------------------------------
-     Tokens — tomados de apps/web/src/app/globals.css, no inventados.
-     El panel es de tema oscuro por decisión del producto: variante única,
-     pintada explícitamente para no heredar el fondo del host.
+     Tokens — de apps/web/src/app/globals.css. La menta queda LIBERADA:
+     ya no identifica a Guatemala, solo significa «correcto».
      ------------------------------------------------------------------ */
   :root {
     --bg: #071119;
-    --bg-soft: #0d1822;
     --panel: rgba(10, 24, 34, 0.82);
     --panel-2: rgba(18, 35, 48, 0.9);
-    --panel-3: rgba(26, 47, 62, 0.78);
     --border: rgba(157, 187, 210, 0.16);
     --border-strong: rgba(157, 187, 210, 0.28);
     --text: #eff7fb;
@@ -33,13 +39,12 @@
     --shadow-panel: 0 14px 42px rgba(3, 10, 16, 0.32);
     --font: "Avenir Next", "Segoe UI", "Helvetica Neue", system-ui, sans-serif;
 
-    /* Identidad de la operación. SOLO la variante 1 la usa para teñir el
-       marco; en las demás el marco es siempre menta y el país se distingue
-       por estructura, no por color. */
-    --op-accent: #6ee7b7;
-    --op-accent-strong: #34d399;
-    --op-tint: rgba(110, 231, 183, 0.08);
-    --op-tint-2: rgba(110, 231, 183, 0.16);
+    /* Identidad de la operación activa. Las inyecta render() desde la
+       paleta elegida — nunca se usan para nada semántico. */
+    --op: #a78bfa;
+    --op-line: rgba(167, 139, 250, 0.45);
+    --op-soft: rgba(167, 139, 250, 0.13);
+    --op-faint: rgba(167, 139, 250, 0.07);
   }
 
   * { box-sizing: border-box; }
@@ -49,8 +54,7 @@
     min-height: 100vh;
     color: var(--text);
     background:
-      linear-gradient(90deg, rgba(110, 231, 183, 0.05), transparent 34%),
-      linear-gradient(180deg, rgba(244, 193, 109, 0.04), transparent 28%),
+      linear-gradient(180deg, rgba(244, 193, 109, 0.03), transparent 28%),
       linear-gradient(180deg, #09131c 0%, #071119 45%, #050d14 100%);
     background-attachment: fixed;
     font-family: var(--font);
@@ -58,592 +62,221 @@
     -webkit-font-smoothing: antialiased;
   }
 
-  h1, h2, h3, h4 { margin: 0; font-weight: 600; letter-spacing: 0; }
+  h1, h2, h3, h4 { margin: 0; font-weight: 600; }
   p { margin: 0; }
   button { font-family: inherit; font-size: inherit; color: inherit; cursor: pointer; }
   table { border-collapse: collapse; width: 100%; }
-
-  :focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
-    border-radius: 4px;
-  }
+  :focus-visible { outline: 2px solid var(--op); outline-offset: 2px; border-radius: 4px; }
 
   @media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after {
-      animation-duration: 0.001ms !important;
-      transition-duration: 0.001ms !important;
-    }
+    *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
   }
 
-  /* ==================================================================
-     BANDERAS — dibujadas en CSS. El emoji de bandera no renderiza en
-     todos los sistemas y aquí el país tiene que leerse siempre.
-     ================================================================== */
+  /* Banderas en CSS: el emoji de bandera no renderiza en todos los
+     sistemas y aquí el país tiene que leerse siempre. */
   .flag {
-    display: inline-block;
-    flex: none;
-    width: 22px;
-    height: 15px;
-    border-radius: 2px;
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+    display: inline-block; flex: none;
+    width: 22px; height: 15px; border-radius: 2px;
+    border: 1px solid rgba(255, 255, 255, .18);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .4);
   }
-  .flag-GT {
-    background: linear-gradient(90deg, #4997d0 0 33.3%, #ffffff 33.3% 66.6%, #4997d0 66.6%);
-  }
-  .flag-CO {
-    background: linear-gradient(180deg, #fcd116 0 50%, #003893 50% 75%, #ce1126 75%);
-  }
-  .flag-lg { width: 34px; height: 23px; border-radius: 3px; }
-  .flag-xl { width: 52px; height: 35px; border-radius: 4px; }
-  .flag-sm { width: 16px; height: 11px; }
+  .flag-GT { background: linear-gradient(90deg, #4997d0 0 33.3%, #fff 33.3% 66.6%, #4997d0 66.6%); }
+  .flag-CO { background: linear-gradient(180deg, #fcd116 0 50%, #003893 50% 75%, #ce1126 75%); }
+  .flag-lg { width: 32px; height: 22px; border-radius: 3px; }
 
-  /* ==================================================================
-     PIEZAS COMPARTIDAS DEL MOCK
-     El contenido es el mismo en las cinco variantes — a propósito.
-     Lo que cambia entre variantes es el marco, que es la pregunta.
-     ================================================================== */
-  .card {
-    background: var(--panel);
-    box-shadow: var(--shadow-panel);
-    backdrop-filter: blur(18px);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-  }
-  .card-muted {
-    background: var(--panel-2);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-  }
-
-  .eyebrow {
-    color: var(--highlight);
-    font-size: 11px;
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.09em;
-  }
+  /* ================= piezas compartidas del mock ================= */
+  .card { background: var(--panel); box-shadow: var(--shadow-panel); backdrop-filter: blur(18px); border: 1px solid var(--border); border-radius: 10px; }
+  .card-muted { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; }
+  .eyebrow { color: var(--highlight); font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: .09em; }
   .muted { color: var(--text-dim); }
   .soft { color: var(--text-soft); }
 
-  .pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 3px 8px;
-    font-size: 11px;
-    font-weight: 500;
-    white-space: nowrap;
-  }
-  .pill-accent { color: var(--accent); border-color: rgba(110, 231, 183, 0.35); background: rgba(110, 231, 183, 0.08); }
-  .pill-warn   { color: var(--highlight); border-color: rgba(244, 193, 109, 0.35); background: rgba(244, 193, 109, 0.08); }
-  .pill-danger { color: var(--danger); border-color: rgba(248, 113, 113, 0.35); background: rgba(248, 113, 113, 0.08); }
+  .pill { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; font-size: 11px; font-weight: 500; white-space: nowrap; }
+  .pill-accent { color: var(--accent); border-color: rgba(110,231,183,.35); background: rgba(110,231,183,.08); }
+  .pill-warn   { color: var(--highlight); border-color: rgba(244,193,109,.35); background: rgba(244,193,109,.08); }
+  .pill-danger { color: var(--danger); border-color: rgba(248,113,113,.35); background: rgba(248,113,113,.08); }
   .pill-quiet  { color: var(--text-soft); }
-
   .dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
 
   .mocktable { font-size: 13px; }
-  .mocktable thead th {
-    text-align: left;
-    font-size: 10px;
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--text-soft);
-    padding: 0 12px 8px;
-  }
-  .mocktable td {
-    padding: 11px 12px;
-    vertical-align: middle;
-    border-top: 1px solid var(--border);
-  }
+  .mocktable thead th { text-align: left; font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: .08em; color: var(--text-soft); padding: 0 12px 8px; }
+  .mocktable td { padding: 11px 12px; vertical-align: middle; border-top: 1px solid var(--border); }
   .num { font-variant-numeric: tabular-nums; }
+  .prodname { font-weight: 500; letter-spacing: -.01em; }
 
-  .prodname { font-weight: 500; letter-spacing: -0.01em; }
-  .prodname em { font-style: normal; color: var(--text); }
+  .empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 56px 24px; text-align: center; }
+  .empty-mark { width: 44px; height: 44px; border-radius: 10px; border: 1px dashed var(--border-strong); display: grid; place-items: center; color: var(--text-soft); }
 
-  .empty {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 10px;
-    padding: 56px 24px;
-    text-align: center;
-  }
-  .empty-mark {
-    width: 44px; height: 44px;
-    border-radius: 10px;
-    border: 1px dashed var(--border-strong);
-    display: grid; place-items: center;
-    color: var(--text-soft);
-  }
-
+  /* El estado activo del menú SÍ toma el color de la operación: es cromo.
+     El contenido de la derecha nunca lo toma. */
   .navlink {
-    display: flex;
-    align-items: center;
-    gap: 9px;
-    height: 34px;
-    padding: 0 10px;
-    border-radius: 8px;
-    border: 1px solid transparent;
-    color: var(--text-dim);
-    font-size: 13px;
-    font-weight: 500;
-    background: none;
-    width: 100%;
-    text-align: left;
-    transition: background 0.14s, color 0.14s, border-color 0.14s;
+    display: flex; align-items: center; gap: 9px;
+    height: 34px; padding: 0 10px;
+    border-radius: 8px; border: 1px solid transparent;
+    color: var(--text-dim); font-size: 13px; font-weight: 500;
+    background: none; width: 100%; text-align: left;
+    transition: background .14s, color .14s, border-color .14s;
   }
-  .navlink:hover { background: rgba(18, 35, 48, 0.72); color: var(--text); border-color: var(--border); }
-  .navlink[aria-current="page"] {
-    background: rgba(110, 231, 183, 0.1);
-    border-color: rgba(110, 231, 183, 0.28);
-    color: var(--text);
-  }
-  .navlink .ico { width: 15px; text-align: center; opacity: 0.7; font-size: 12px; }
+  .navlink:hover { background: rgba(255,255,255,.045); color: var(--text); }
+  .navlink[aria-current="page"] { background: var(--op-soft); border-color: var(--op-line); color: var(--text); }
+  .navlink .ico { width: 15px; text-align: center; opacity: .7; font-size: 12px; }
 
-  .grouplabel {
-    font-size: 10px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--text-soft);
-  }
+  .grouplabel { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .1em; color: var(--text-soft); }
 
   .page { padding: 22px 26px 60px; max-width: 1180px; margin: 0 auto; width: 100%; }
   .page-head { display: flex; flex-direction: column; gap: 5px; margin-bottom: 20px; }
-  .page-title { font-size: 21px; letter-spacing: -0.015em; }
+  .page-title { font-size: 21px; letter-spacing: -.015em; }
   .page-sub { color: var(--text-dim); font-size: 13px; max-width: 60ch; line-height: 1.5; }
 
   .statgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 18px; }
   .stat { padding: 12px 14px; }
-  .stat-k { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-soft); }
-  .stat-v { font-size: 19px; font-weight: 600; margin-top: 4px; letter-spacing: -0.02em; }
+  .stat-k { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-soft); }
+  .stat-v { font-size: 19px; font-weight: 600; margin-top: 4px; letter-spacing: -.02em; }
 
-  .convrow {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    gap: 4px 14px;
-    padding: 13px 14px;
-    border-top: 1px solid var(--border);
-    align-items: start;
-  }
+  .convrow { display: grid; grid-template-columns: 1fr auto; gap: 4px 14px; padding: 13px 14px; border-top: 1px solid var(--border); align-items: start; }
   .convrow:first-of-type { border-top: none; }
-  .convrow.is-open { background: rgba(110, 231, 183, 0.05); box-shadow: inset 2px 0 0 var(--accent); }
-  .convrow.is-open.esc { background: rgba(248, 113, 113, 0.06); box-shadow: inset 2px 0 0 var(--danger); }
-  .convrow.is-open.amb { background: rgba(244, 193, 109, 0.06); box-shadow: inset 2px 0 0 var(--highlight); }
+  .convrow.is-open { background: rgba(110,231,183,.05); box-shadow: inset 2px 0 0 var(--accent); }
+  .convrow.is-open.amb { background: rgba(244,193,109,.06); box-shadow: inset 2px 0 0 var(--highlight); }
+  .convrow.is-open.esc { background: rgba(248,113,113,.06); box-shadow: inset 2px 0 0 var(--danger); }
   .convmeta { grid-column: 1 / -1; font-size: 12px; color: var(--text-soft); display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 
-  /* Marca la transición de país perceptible sin explicarla. */
-  @keyframes ctxflash {
-    from { opacity: 0; transform: translateY(-4px); }
-    to   { opacity: 1; transform: none; }
-  }
-  .ctx-anim { animation: ctxflash 0.32s cubic-bezier(0.22, 1, 0.36, 1); }
+  @keyframes ctxin { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+  .ctx-anim { animation: ctxin .3s cubic-bezier(.22,1,.36,1); }
+  @keyframes railin { from { opacity: .25; transform: translateX(20px); } to { opacity: 1; transform: none; } }
 
-  /* ==================================================================
-     V1 · «Tinte de operación» — el marco entero es el indicador
-     ================================================================== */
-  .v1-shell { display: grid; grid-template-columns: 252px 1fr; min-height: 100vh; }
-  .v1-side {
-    background: linear-gradient(180deg, var(--op-tint), transparent 42%),
-                linear-gradient(180deg, rgba(12, 25, 34, 0.98), rgba(8, 18, 25, 0.98));
-    border-right: 1px solid var(--border);
-    padding: 14px 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    transition: background 0.4s ease;
-  }
-  .v1-plate {
-    display: flex;
-    align-items: center;
-    gap: 11px;
-    width: 100%;
-    padding: 13px 12px;
-    margin-bottom: 14px;
-    border-radius: 11px;
-    border: 1px solid var(--op-accent-strong);
-    background: linear-gradient(135deg, var(--op-tint-2), var(--op-tint));
-    text-align: left;
-    transition: background 0.4s ease, border-color 0.4s ease;
-  }
-  .v1-plate:hover { filter: brightness(1.12); }
-  .v1-plate-name { display: block; font-size: 16px; font-weight: 600; letter-spacing: -0.01em; color: var(--text); line-height: 1.15; }
-  .v1-plate-sub { display: block; font-size: 11px; color: var(--op-accent); margin-top: 3px; font-weight: 500; transition: color 0.4s ease; }
-  .v1-plate-tel { display: block; font-size: 10.5px; color: var(--text-soft); margin-top: 2px; font-variant-numeric: tabular-nums; }
-  .v1-plate-swap { margin-left: auto; font-size: 15px; color: var(--op-accent); opacity: 0.75; transition: color 0.4s ease; }
-  .v1-group { margin-top: 14px; }
-  .v1-group-head {
-    display: flex; align-items: center; gap: 8px;
-    padding: 0 10px 7px;
-  }
-  .v1-group.is-active .v1-group-head .grouplabel { color: var(--op-accent); }
-  .v1-group-items { display: flex; flex-direction: column; gap: 2px; padding-left: 11px; border-left: 1px solid var(--border); margin-left: 10px; }
-  .v1-group.is-active .v1-group-items { border-left-color: var(--op-accent-strong); }
-  .v1-main { min-width: 0; }
-  .v1-rule { height: 3px; background: linear-gradient(90deg, var(--op-accent-strong), var(--op-tint) 65%, transparent); transition: background 0.4s ease; }
-  .v1-shell .navlink[aria-current="page"] {
-    background: var(--op-tint-2);
-    border-color: var(--op-accent-strong);
-    color: var(--text);
-  }
-  .v1-shell .page-title { color: var(--text); }
+  /* ================= EL ARMAZÓN COMÚN A LOS CINCO =================
+     Riel de operaciones (78px) + columna de módulo (216px) + contenido.
+     El anidamiento es literal: el módulo vive dentro del país elegido.
+     ================================================================= */
+  .shell { display: grid; grid-template-columns: 78px 216px 1fr; min-height: 100vh; }
 
-  /* ==================================================================
-     V2 · «Cintillo de mando» — banda a todo el ancho, el techo de la app
-     ================================================================== */
-  .v2-shell { display: flex; flex-direction: column; min-height: 100vh; }
-  .v2-band {
-    background: linear-gradient(180deg, rgba(20, 40, 54, 0.96), rgba(12, 26, 36, 0.96));
-    border-bottom: 1px solid var(--border-strong);
-    box-shadow: 0 10px 28px rgba(3, 10, 16, 0.45);
-    position: sticky; top: 0; z-index: 20;
-  }
-  .v2-band-top {
-    display: flex; align-items: center; gap: 20px;
-    padding: 12px 22px 11px;
-  }
-  .v2-ops { display: flex; gap: 7px; }
-  .v2-op {
-    display: flex; align-items: center; gap: 9px;
-    padding: 7px 13px 7px 10px;
-    border-radius: 9px;
-    border: 1px solid var(--border);
-    background: rgba(8, 18, 26, 0.5);
-    color: var(--text-soft);
-    transition: all 0.16s;
-  }
-  .v2-op:hover { border-color: var(--border-strong); color: var(--text-dim); }
-  .v2-op .flag { filter: saturate(0.25) brightness(0.7); transition: filter 0.16s; }
-  .v2-op[aria-pressed="true"] {
-    border-color: var(--accent-strong);
-    background: rgba(110, 231, 183, 0.1);
-    color: var(--text);
-    box-shadow: 0 0 0 1px rgba(110, 231, 183, 0.18);
-  }
-  .v2-op[aria-pressed="true"] .flag { filter: none; }
-  .v2-op-name { font-size: 13px; font-weight: 600; letter-spacing: -0.01em; }
-  .v2-facts { display: flex; align-items: center; gap: 18px; margin-left: auto; }
-  .v2-fact { display: flex; flex-direction: column; gap: 1px; }
-  .v2-fact-k { font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-soft); }
-  .v2-fact-v { font-size: 12px; font-weight: 500; color: var(--text-dim); }
-  .v2-band-tabs {
-    display: flex; align-items: stretch; gap: 4px;
-    padding: 0 22px 0 44px;
-    background: rgba(6, 15, 22, 0.55);
-    border-top: 1px solid var(--border);
-    position: relative;
-  }
-  /* El sangrado de 44px y este conector son lo que dice «esto cuelga de
-     la banda de arriba» sin una palabra de explicación. */
-  .v2-band-tabs::before {
-    content: "";
-    position: absolute; left: 26px; top: -1px; bottom: 14px; width: 11px;
-    border-left: 1px solid var(--border-strong);
-    border-bottom: 1px solid var(--border-strong);
-    border-bottom-left-radius: 7px;
-  }
-  .v2-tab {
-    display: flex; align-items: center; gap: 8px;
-    padding: 10px 14px 9px;
-    border: none; background: none;
-    color: var(--text-soft);
-    font-size: 13px; font-weight: 500;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -1px;
-    transition: color 0.14s, border-color 0.14s;
-  }
-  .v2-tab:hover { color: var(--text-dim); }
-  .v2-tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
-  .v2-body { display: grid; grid-template-columns: 216px 1fr; flex: 1; min-height: 0; }
-  .v2-side { border-right: 1px solid var(--border); background: rgba(10, 22, 31, 0.5); padding: 16px 12px; display: flex; flex-direction: column; gap: 2px; }
-  .v2-main { min-width: 0; }
-
-  /* ==================================================================
-     V3 · «Rieles» — la operación es un lugar, no un control
-     ================================================================== */
-  .v3-shell { display: grid; grid-template-columns: 78px 214px 1fr; min-height: 100vh; }
-  .v3-rail {
-    background: linear-gradient(180deg, rgba(6, 14, 21, 0.98), rgba(4, 11, 17, 0.98));
+  .rail {
+    background: linear-gradient(180deg, rgba(6,14,21,.98), rgba(4,11,17,.98));
     border-right: 1px solid var(--border-strong);
-    padding: 14px 11px;
-    display: flex; flex-direction: column; gap: 10px; align-items: center;
+    padding: 14px 11px; display: flex; flex-direction: column; gap: 10px; align-items: center;
   }
-  .v3-tile {
-    width: 56px; height: 56px;
-    border-radius: 14px;
-    border: 1px solid var(--border);
-    background: rgba(14, 30, 42, 0.7);
+  .tile {
+    width: 56px; height: 56px; border-radius: 15px;
+    border: 1px solid var(--border); background: rgba(14,30,42,.7);
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
-    transition: all 0.18s cubic-bezier(0.22, 1, 0.36, 1);
-    position: relative;
+    position: relative; transition: all .18s cubic-bezier(.22,1,.36,1);
   }
-  .v3-tile .flag { filter: saturate(0.2) brightness(0.55); transition: filter 0.18s; }
-  .v3-tile-code { font-size: 10px; font-weight: 700; letter-spacing: 0.06em; color: var(--text-soft); transition: color 0.18s; }
-  .v3-tile:hover { border-color: var(--border-strong); transform: translateY(-1px); }
-  .v3-tile[aria-pressed="true"] {
-    border-color: var(--accent-strong);
-    background: rgba(110, 231, 183, 0.11);
-    box-shadow: 0 0 0 1px rgba(110, 231, 183, 0.2), 0 8px 20px rgba(3, 10, 16, 0.5);
+  .tile .flag { filter: saturate(.2) brightness(.55); transition: filter .18s; }
+  .tile-code { font-size: 10px; font-weight: 700; letter-spacing: .06em; color: var(--text-soft); transition: color .18s; }
+  .tile:hover { border-color: var(--border-strong); transform: translateY(-1px); }
+  .tile[aria-pressed="true"] { border-color: var(--op); background: var(--op-soft); box-shadow: 0 0 0 1px var(--op-line), 0 8px 20px rgba(3,10,16,.5); }
+  .tile[aria-pressed="true"] .flag { filter: none; }
+  .tile[aria-pressed="true"] .tile-code { color: var(--op); }
+  .tile.dormant { border-style: dashed; opacity: .6; }
+  /* La pestaña que sale del tile hacia la columna de módulo. */
+  .tile[aria-pressed="true"]::after {
+    content: ""; position: absolute; right: -12px; top: 50%; transform: translateY(-50%);
+    width: 12px; height: 26px; background: var(--op-soft);
+    border: 1px solid var(--op); border-left: none; border-radius: 0 6px 6px 0;
   }
-  .v3-tile[aria-pressed="true"] .flag { filter: none; }
-  .v3-tile[aria-pressed="true"] .v3-tile-code { color: var(--accent); }
-  /* La pestaña que sale del tile hacia el riel de módulos: el anidamiento
-     es literal, el módulo vive dentro del país seleccionado. */
-  .v3-tile[aria-pressed="true"]::after {
-    content: "";
-    position: absolute; right: -12px; top: 50%; transform: translateY(-50%);
-    width: 12px; height: 26px;
-    background: rgba(110, 231, 183, 0.11);
-    border-top: 1px solid var(--accent-strong);
-    border-bottom: 1px solid var(--accent-strong);
-    border-right: 1px solid var(--accent-strong);
-    border-radius: 0 6px 6px 0;
-  }
-  .v3-tile.is-dormant { border-style: dashed; opacity: 0.62; }
-  .v3-modules {
-    background: rgba(9, 20, 28, 0.72);
-    border-right: 1px solid var(--border);
-    padding: 15px 12px;
-    display: flex; flex-direction: column;
-    overflow: hidden;
-  }
-  .v3-here {
-    display: flex; align-items: center; gap: 9px;
-    padding: 0 4px 13px;
-    margin-bottom: 12px;
-    border-bottom: 1px solid var(--border);
-  }
-  .v3-here-name { display: block; font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
-  .v3-here-sub { display: block; font-size: 10px; color: var(--text-soft); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 3px; }
-  .v3-modtabs { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 14px; }
-  .v3-modtab {
-    padding: 8px 6px;
-    border-radius: 8px;
-    border: 1px solid var(--border);
-    background: rgba(14, 29, 40, 0.6);
-    color: var(--text-soft);
-    font-size: 11px; font-weight: 600;
-    letter-spacing: 0.02em;
-    transition: all 0.14s;
-  }
-  .v3-modtab:hover { color: var(--text-dim); border-color: var(--border-strong); }
-  .v3-modtab[aria-pressed="true"] { background: rgba(110, 231, 183, 0.1); border-color: var(--accent-strong); color: var(--accent); }
-  .v3-main { min-width: 0; }
-  /* La reubicación física: al cambiar de país el panel entero se desplaza. */
-  @keyframes v3slide {
-    from { opacity: 0.2; transform: translateX(26px); }
-    to   { opacity: 1; transform: none; }
-  }
-  .v3-sliding .v3-modules, .v3-sliding .v3-main { animation: v3slide 0.34s cubic-bezier(0.22, 1, 0.36, 1); }
 
-  /* ==================================================================
-     V4 · «El encabezado es el contexto» — sin selector en el marco
-     ================================================================== */
-  .v4-shell { display: grid; grid-template-columns: 232px 1fr; min-height: 100vh; }
-  .v4-side {
-    background: linear-gradient(180deg, rgba(12, 25, 34, 0.98), rgba(8, 18, 25, 0.98));
+  .col {
     border-right: 1px solid var(--border);
-    padding: 15px 12px;
-    display: flex; flex-direction: column; gap: 3px;
+    padding: 15px 12px; display: flex; flex-direction: column; overflow: hidden;
+    background: rgba(9,20,28,.72);
   }
-  .v4-brand { padding: 0 10px 16px; }
-  .v4-main { min-width: 0; }
-  .v4-head { padding: 40px 26px 0; max-width: 1180px; margin: 0 auto; width: 100%; }
-  .v4-country {
-    display: inline-flex; align-items: baseline; gap: 14px;
-    background: none; border: none; padding: 0;
-    border-bottom: 2px dashed rgba(110, 231, 183, 0.34);
-    transition: border-color 0.16s;
-  }
-  .v4-country:hover { border-bottom-color: var(--accent); }
-  .v4-country-name {
-    font-size: 46px;
-    font-weight: 600;
-    letter-spacing: -0.035em;
-    line-height: 1;
-    color: var(--text);
-  }
-  .v4-country-meta { font-size: 12px; color: var(--text-soft); letter-spacing: 0.02em; }
-  .v4-crumb {
-    display: flex; align-items: center; gap: 9px;
-    margin-top: 14px;
-    font-size: 14px;
-    color: var(--text-dim);
-  }
-  .v4-crumb-mod { color: var(--accent); font-weight: 600; }
-  .v4-crumb-sep { color: var(--text-soft); opacity: 0.5; }
-  .v4-modswitch { display: flex; gap: 5px; margin-top: 20px; padding-bottom: 4px; }
-  .v4-modbtn {
-    padding: 6px 12px;
-    border-radius: 999px;
-    border: 1px solid var(--border);
-    background: none;
-    color: var(--text-soft);
-    font-size: 12px; font-weight: 500;
-    transition: all 0.14s;
-  }
-  .v4-modbtn:hover { color: var(--text-dim); border-color: var(--border-strong); }
-  .v4-modbtn[aria-pressed="true"] { background: rgba(110, 231, 183, 0.1); border-color: var(--accent-strong); color: var(--accent); }
-  .v4-pop {
-    position: absolute; z-index: 30;
-    margin-top: 8px;
-    padding: 6px;
-    min-width: 250px;
-    background: rgba(13, 27, 38, 0.98);
-    border: 1px solid var(--border-strong);
-    border-radius: 11px;
-    box-shadow: 0 20px 48px rgba(2, 8, 13, 0.7);
-    display: flex; flex-direction: column; gap: 3px;
-  }
-  .v4-pop-item {
-    display: flex; align-items: center; gap: 10px;
-    padding: 9px 10px; border-radius: 8px;
-    background: none; border: none; width: 100%; text-align: left;
-    color: var(--text-dim);
-  }
-  .v4-pop-item:hover { background: rgba(110, 231, 183, 0.09); color: var(--text); }
-  .v4-pop-item[aria-current="true"] { background: rgba(110, 231, 183, 0.11); color: var(--text); }
+  .col-head { display: flex; align-items: center; gap: 10px; padding: 0 4px 13px; margin-bottom: 12px; border-bottom: 1px solid var(--border); }
+  .col-name { display: block; font-size: 14px; font-weight: 600; letter-spacing: -.01em; }
+  .col-sub  { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; margin-top: 3px; color: var(--text-soft); }
 
-  /* ==================================================================
-     V5 · «Barra de consecuencias» — el indicador dice qué va a pasar
-     ================================================================== */
-  .v5-shell { display: grid; grid-template-columns: 232px 1fr; min-height: 100vh; padding-bottom: 62px; }
-  .v5-side {
-    background: linear-gradient(180deg, rgba(12, 25, 34, 0.98), rgba(8, 18, 25, 0.98));
-    border-right: 1px solid var(--border);
-    padding: 15px 12px;
-    display: flex; flex-direction: column; gap: 3px;
-  }
-  .v5-main { min-width: 0; }
-  .v5-bar {
-    position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
-    height: 62px;
-    display: flex; align-items: center; gap: 0;
-    padding: 0 18px;
-    background: linear-gradient(180deg, rgba(14, 30, 42, 0.97), rgba(8, 19, 27, 0.99));
-    border-top: 1px solid var(--border-strong);
-    box-shadow: 0 -12px 34px rgba(2, 8, 13, 0.55);
-    backdrop-filter: blur(18px);
-  }
-  .v5-bar.is-dormant {
-    background: linear-gradient(180deg, rgba(44, 34, 18, 0.95), rgba(24, 19, 11, 0.98));
-    border-top-color: rgba(244, 193, 109, 0.42);
-  }
-  .v5-country { display: flex; align-items: center; gap: 10px; padding-right: 18px; }
-  .v5-country-name { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
-  .v5-conseq { display: flex; align-items: center; gap: 22px; padding: 0 20px; border-left: 1px solid var(--border); }
-  .v5-c { display: flex; flex-direction: column; gap: 2px; }
-  .v5-c-k { font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-soft); }
-  .v5-c-v { font-size: 12.5px; font-weight: 600; color: var(--text); letter-spacing: -0.005em; }
-  .v5-bar.is-dormant .v5-c-v { color: var(--highlight); }
-  /* El módulo va DENTRO de la barra del país, después de un divisor y
-     con sangrado: es la afirmación de anidamiento de esta variante. */
-  .v5-modwrap { display: flex; align-items: center; gap: 9px; margin-left: auto; padding-left: 22px; border-left: 1px solid var(--border); }
-  .v5-modlabel { font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-soft); }
-  .v5-seg { display: flex; padding: 3px; border-radius: 9px; background: rgba(5, 13, 19, 0.7); border: 1px solid var(--border); }
-  .v5-segbtn {
-    padding: 5px 12px; border-radius: 6px; border: none; background: none;
-    color: var(--text-soft); font-size: 12px; font-weight: 500;
-    transition: all 0.14s;
-  }
-  .v5-segbtn:hover { color: var(--text-dim); }
-  .v5-segbtn[aria-pressed="true"] { background: rgba(110, 231, 183, 0.13); color: var(--accent); }
-  .v5-swap {
-    padding: 7px 12px; border-radius: 8px;
-    border: 1px solid var(--border-strong);
-    background: rgba(8, 19, 27, 0.8);
-    color: var(--text-dim); font-size: 12px; font-weight: 500;
+  .group { margin-bottom: 13px; }
+  .group-head { display: flex; align-items: baseline; gap: 7px; padding: 0 10px 6px; }
+  .group.on .group-head .grouplabel { color: var(--op); }
+  .group-items { display: flex; flex-direction: column; gap: 2px; padding-left: 10px; margin-left: 9px; border-left: 1px solid var(--border); }
+  .group.on .group-items { border-left-color: var(--op-line); }
+
+  .main { min-width: 0; }
+  .shell .main, .shell .col { animation: railin .32s cubic-bezier(.22,1,.36,1); }
+
+  /* ---- R1 · Barra teñida (el modelo Slack) ---- */
+  [data-r="r1"] .rail { background: linear-gradient(180deg, var(--op-faint), transparent 40%), linear-gradient(180deg, rgba(6,14,21,.98), rgba(4,11,17,.98)); }
+  [data-r="r1"] .col  { background: linear-gradient(180deg, var(--op-soft), var(--op-faint) 38%, transparent 72%), rgba(9,20,28,.86); }
+  [data-r="r1"] .col-head { border-bottom-color: var(--op-line); }
+
+  /* ---- R2 · Borde superior (el modelo AWS) ---- */
+  [data-r="r2"] { padding-top: 4px; }
+  .aws-edge { position: fixed; top: 0; left: 0; right: 0; height: 4px; background: var(--op); z-index: 50; }
+  .aws-chip {
+    position: fixed; top: 4px; left: 0; z-index: 50;
     display: flex; align-items: center; gap: 8px;
-    margin-left: 16px;
+    padding: 5px 13px 6px; border-radius: 0 0 9px 0;
+    background: var(--op); color: #06121b;
+    font-size: 12px; font-weight: 700; letter-spacing: -.005em;
   }
-  .v5-swap:hover { color: var(--text); border-color: var(--accent-strong); }
-  .v5-confirm {
-    position: fixed; bottom: 74px; right: 18px; z-index: 41;
-    width: 330px; padding: 15px 16px;
-    background: rgba(13, 27, 38, 0.99);
-    border: 1px solid var(--border-strong);
-    border-radius: 12px;
-    box-shadow: 0 22px 54px rgba(2, 8, 13, 0.75);
-    display: flex; flex-direction: column; gap: 12px;
-  }
-  .v5-confirm-row { display: flex; gap: 8px; }
-  .btn-primary {
-    flex: 1; padding: 8px 12px; border-radius: 8px; border: none;
-    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
-    color: #032617; font-weight: 600; font-size: 12.5px;
-  }
-  .btn-ghost {
-    padding: 8px 12px; border-radius: 8px;
-    border: 1px solid var(--border); background: rgba(15, 31, 43, 0.88);
-    color: var(--text-dim); font-size: 12.5px; font-weight: 500;
-  }
-  .btn-ghost:hover { color: var(--text); border-color: var(--border-strong); }
+  [data-r="r2"] .rail { padding-top: 42px; }
+  [data-r="r2"] .col  { padding-top: 42px; }
 
-  /* ==================================================================
-     EL INSTRUMENTO — deliberadamente ajeno al sistema visual del panel,
-     para que nadie lo confunda con parte del diseño que se está juzgando.
-     ================================================================== */
-  /* Arriba de los 62px de la barra de V5: el instrumento no puede tapar
-     justo el control que esa variante pone a juicio. */
+  /* ---- R3 · Solo el riel ---- */
+  [data-r="r3"] .rail { border-right: 2px solid var(--op); }
+  [data-r="r3"] .col  { background: rgba(9,20,28,.72); }
+  [data-r="r3"] .tile[aria-pressed="true"] { background: var(--op); border-color: var(--op); }
+  [data-r="r3"] .tile[aria-pressed="true"] .tile-code { color: #06121b; }
+  [data-r="r3"] .tile[aria-pressed="true"]::after { background: var(--op); border-color: var(--op); }
+  .modtabs { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 14px; }
+  .modtab { padding: 8px 6px; border-radius: 8px; border: 1px solid var(--border); background: rgba(14,29,40,.6); color: var(--text-soft); font-size: 11.5px; font-weight: 600; transition: all .14s; }
+  .modtab:hover { color: var(--text-dim); border-color: var(--border-strong); }
+  .modtab[aria-pressed="true"] { background: var(--op-soft); border-color: var(--op); color: var(--op); }
+
+  /* ---- R4 · Envolvente ---- */
+  [data-r="r4"] .rail { background: linear-gradient(180deg, var(--op-faint), transparent 40%), linear-gradient(180deg, rgba(6,14,21,.98), rgba(4,11,17,.98)); }
+  [data-r="r4"] .col  { background: linear-gradient(180deg, var(--op-soft), var(--op-faint) 38%, transparent 72%), rgba(9,20,28,.86); border-right: 1px solid var(--op-line); }
+  [data-r="r4"] .col-head { border-bottom-color: var(--op-line); }
+  [data-r="r4"] .main { border-top: 1px solid var(--op-line); box-shadow: inset 0 14px 34px -22px var(--op); }
+
+  /* ---- R5 · Tinte + consecuencia ---- */
+  [data-r="r5"] .rail { background: linear-gradient(180deg, var(--op-faint), transparent 40%), linear-gradient(180deg, rgba(6,14,21,.98), rgba(4,11,17,.98)); }
+  [data-r="r5"] .col  { background: linear-gradient(180deg, var(--op-soft), var(--op-faint) 38%, transparent 72%), rgba(9,20,28,.86); }
+  [data-r="r5"] .col-head { border-bottom-color: var(--op-line); }
+  .conseq { padding: 10px 11px; margin-bottom: 14px; border-radius: 9px; border: 1px solid var(--op-line); background: var(--op-faint); display: flex; flex-direction: column; gap: 7px; }
+  .conseq-row { display: flex; flex-direction: column; gap: 1px; }
+  .conseq-k { font-size: 9px; text-transform: uppercase; letter-spacing: .1em; color: var(--text-soft); }
+  .conseq-v { font-size: 12px; font-weight: 600; color: var(--op); }
+  .conseq.off { border-color: rgba(244,193,109,.4); background: rgba(244,193,109,.07); }
+  .conseq.off .conseq-v { color: var(--highlight); }
+
+  .colfoot { margin-top: auto; padding-top: 14px; border-top: 1px solid var(--border); }
+
+  /* ================= EL INSTRUMENTO =================
+     Deliberadamente ajeno al sistema visual del panel, para que nadie lo
+     confunda con parte del diseño que se está juzgando. Arriba de todo
+     lo que las variantes ponen abajo.
+     ================================================= */
   #picker {
-    position: fixed; right: 16px; bottom: 76px; z-index: 9999;
-    width: 286px;
-    background: #16181c;
-    border: 1px solid #33373f;
-    border-radius: 12px;
-    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.68);
-    font-size: 12px;
-    color: #d6d9de;
-    user-select: none;
-    overflow: hidden;
+    position: fixed; right: 16px; bottom: 16px; z-index: 9999;
+    width: 288px; background: #16181c; border: 1px solid #33373f;
+    border-radius: 12px; box-shadow: 0 24px 60px rgba(0,0,0,.68);
+    font-size: 12px; color: #d6d9de; user-select: none; overflow: hidden;
   }
   #picker.is-min .pk-body { display: none; }
-  .pk-head {
-    display: flex; align-items: center; gap: 9px;
-    padding: 9px 11px;
-    background: #1e2127;
-    border-bottom: 1px solid #33373f;
-    cursor: grab;
-  }
+  .pk-head { display: flex; align-items: center; gap: 9px; padding: 9px 11px; background: #1e2127; border-bottom: 1px solid #33373f; cursor: grab; }
   .pk-head:active { cursor: grabbing; }
   .pk-grip { color: #6b7280; letter-spacing: 2px; font-size: 11px; }
-  .pk-title { font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: #8b919c; font-weight: 600; }
+  .pk-title { font-size: 10px; text-transform: uppercase; letter-spacing: .12em; color: #8b919c; font-weight: 600; }
   .pk-min { margin-left: auto; background: none; border: none; color: #8b919c; padding: 2px 5px; border-radius: 4px; }
   .pk-min:hover { background: #2b2f36; color: #d6d9de; }
   .pk-body { padding: 10px; display: flex; flex-direction: column; gap: 9px; }
   .pk-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
   .pk-variant { display: flex; align-items: center; gap: 8px; }
-  .pk-arrow {
-    width: 28px; height: 30px; flex: none;
-    border-radius: 7px; border: 1px solid #3a3f47; background: #22252b;
-    color: #b8bdc6; font-size: 13px; line-height: 1;
-  }
+  .pk-arrow { width: 28px; height: 30px; flex: none; border-radius: 7px; border: 1px solid #3a3f47; background: #22252b; color: #b8bdc6; font-size: 13px; line-height: 1; }
   .pk-arrow:hover { background: #2c3037; color: #fff; }
   .pk-vname { flex: 1; min-width: 0; text-align: center; }
-  .pk-vnum { font-size: 9px; color: #7c828d; letter-spacing: 0.12em; text-transform: uppercase; }
-  .pk-vlabel { font-size: 12.5px; font-weight: 600; color: #f0f2f5; margin-top: 1px; letter-spacing: -0.005em; }
+  .pk-vnum { font-size: 9px; color: #7c828d; letter-spacing: .12em; text-transform: uppercase; }
+  .pk-vlabel { font-size: 12.5px; font-weight: 600; color: #f0f2f5; margin-top: 1px; }
+  .pk-vtag { font-size: 9.5px; color: #7c828d; margin-top: 2px; }
   .pk-set { display: flex; flex-direction: column; gap: 5px; }
-  .pk-legend { font-size: 9px; text-transform: uppercase; letter-spacing: 0.11em; color: #7c828d; font-weight: 600; }
+  .pk-legend { font-size: 9px; text-transform: uppercase; letter-spacing: .11em; color: #7c828d; font-weight: 600; }
   .pk-opts { display: flex; gap: 4px; flex-wrap: wrap; }
-  .pk-opt {
-    flex: 1 1 0; min-width: 0;
-    padding: 6px 8px; border-radius: 6px;
-    border: 1px solid #3a3f47; background: #22252b;
-    color: #9aa0aa; font-size: 11px; font-weight: 500;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
+  .pk-opt { flex: 1 1 0; min-width: 0; padding: 6px 8px; border-radius: 6px; border: 1px solid #3a3f47; background: #22252b; color: #9aa0aa; font-size: 11px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pk-opt:hover { background: #2c3037; color: #e3e6ea; }
   .pk-opt[aria-pressed="true"] { background: #2f5d4f; border-color: #4b9c81; color: #b8f5dc; }
+  .pk-swatch { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
   .pk-hint { font-size: 10px; color: #6b7280; line-height: 1.45; border-top: 1px solid #2b2f36; padding-top: 9px; }
-  .pk-hint kbd {
-    background: #2b2f36; border: 1px solid #3f444c; border-radius: 3px;
-    padding: 0 4px; font-family: inherit; font-size: 9.5px; color: #b8bdc6;
-  }
+  .pk-hint kbd { background: #2b2f36; border: 1px solid #3f444c; border-radius: 3px; padding: 0 4px; font-family: inherit; font-size: 9.5px; color: #b8bdc6; }
 </style>
 
 <div id="app"></div>
@@ -651,17 +284,23 @@
 <div id="picker">
   <div class="pk-head" id="pk-head">
     <span class="pk-grip">⠿</span>
-    <span class="pk-title">Nivel 1 · encuadre</span>
+    <span class="pk-title">Nivel 1 · ronda 2</span>
     <button class="pk-min" id="pk-min" title="Plegar">—</button>
   </div>
   <div class="pk-body">
     <div class="pk-variant">
       <button class="pk-arrow" id="pk-prev" title="Anterior (←)">←</button>
       <div class="pk-vname">
-        <div class="pk-vnum" id="pk-vnum">Variante 1 de 5</div>
+        <div class="pk-vnum" id="pk-vnum">1 de 5</div>
         <div class="pk-vlabel" id="pk-vlabel">—</div>
+        <div class="pk-vtag" id="pk-vtag">—</div>
       </div>
       <button class="pk-arrow" id="pk-next" title="Siguiente (→)">→</button>
+    </div>
+
+    <div class="pk-set">
+      <span class="pk-legend">Paleta · Guatemala / Colombia</span>
+      <div class="pk-opts" data-key="palette" id="pk-palette"></div>
     </div>
 
     <div class="pk-set">
@@ -712,268 +351,184 @@
     </div>
 
     <p class="pk-hint">
-      <kbd>←</kbd> <kbd>→</kbd> cambian de variante. La prueba de fuego:
-      pon el catálogo <em>cargado</em> y alterna Guatemala ↔ Colombia — si no
-      notas el cambio con el mismo contenido debajo, la variante falló.
+      <kbd>←</kbd> <kbd>→</kbd> cambian de variante. La prueba válida es
+      <strong>Colombia con catálogo lleno</strong>: con Colombia vacía cualquiera
+      parece buena, porque cambia el contenido y no el marco.
     </p>
   </div>
 </div>
 
 <script>
 /* ====================================================================
-   DATOS — reales, de la operación de Vorare. Los nombres casi homónimos
-   de REVITALHAIR son el problema que el diseño tiene que dejar ver;
-   con nombres genéricos el mock mentiría.
+   DATOS — reales, de la operación de Vorare. Los cuatro nombres casi
+   homónimos de REVITALHAIR son el problema que el diseño debe dejar ver.
    ==================================================================== */
 
+const PALETTES = [
+  { key: "vc", label: "Violeta / Cian",  GT: "#a78bfa", CO: "#38bdf8" },
+  { key: "cr", label: "Cian / Rosa",     GT: "#38bdf8", CO: "#f472b6" },
+  { key: "vr", label: "Violeta / Rosa",  GT: "#a78bfa", CO: "#f472b6" },
+];
+
 const OPS = {
-  GT: {
-    code: "GT",
-    name: "Guatemala",
-    currency: "GTQ",
-    currencyLong: "quetzales (GTQ)",
-    phone: "+502 3689 0343",
-    store: "Vorare GT · Shopify",
-    live: true,
-    status: "Operando",
-    orders: "1.678",
-    confirm: "88,4%",
-    monthly: "~470 / mes",
-    products: "17",
-    tint: { accent: "#6ee7b7", strong: "#34d399", t1: "rgba(110,231,183,0.08)", t2: "rgba(110,231,183,0.16)" },
-  },
-  CO: {
-    code: "CO",
-    name: "Colombia",
-    currency: "COP",
-    currencyLong: "pesos (COP)",
-    phone: "+57 304 5430173",
-    store: "sin conectar",
-    live: false,
-    status: "Sin operar",
-    orders: "0",
-    confirm: "—",
-    monthly: "—",
-    products: "0",
-    tint: { accent: "#f4c16d", strong: "#e0a94a", t1: "rgba(244,193,109,0.08)", t2: "rgba(244,193,109,0.16)" },
-  },
+  GT: { code: "GT", name: "Guatemala", currency: "GTQ", currencyLong: "quetzales (GTQ)",
+        phone: "+502 3689 0343", store: "Vorare GT · Shopify", live: true, status: "Operando",
+        orders: "1.678", confirm: "88,4%", monthly: "~470 / mes", products: "17" },
+  CO: { code: "CO", name: "Colombia", currency: "COP", currencyLong: "pesos (COP)",
+        phone: "+57 304 5430173", store: "sin conectar", live: false, status: "Sin operar",
+        orders: "0", confirm: "—", monthly: "—", products: "0" },
 };
 
 const MODULES = {
-  ventas: {
-    key: "ventas",
-    label: "Ventas",
-    agent: "Sebastián",
-    role: "preventa",
-    screens: [
-      { key: "catalogo", label: "Catálogo", icon: "▤" },
-      { key: "conversaciones", label: "Conversaciones", icon: "◇" },
-      { key: "vendedor", label: "Vendedor", icon: "◉" },
-    ],
-  },
-  confirmacion: {
-    key: "confirmacion",
-    label: "Confirmación",
-    agent: "Katherine",
-    role: "postventa",
-    screens: [
-      { key: "pedidos", label: "Pedidos", icon: "▦" },
-      { key: "plantillas", label: "Plantillas", icon: "▥" },
-      { key: "inbox", label: "Inbox", icon: "✉" },
-    ],
-  },
+  ventas: { key: "ventas", label: "Ventas", agent: "Sebastián", role: "preventa",
+    screens: [{ key: "catalogo", label: "Catálogo", icon: "▤" },
+              { key: "conversaciones", label: "Conversaciones", icon: "◇" },
+              { key: "vendedor", label: "Vendedor", icon: "◉" }] },
+  confirmacion: { key: "confirmacion", label: "Confirmación", agent: "Katherine", role: "postventa",
+    screens: [{ key: "pedidos", label: "Pedidos", icon: "▦" },
+              { key: "plantillas", label: "Plantillas", icon: "▥" },
+              { key: "inbox", label: "Inbox", icon: "✉" }] },
 };
 
 const PRODUCTS_GT = [
-  { name: "REVITALHAIR – DHT ANTICALVICIE",          src: "shopify", price: "Q 349", ads: 4, orders: "1.263", share: "77%" },
-  { name: "REVITALHAIR – DHT BLOCKER ANTICALVICIE",  src: "shopify", price: "Q 389", ads: 2, orders: "187",   share: "11%" },
-  { name: "REVITALHAIR – COMBO DHT + SERUM 360",     src: "shopify", price: "Q 549", ads: 3, orders: "121",   share: "7%"  },
-  { name: "REVITALHAIR – Hair Recovery 3X",          src: "shopify", price: "Q 429", ads: 0, orders: "18",    share: "1%"  },
-  { name: "REVITALHAIR Serum Capilar",               src: "panel",   price: "Q 199", ads: 1, orders: "9",     share: "—"   },
+  { name: "REVITALHAIR – DHT ANTICALVICIE",         src: "shopify", price: "Q 349", ads: 4, orders: "1.263", share: "77%" },
+  { name: "REVITALHAIR – DHT BLOCKER ANTICALVICIE", src: "shopify", price: "Q 389", ads: 2, orders: "187",   share: "11%" },
+  { name: "REVITALHAIR – COMBO DHT + SERUM 360",    src: "shopify", price: "Q 549", ads: 3, orders: "121",   share: "7%"  },
+  { name: "REVITALHAIR – Hair Recovery 3X",         src: "shopify", price: "Q 429", ads: 0, orders: "18",    share: "1%"  },
+  { name: "REVITALHAIR Serum Capilar",              src: "panel",   price: "Q 199", ads: 1, orders: "9",     share: "—"   },
 ];
-
 const PRODUCTS_CO = [
-  { name: "REVITALHAIR – DHT ANTICALVICIE",          src: "shopify", price: "$ 129.900", ads: 1, orders: "0", share: "—" },
-  { name: "REVITALHAIR – DHT BLOCKER ANTICALVICIE",  src: "shopify", price: "$ 144.900", ads: 0, orders: "0", share: "—" },
-  { name: "REVITALHAIR – COMBO DHT + SERUM 360",     src: "panel",   price: "$ 199.900", ads: 0, orders: "0", share: "—" },
+  { name: "REVITALHAIR – DHT ANTICALVICIE",         src: "shopify", price: "$ 129.900", ads: 1, orders: "0", share: "—" },
+  { name: "REVITALHAIR – DHT BLOCKER ANTICALVICIE", src: "shopify", price: "$ 144.900", ads: 0, orders: "0", share: "—" },
+  { name: "REVITALHAIR – COMBO DHT + SERUM 360",    src: "panel",   price: "$ 199.900", ads: 0, orders: "0", share: "—" },
 ];
 
 const CONVS = {
   GT: [
     { who: "María José Chun", tel: "+502 5512 8840", when: "hace 4 min",  state: "ok",
-      line: "«¿Sirve para entradas? tengo 34 años»",
-      det: "REVITALHAIR – DHT ANTICALVICIE · anuncio 23851094782" },
-    { who: "Luis Ovalle",     tel: "+502 4471 2093", when: "hace 12 min", state: "amb",
-      line: "«Vi el anuncio del tratamiento para la calvicie»",
-      det: "3 productos posibles · sin ID de anuncio en el mensaje" },
-    { who: "Ana Sicán",       tel: "+502 3390 5518", when: "hace 26 min", state: "esc",
-      line: "«Quiero hablar con una persona por favor»",
-      det: "Sebastián pausado · esperando asesor" },
+      line: "«¿Sirve para entradas? tengo 34 años»", det: "REVITALHAIR – DHT ANTICALVICIE · anuncio 23851094782" },
+    { who: "Luis Ovalle", tel: "+502 4471 2093", when: "hace 12 min", state: "amb",
+      line: "«Vi el anuncio del tratamiento para la calvicie»", det: "3 productos posibles · sin ID de anuncio" },
+    { who: "Ana Sicán", tel: "+502 3390 5518", when: "hace 26 min", state: "esc",
+      line: "«Quiero hablar con una persona por favor»", det: "Sebastián pausado · esperando asesor" },
   ],
   CO: [
-    { who: "Jhon Rodríguez",  tel: "+57 310 8842 190", when: "hace 2 min", state: "ok",
-      line: "«Buenas, precio del tratamiento?»",
-      det: "REVITALHAIR – DHT ANTICALVICIE · anuncio 24019338451" },
+    { who: "Jhon Rodríguez", tel: "+57 310 8842 190", when: "hace 2 min", state: "ok",
+      line: "«Buenas, precio del tratamiento?»", det: "REVITALHAIR – DHT ANTICALVICIE · anuncio 24019338451" },
     { who: "Camila Restrepo", tel: "+57 320 4471 002", when: "hace 9 min", state: "amb",
-      line: "«El del video de la caída de pelo»",
-      det: "2 productos posibles · sin ID de anuncio en el mensaje" },
-    { who: "Andrés Peña",     tel: "+57 315 9920 774", when: "hace 21 min", state: "esc",
-      line: "«Necesito hablar con alguien real»",
-      det: "Sebastián pausado · esperando asesor" },
+      line: "«El del video de la caída de pelo»", det: "2 productos posibles · sin ID de anuncio" },
+    { who: "Andrés Peña", tel: "+57 315 9920 774", when: "hace 21 min", state: "esc",
+      line: "«Necesito hablar con alguien real»", det: "Sebastián pausado · esperando asesor" },
   ],
 };
 
 const ORDERS = {
-  GT: [
-    { id: "#10428", who: "María José Chun", amount: "Q 349", state: "confirmado" },
-    { id: "#10427", who: "Byron Tzoc",      amount: "Q 549", state: "esperando" },
-    { id: "#10426", who: "Ana Sicán",       amount: "Q 389", state: "sin-confirmar" },
-    { id: "#10425", who: "Silvia Xicará",   amount: "Q 349", state: "confirmado" },
-  ],
-  CO: [
-    { id: "#00003", who: "Jhon Rodríguez",  amount: "$ 129.900", state: "esperando" },
-    { id: "#00002", who: "Camila Restrepo", amount: "$ 199.900", state: "sin-confirmar" },
-  ],
+  GT: [{ id: "#10428", who: "María José Chun", amount: "Q 349", state: "confirmado" },
+       { id: "#10427", who: "Byron Tzoc", amount: "Q 549", state: "esperando" },
+       { id: "#10426", who: "Ana Sicán", amount: "Q 389", state: "sin-confirmar" },
+       { id: "#10425", who: "Silvia Xicará", amount: "Q 349", state: "confirmado" }],
+  CO: [{ id: "#00003", who: "Jhon Rodríguez", amount: "$ 129.900", state: "esperando" },
+       { id: "#00002", who: "Camila Restrepo", amount: "$ 199.900", state: "sin-confirmar" }],
 };
 
 const VARIANTS = [
-  { id: "v1", label: "Tinte de operación",     tag: "el marco entero es el indicador" },
-  { id: "v2", label: "Cintillo de mando",      tag: "una banda que es el techo de la app" },
-  { id: "v3", label: "Rieles",                 tag: "la operación es un lugar, no un control" },
-  { id: "v4", label: "El encabezado manda",    tag: "sin selector: lo dice la tipografía" },
-  { id: "v5", label: "Barra de consecuencias", tag: "no dice quién eres, dice qué va a pasar" },
+  { id: "r1", label: "Barra teñida",     tag: "el modelo Slack: se pinta la barra" },
+  { id: "r2", label: "Borde superior",   tag: "el modelo AWS: se pinta el borde" },
+  { id: "r3", label: "Solo el riel",     tag: "el color no sale del riel" },
+  { id: "r4", label: "Envolvente",       tag: "el contenido vive dentro del país" },
+  { id: "r5", label: "Tinte + consecuencia", tag: "el color no va solo: dice qué pasa" },
 ];
 
 /* ==================================================================== */
 
 const state = {
-  variant: 0,
-  country: "GT",
-  module: "ventas",
-  screen: "catalogo",
-  catalog: "loaded",
-  ads: "some",
-  conv: "ok",
-  v4pop: false,
-  v5confirm: false,
+  variant: 0, palette: "vc", country: "GT", module: "ventas",
+  screen: "catalogo", catalog: "loaded", ads: "some", conv: "ok",
 };
 
-const el = (t, cls, html) => {
-  const n = document.createElement(t);
-  if (cls) n.className = cls;
-  if (html != null) n.innerHTML = html;
-  return n;
-};
+const el = (t, cls, html) => { const n = document.createElement(t); if (cls) n.className = cls; if (html != null) n.innerHTML = html; return n; };
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const flag = (code, size) => `<span class="flag flag-${code}${size ? " flag-" + size : ""}"></span>`;
+const flag = (code, sz) => `<span class="flag flag-${code}${sz ? " flag-" + sz : ""}"></span>`;
+const op = () => OPS[state.country];
+const mod = () => MODULES[state.module];
+const pal = () => PALETTES.find((p) => p.key === state.palette);
 
-function op() { return OPS[state.country]; }
-function mod() { return MODULES[state.module]; }
+/* hex → rgba, para derivar los lavados del color de la operación. */
+function rgba(hex, a) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+}
 
-/* -------------------------------------------------------------------
-   CONTENIDO — idéntico en las cinco variantes, a propósito.
-   Si el país no se percibe con el mismo contenido debajo, el marco falló.
-   ------------------------------------------------------------------- */
+/* ---------------- CONTENIDO — idéntico en las cinco ---------------- */
 
 function products() {
   if (state.catalog === "empty") return [];
   const base = state.country === "GT" ? PRODUCTS_GT : PRODUCTS_CO;
   return base.map((p) => (state.ads === "none" ? { ...p, ads: 0 } : p));
 }
-
-function srcPill(src) {
-  return src === "shopify"
-    ? `<span class="pill pill-quiet" title="Se lee de Shopify, no se edita aquí"><span class="dot" style="background:#95bf47"></span>Shopify</span>`
-    : `<span class="pill pill-quiet"><span class="dot" style="background:var(--accent)"></span>Panel</span>`;
-}
-
-function adsPill(n) {
-  if (n === 0) return `<span class="pill pill-warn">sin anuncios</span>`;
-  return `<span class="pill pill-quiet num">${n} anuncio${n > 1 ? "s" : ""}</span>`;
-}
+const srcPill = (s) => s === "shopify"
+  ? `<span class="pill pill-quiet"><span class="dot" style="background:#95bf47"></span>Shopify</span>`
+  : `<span class="pill pill-quiet"><span class="dot" style="background:var(--accent)"></span>Panel</span>`;
+const adsPill = (n) => n === 0
+  ? `<span class="pill pill-warn">sin anuncios</span>`
+  : `<span class="pill pill-quiet num">${n} anuncio${n > 1 ? "s" : ""}</span>`;
 
 function screenCatalogo() {
-  const list = products();
-  const o = op();
-  const wrap = el("div");
-
+  const list = products(), o = op(), wrap = el("div");
   wrap.appendChild(el("div", "page-head", `
     <span class="eyebrow">${esc(o.name)} · catálogo</span>
     <h2 class="page-title">Productos</h2>
     <p class="page-sub">Los productos conectados se leen de la tienda; los nativos se editan aquí.
-      Cada uno lleva la lista de anuncios que le apuntan.</p>
-  `));
+      Cada uno lleva la lista de anuncios que le apuntan.</p>`));
 
-  if (list.length === 0) {
+  if (!list.length) {
     const c = el("div", "card");
     c.appendChild(el("div", "empty", `
       <div class="empty-mark">▤</div>
       <h3 style="font-size:15px">Todavía no hay productos en ${esc(o.name)}</h3>
-      <p class="soft" style="max-width:42ch;font-size:12.5px;line-height:1.55">
-        ${o.live
-          ? "Conecta un producto de la tienda o crea uno nativo para que el vendedor tenga qué ofrecer."
-          : "Esta operación aún no vende. Su catálogo empieza vacío y no comparte nada con Guatemala."}
-      </p>
-    `));
-    wrap.appendChild(c);
-    return wrap;
+      <p class="soft" style="max-width:42ch;font-size:12.5px;line-height:1.55">${o.live
+        ? "Conecta un producto de la tienda o crea uno nativo para que el vendedor tenga qué ofrecer."
+        : "Esta operación aún no vende. Su catálogo empieza vacío y no comparte nada con Guatemala."}</p>`));
+    wrap.appendChild(c); return wrap;
   }
 
   const grid = el("div", "statgrid");
   grid.innerHTML = `
-    <div class="card-muted stat"><div class="stat-k">Productos</div><div class="stat-v num">${esc(o.products)}</div></div>
+    <div class="card-muted stat"><div class="stat-k">Productos</div><div class="stat-v num">${state.country === "GT" ? esc(o.products) : list.length}</div></div>
     <div class="card-muted stat"><div class="stat-k">Anuncios registrados</div><div class="stat-v num">${list.reduce((a, p) => a + p.ads, 0)}</div></div>
     <div class="card-muted stat"><div class="stat-k">Moneda</div><div class="stat-v">${esc(o.currency)}</div></div>
-    <div class="card-muted stat"><div class="stat-k">Tienda</div><div class="stat-v" style="font-size:13px;font-weight:500">${esc(o.store)}</div></div>
-  `;
+    <div class="card-muted stat"><div class="stat-k">Tienda</div><div class="stat-v" style="font-size:13px;font-weight:500">${esc(o.store)}</div></div>`;
   wrap.appendChild(grid);
 
   const card = el("div", "card");
   card.style.padding = "14px 4px 4px";
-  const rows = list.map((p) => `
-    <tr>
-      <td>
-        <div class="prodname">${esc(p.name)}</div>
-        <div class="soft" style="font-size:11px;margin-top:2px">${p.share !== "—" ? esc(p.share) + " del volumen" : "volumen bajo"}</div>
-      </td>
-      <td>${srcPill(p.src)}</td>
-      <td class="num" style="font-weight:500">${esc(p.price)}</td>
-      <td>${adsPill(p.ads)}</td>
-      <td class="num muted">${esc(p.orders)}</td>
-    </tr>`).join("");
-
   card.innerHTML = `
     <table class="mocktable">
       <thead><tr><th>Producto</th><th>Origen</th><th>Precio</th><th>Anuncios</th><th>Pedidos</th></tr></thead>
-      <tbody>${rows}</tbody>
+      <tbody>${list.map((p) => `<tr>
+        <td><div class="prodname">${esc(p.name)}</div>
+            <div class="soft" style="font-size:11px;margin-top:2px">${p.share !== "—" ? esc(p.share) + " del volumen" : "volumen bajo"}</div></td>
+        <td>${srcPill(p.src)}</td><td class="num" style="font-weight:500">${esc(p.price)}</td>
+        <td>${adsPill(p.ads)}</td><td class="num muted">${esc(p.orders)}</td></tr>`).join("")}</tbody>
     </table>
-    ${state.country === "GT"
-      ? `<div style="padding:11px 12px;border-top:1px solid var(--border)" class="soft">12 productos más · entre 1 y 18 pedidos cada uno</div>`
-      : ""}
-  `;
+    ${state.country === "GT" ? `<div style="padding:11px 12px;border-top:1px solid var(--border)" class="soft">12 productos más · entre 1 y 18 pedidos cada uno</div>` : ""}`;
   wrap.appendChild(card);
   return wrap;
 }
 
 function screenConversaciones() {
-  const o = op();
-  const wrap = el("div");
+  const o = op(), wrap = el("div");
   wrap.appendChild(el("div", "page-head", `
     <span class="eyebrow">${esc(o.name)} · conversaciones</span>
     <h2 class="page-title">Chats de ${esc(mod().agent)}</h2>
-    <p class="page-sub">Toma un chat para pausar al vendedor y escribir tú; devuélveselo cuando termines.</p>
-  `));
+    <p class="page-sub">Toma un chat para pausar al vendedor y escribir tú; devuélveselo cuando termines.</p>`));
 
   if (!o.live && state.catalog === "empty") {
     const c = el("div", "card");
     c.appendChild(el("div", "empty", `
-      <div class="empty-mark">◇</div>
-      <h3 style="font-size:15px">Sin conversaciones en ${esc(o.name)}</h3>
-      <p class="soft" style="max-width:40ch;font-size:12.5px;line-height:1.55">
-        El número ${esc(o.phone)} todavía no recibe leads.</p>
-    `));
-    wrap.appendChild(c);
-    return wrap;
+      <div class="empty-mark">◇</div><h3 style="font-size:15px">Sin conversaciones en ${esc(o.name)}</h3>
+      <p class="soft" style="max-width:40ch;font-size:12.5px;line-height:1.55">El número ${esc(o.phone)} todavía no recibe leads.</p>`));
+    wrap.appendChild(c); return wrap;
   }
 
   const card = el("div", "card");
@@ -981,22 +536,15 @@ function screenConversaciones() {
   CONVS[state.country].forEach((c) => {
     const open = c.state === state.conv;
     const row = el("div", `convrow ${c.state} ${open ? "is-open" : ""}`);
-    const chip = c.state === "ok"
-      ? `<span class="pill pill-accent">producto reconocido</span>`
-      : c.state === "amb"
-      ? `<span class="pill pill-warn">reconocimiento ambiguo</span>`
+    const chip = c.state === "ok" ? `<span class="pill pill-accent">producto reconocido</span>`
+      : c.state === "amb" ? `<span class="pill pill-warn">reconocimiento ambiguo</span>`
       : `<span class="pill pill-danger">escalada a humano</span>`;
     row.innerHTML = `
-      <div>
-        <div style="font-weight:600;font-size:13.5px">${esc(c.who)}</div>
-        <div class="muted" style="font-size:12.5px;margin-top:3px">${esc(c.line)}</div>
-      </div>
-      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px">
-        ${chip}
-        <span class="soft" style="font-size:11px">${esc(c.when)}</span>
-      </div>
-      <div class="convmeta"><span class="num">${esc(c.tel)}</span><span style="opacity:.4">·</span><span>${esc(c.det)}</span></div>
-    `;
+      <div><div style="font-weight:600;font-size:13.5px">${esc(c.who)}</div>
+           <div class="muted" style="font-size:12.5px;margin-top:3px">${esc(c.line)}</div></div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px">${chip}
+           <span class="soft" style="font-size:11px">${esc(c.when)}</span></div>
+      <div class="convmeta"><span class="num">${esc(c.tel)}</span><span style="opacity:.4">·</span><span>${esc(c.det)}</span></div>`;
     card.appendChild(row);
   });
   wrap.appendChild(card);
@@ -1004,13 +552,11 @@ function screenConversaciones() {
 }
 
 function screenVendedor() {
-  const o = op();
-  const wrap = el("div");
+  const o = op(), wrap = el("div");
   wrap.appendChild(el("div", "page-head", `
     <span class="eyebrow">${esc(o.name)} · vendedor</span>
     <h2 class="page-title">Configuración de ${esc(mod().agent)}</h2>
-    <p class="page-sub">Lo que tiene consecuencia va arriba; el tono, abajo. Los cambios aplican en la próxima conversación.</p>
-  `));
+    <p class="page-sub">Lo que tiene consecuencia va arriba; el tono, abajo. Los cambios aplican en la próxima conversación.</p>`));
   const card = el("div", "card");
   card.style.padding = "16px 18px";
   card.innerHTML = `
@@ -1023,66 +569,46 @@ function screenVendedor() {
       <div class="stat-k">Tono e instrucciones</div>
       <p class="muted" style="margin-top:7px;line-height:1.6;font-size:12.5px;max-width:62ch">
         Cercano y directo, sin tratar de usted. Responde en ${o.live ? "guatemalteco neutro" : "colombiano neutro"}.
-        No prometas resultados médicos. Si preguntan por envío, ${o.live ? "confirma contraentrega en toda Guatemala" : "aclara que la operación aún no despacha"}.
-      </p>
-    </div>
-  `;
+        No prometas resultados médicos. Si preguntan por envío, ${o.live ? "confirma contraentrega en toda Guatemala" : "aclara que la operación aún no despacha"}.</p>
+    </div>`;
   wrap.appendChild(card);
   return wrap;
 }
 
 function screenPedidos() {
-  const o = op();
-  const list = ORDERS[state.country];
-  const wrap = el("div");
+  const o = op(), list = ORDERS[state.country], wrap = el("div");
   wrap.appendChild(el("div", "page-head", `
     <span class="eyebrow">${esc(o.name)} · pedidos</span>
     <h2 class="page-title">Confirmación de pedidos</h2>
-    <p class="page-sub">${esc(mod().agent)} confirma dirección y disponibilidad antes de mandar a logística.</p>
-  `));
-
+    <p class="page-sub">${esc(mod().agent)} confirma dirección y disponibilidad antes de mandar a logística.</p>`));
   const grid = el("div", "statgrid");
   grid.innerHTML = `
     <div class="card-muted stat"><div class="stat-k">Pedidos totales</div><div class="stat-v num">${esc(o.orders)}</div></div>
     <div class="card-muted stat"><div class="stat-k">Confirmación</div><div class="stat-v num">${esc(o.confirm)}</div></div>
-    <div class="card-muted stat"><div class="stat-k">Volumen</div><div class="stat-v" style="font-size:15px;font-weight:500">${esc(o.monthly)}</div></div>
-  `;
+    <div class="card-muted stat"><div class="stat-k">Volumen</div><div class="stat-v" style="font-size:15px;font-weight:500">${esc(o.monthly)}</div></div>`;
   wrap.appendChild(grid);
-
+  const chip = (s) => s === "confirmado" ? `<span class="pill pill-accent">confirmado</span>`
+    : s === "esperando" ? `<span class="pill pill-warn">esperando respuesta</span>`
+    : `<span class="pill pill-quiet">sin confirmar</span>`;
   const card = el("div", "card");
   card.style.padding = "14px 4px 4px";
-  const chip = (s) => s === "confirmado"
-    ? `<span class="pill pill-accent">confirmado</span>`
-    : s === "esperando"
-    ? `<span class="pill pill-warn">esperando respuesta</span>`
-    : `<span class="pill pill-quiet">sin confirmar</span>`;
-  card.innerHTML = `
-    <table class="mocktable">
+  card.innerHTML = `<table class="mocktable">
       <thead><tr><th>Pedido</th><th>Cliente</th><th>Total</th><th>Estado</th></tr></thead>
-      <tbody>${list.map((r) => `
-        <tr><td class="num" style="font-weight:500">${esc(r.id)}</td><td>${esc(r.who)}</td>
-        <td class="num">${esc(r.amount)}</td><td>${chip(r.state)}</td></tr>`).join("")}</tbody>
-    </table>
-  `;
+      <tbody>${list.map((r) => `<tr><td class="num" style="font-weight:500">${esc(r.id)}</td>
+        <td>${esc(r.who)}</td><td class="num">${esc(r.amount)}</td><td>${chip(r.state)}</td></tr>`).join("")}</tbody></table>`;
   wrap.appendChild(card);
   return wrap;
 }
 
 function screenSimple(title, sub, mark) {
-  const o = op();
-  const wrap = el("div");
+  const o = op(), wrap = el("div");
   wrap.appendChild(el("div", "page-head", `
     <span class="eyebrow">${esc(o.name)} · ${esc(title.toLowerCase())}</span>
-    <h2 class="page-title">${esc(title)}</h2>
-    <p class="page-sub">${esc(sub)}</p>
-  `));
+    <h2 class="page-title">${esc(title)}</h2><p class="page-sub">${esc(sub)}</p>`));
   const card = el("div", "card");
-  card.appendChild(el("div", "empty", `
-    <div class="empty-mark">${mark}</div>
-    <p class="soft" style="font-size:12.5px;max-width:44ch;line-height:1.55">
-      Pantalla existente del producto. El nivel 1 no la rediseña — está aquí
-      para ver cómo se siente el marco alrededor de lo que ya funciona.</p>
-  `));
+  card.appendChild(el("div", "empty", `<div class="empty-mark">${mark}</div>
+    <p class="soft" style="font-size:12.5px;max-width:44ch;line-height:1.55">Pantalla existente del producto.
+      El nivel 1 no la rediseña — está aquí para ver cómo se siente el marco alrededor de lo que ya funciona.</p>`));
   wrap.appendChild(card);
   return wrap;
 }
@@ -1097,13 +623,9 @@ function content() {
   return screenSimple("Inbox", "Todas las conversaciones del número, incluidas las que no son de ventas.", "✉");
 }
 
-function pageWrap(extraClass) {
-  const p = el("div", "page ctx-anim" + (extraClass ? " " + extraClass : ""));
-  p.appendChild(content());
-  return p;
-}
+/* ---------------- ARMAZÓN COMÚN ---------------- */
 
-function navFor(m, prefix) {
+function navFor(m) {
   const box = el("div");
   box.style.cssText = "display:flex;flex-direction:column;gap:2px";
   MODULES[m].screens.forEach((s) => {
@@ -1115,380 +637,148 @@ function navFor(m, prefix) {
   return box;
 }
 
-/* ====================================================================
-   V1 · TINTE DE OPERACIÓN
-   No hay selector: el color, el degradado de la barra y la regla superior
-   son la operación. El módulo es un grupo colgado de la placa del país.
-   ==================================================================== */
-function renderV1() {
-  const o = op();
-  const shell = el("div", "v1-shell");
-  const side = el("div", "v1-side");
-
-  const plate = el("button", "v1-plate ctx-anim", `
-    ${flag(o.code, "lg")}
-    <span style="min-width:0">
-      <span class="v1-plate-name">${esc(o.name)}</span>
-      <span class="v1-plate-sub">${esc(o.status)} · ${esc(o.currency)}</span>
-      <span class="v1-plate-tel">${esc(o.phone)}</span>
-    </span>
-    <span class="v1-plate-swap">⇄</span>
-  `);
-  plate.title = "Cambiar de operación";
-  plate.onclick = () => { state.country = state.country === "GT" ? "CO" : "GT"; render(); };
-  side.appendChild(plate);
-
-  ["ventas", "confirmacion"].forEach((k) => {
-    const m = MODULES[k];
-    const g = el("div", "v1-group" + (state.module === k ? " is-active" : ""));
-    g.appendChild(el("div", "v1-group-head", `
-      <span class="grouplabel">${esc(m.label)}</span>
-      <span class="soft" style="font-size:11px">· ${esc(m.agent)}</span>
-    `));
-    const items = el("div", "v1-group-items");
-    items.appendChild(navFor(k));
-    g.appendChild(items);
-    side.appendChild(g);
-  });
-
-  const main = el("div", "v1-main");
-  main.appendChild(el("div", "v1-rule ctx-anim"));
-  main.appendChild(pageWrap());
-
-  shell.appendChild(side);
-  shell.appendChild(main);
-  return shell;
-}
-
-/* ====================================================================
-   V2 · CINTILLO DE MANDO
-   Banda persistente a todo el ancho. Las pestañas de módulo cuelgan de
-   ella con sangrado y un conector: el anidamiento es espacial.
-   ==================================================================== */
-function renderV2() {
-  const o = op();
-  const shell = el("div", "v2-shell");
-  const band = el("div", "v2-band");
-
-  const top = el("div", "v2-band-top");
-  const ops = el("div", "v2-ops");
+function buildRail() {
+  const rail = el("div", "rail");
   Object.values(OPS).forEach((x) => {
-    const b = el("button", "v2-op", `${flag(x.code)}<span class="v2-op-name">${esc(x.name)}</span>`);
-    b.setAttribute("aria-pressed", String(state.country === x.code));
-    b.onclick = () => { state.country = x.code; render(); };
-    ops.appendChild(b);
-  });
-  top.appendChild(ops);
-
-  const facts = el("div", "v2-facts ctx-anim");
-  facts.innerHTML = `
-    <div class="v2-fact"><span class="v2-fact-k">Número</span><span class="v2-fact-v num">${esc(o.phone)}</span></div>
-    <div class="v2-fact"><span class="v2-fact-k">Moneda</span><span class="v2-fact-v">${esc(o.currency)}</span></div>
-    <div class="v2-fact"><span class="v2-fact-k">Tienda</span><span class="v2-fact-v">${esc(o.store)}</span></div>
-    <span class="pill ${o.live ? "pill-accent" : "pill-warn"}">${esc(o.status)}</span>
-  `;
-  top.appendChild(facts);
-  band.appendChild(top);
-
-  const tabs = el("div", "v2-band-tabs");
-  ["ventas", "confirmacion"].forEach((k) => {
-    const m = MODULES[k];
-    const t = el("button", "v2-tab", `${esc(m.label)} <span class="soft" style="font-size:11.5px">${esc(m.agent)}</span>`);
-    t.setAttribute("aria-selected", String(state.module === k));
-    t.onclick = () => { state.module = k; state.screen = m.screens[0].key; render(); };
-    tabs.appendChild(t);
-  });
-  band.appendChild(tabs);
-
-  const body = el("div", "v2-body");
-  const side = el("div", "v2-side");
-  side.appendChild(el("div", "grouplabel", esc(mod().label)));
-  side.appendChild(el("div", null, ""));
-  side.appendChild(navFor(state.module));
-  const main = el("div", "v2-main");
-  main.appendChild(pageWrap());
-  body.appendChild(side);
-  body.appendChild(main);
-
-  shell.appendChild(band);
-  shell.appendChild(body);
-  return shell;
-}
-
-/* ====================================================================
-   V3 · RIELES
-   La operación es un lugar. Cambiarla reubica el panel entero: el riel
-   de módulos se reconstruye dentro del país y sale de su tile.
-   ==================================================================== */
-function renderV3() {
-  const o = op();
-  const shell = el("div", "v3-shell v3-sliding");
-
-  const rail = el("div", "v3-rail");
-  Object.values(OPS).forEach((x) => {
-    const t = el("button", "v3-tile" + (x.live ? "" : " is-dormant"),
-      `${flag(x.code)}<span class="v3-tile-code">${esc(x.code)}</span>`);
+    const t = el("button", "tile" + (x.live ? "" : " dormant"), `${flag(x.code)}<span class="tile-code">${esc(x.code)}</span>`);
     t.setAttribute("aria-pressed", String(state.country === x.code));
     t.title = `${x.name} · ${x.status}`;
     t.onclick = () => { state.country = x.code; render(); };
     rail.appendChild(t);
   });
-  const add = el("button", "v3-tile", `<span style="color:var(--text-soft);font-size:19px;line-height:1">+</span>`);
-  add.style.opacity = "0.45";
+  const add = el("button", "tile", `<span style="color:var(--text-soft);font-size:19px;line-height:1">+</span>`);
+  add.style.opacity = ".4";
   add.title = "Las operaciones se dan de alta por configuración, no desde el panel";
   rail.appendChild(add);
+  return rail;
+}
 
-  const mods = el("div", "v3-modules");
-  mods.appendChild(el("div", "v3-here", `
-    ${flag(o.code, "lg")}
-    <span>
-      <span class="v3-here-name">${esc(o.name)}</span>
-      <span class="v3-here-sub">${esc(o.status)} · ${esc(o.currency)}</span>
-    </span>
-  `));
-
-  const tabs = el("div", "v3-modtabs");
+/* Los grupos de módulo — el anidamiento dentro del país. */
+function buildGroups() {
+  const box = el("div");
   ["ventas", "confirmacion"].forEach((k) => {
     const m = MODULES[k];
-    const b = el("button", "v3-modtab", esc(m.agent));
+    const g = el("div", "group" + (state.module === k ? " on" : ""));
+    g.appendChild(el("div", "group-head", `<span class="grouplabel">${esc(m.label)}</span>
+      <span class="soft" style="font-size:11px">${esc(m.agent)}</span>`));
+    const items = el("div", "group-items");
+    items.appendChild(navFor(k));
+    g.appendChild(items);
+    box.appendChild(g);
+  });
+  return box;
+}
+
+function colHead() {
+  const o = op();
+  return el("div", "col-head ctx-anim", `${flag(o.code, "lg")}
+    <span><span class="col-name">${esc(o.name)}</span>
+    <span class="col-sub">${esc(o.status)} · ${esc(o.currency)}</span></span>`);
+}
+
+function colFoot() {
+  const o = op();
+  return el("div", "colfoot", `<div class="soft" style="font-size:11px;line-height:1.5">${esc(o.phone)}<br>${esc(o.store)}</div>`);
+}
+
+/* R3 pone el módulo como pestañas en vez de grupos: es la variante que
+   mantiene el color dentro del riel, y necesita otra señal de anidamiento. */
+function buildModTabs() {
+  const tabs = el("div", "modtabs");
+  ["ventas", "confirmacion"].forEach((k) => {
+    const m = MODULES[k];
+    const b = el("button", "modtab", esc(m.agent));
     b.setAttribute("aria-pressed", String(state.module === k));
     b.title = `${m.label} · ${m.role}`;
     b.onclick = () => { state.module = k; state.screen = m.screens[0].key; render(); };
     tabs.appendChild(b);
   });
-  mods.appendChild(tabs);
-  mods.appendChild(navFor(state.module));
-
-  const foot = el("div", null, `
-    <div class="soft" style="font-size:11px;line-height:1.5">${esc(o.phone)}<br>${esc(o.store)}</div>
-  `);
-  foot.style.cssText = "margin-top:auto;padding-top:14px;border-top:1px solid var(--border)";
-  mods.appendChild(foot);
-
-  const main = el("div", "v3-main");
-  main.appendChild(pageWrap());
-
-  shell.appendChild(rail);
-  shell.appendChild(mods);
-  shell.appendChild(main);
-  return shell;
+  return tabs;
 }
 
-/* ====================================================================
-   V4 · EL ENCABEZADO MANDA
-   Sin ningún control de país en el marco. El país es el tipo más grande
-   de la pantalla y el módulo cuelga de él como segunda línea.
-   ==================================================================== */
-function renderV4() {
-  const o = op();
-  const shell = el("div", "v4-shell");
-
-  const side = el("div", "v4-side");
-  side.appendChild(el("div", "v4-brand", `
-    <div style="font-size:15px;font-weight:600">WhatsApp Agent</div>
-    <div class="soft" style="font-size:11px;margin-top:2px">daniel@vorare.com</div>
-  `));
-  side.appendChild(el("div", "grouplabel", "Navegación"));
-  const spacer = el("div"); spacer.style.height = "8px"; side.appendChild(spacer);
-  // Barra plana a propósito: en esta variante el módulo no lo dice el menú,
-  // lo dice el encabezado. El divisor separa sin nombrar.
-  ["ventas", "confirmacion"].forEach((k, i) => {
-    const box = navFor(k);
-    if (i > 0) {
-      box.style.cssText += ";margin-top:11px;padding-top:11px;border-top:1px solid var(--border)";
-    }
-    side.appendChild(box);
-  });
-
-  const main = el("div", "v4-main");
-  const head = el("div", "v4-head ctx-anim");
-
-  const holder = el("div");
-  holder.style.position = "relative";
-  const country = el("button", "v4-country", `
-    <span class="v4-country-name">${esc(o.name)}</span>
-    <span class="v4-country-meta">${esc(o.currency)} · ${esc(o.phone)} · ${esc(o.status).toLowerCase()}</span>
-  `);
-  country.title = "Cambiar de operación";
-  country.onclick = (e) => { e.stopPropagation(); state.v4pop = !state.v4pop; render(); };
-  holder.appendChild(country);
-
-  if (state.v4pop) {
-    const pop = el("div", "v4-pop");
-    Object.values(OPS).forEach((x) => {
-      const b = el("button", "v4-pop-item", `
-        ${flag(x.code)}
-        <span style="flex:1">
-          <span style="display:block;font-weight:600;font-size:13px">${esc(x.name)}</span>
-          <span class="soft" style="font-size:11px">${esc(x.status)} · ${esc(x.currency)}</span>
-        </span>
-      `);
-      b.setAttribute("aria-current", String(state.country === x.code));
-      b.onclick = () => { state.country = x.code; state.v4pop = false; render(); };
-      pop.appendChild(b);
-    });
-    holder.appendChild(pop);
-  }
-  head.appendChild(holder);
-
-  head.appendChild(el("div", "v4-crumb", `
-    <span class="v4-crumb-mod">${esc(mod().label)} · ${esc(mod().agent)}</span>
-    <span class="v4-crumb-sep">/</span>
-    <span>${esc(MODULES[state.module].screens.find((s) => s.key === state.screen)?.label || "")}</span>
-  `));
-
-  const sw = el("div", "v4-modswitch");
-  ["ventas", "confirmacion"].forEach((k) => {
-    const m = MODULES[k];
-    const b = el("button", "v4-modbtn", esc(m.agent));
-    b.setAttribute("aria-pressed", String(state.module === k));
-    b.onclick = () => { state.module = k; state.screen = m.screens[0].key; render(); };
-    sw.appendChild(b);
-  });
-  head.appendChild(sw);
-
-  main.appendChild(head);
-  const p = pageWrap();
-  p.style.paddingTop = "24px";
-  main.appendChild(p);
-
-  shell.appendChild(side);
-  shell.appendChild(main);
-  return shell;
-}
-
-/* ====================================================================
-   V5 · BARRA DE CONSECUENCIAS
-   El indicador no dice quién eres: dice qué va a pasar si actúas. Vive
-   abajo, siempre visible, y cambiar de país pide confirmación.
-   ==================================================================== */
-function renderV5() {
-  const o = op();
+function buildShell(variantId) {
   const frag = document.createDocumentFragment();
-  const shell = el("div", "v5-shell");
+  const shell = el("div", "shell");
+  shell.setAttribute("data-r", variantId);
 
-  const side = el("div", "v5-side");
-  side.appendChild(el("div", null, `
-    <div style="padding:0 10px 15px">
-      <div style="font-size:15px;font-weight:600">WhatsApp Agent</div>
-      <div class="soft" style="font-size:11px;margin-top:2px">daniel@vorare.com</div>
-    </div>
-  `));
-  side.appendChild(el("div", "grouplabel", esc(mod().label) + " · " + esc(mod().agent)));
-  const sp = el("div"); sp.style.height = "8px"; side.appendChild(sp);
-  side.appendChild(navFor(state.module));
+  shell.appendChild(buildRail());
 
-  const main = el("div", "v5-main");
-  main.appendChild(pageWrap());
-  shell.appendChild(side);
-  shell.appendChild(main);
-  frag.appendChild(shell);
+  const col = el("div", "col");
+  col.appendChild(colHead());
 
-  const bar = el("div", "v5-bar" + (o.live ? "" : " is-dormant"));
-  bar.appendChild(el("div", "v5-country ctx-anim", `
-    ${flag(o.code, "lg")}
-    <span>
-      <span class="v5-country-name">${esc(o.name)}</span>
-      <span style="display:block;font-size:10px;letter-spacing:.09em;text-transform:uppercase;margin-top:2px;color:${o.live ? "var(--text-soft)" : "var(--highlight)"}">${esc(o.status)}</span>
-    </span>
-  `));
-
-  bar.appendChild(el("div", "v5-conseq ctx-anim", o.live ? `
-    <div class="v5-c"><span class="v5-c-k">Vas a escribir desde</span><span class="v5-c-v num">${esc(o.phone)}</span></div>
-    <div class="v5-c"><span class="v5-c-k">Vas a cobrar en</span><span class="v5-c-v">${esc(o.currencyLong)}</span></div>
-    <div class="v5-c"><span class="v5-c-k">Vas a cargar en</span><span class="v5-c-v">${esc(o.store)}</span></div>
-  ` : `
-    <div class="v5-c"><span class="v5-c-k">Número</span><span class="v5-c-v num">${esc(o.phone)}</span></div>
-    <div class="v5-c"><span class="v5-c-k">Nada sale de aquí</span><span class="v5-c-v">la operación no está activa</span></div>
-  `));
-
-  const modwrap = el("div", "v5-modwrap");
-  modwrap.appendChild(el("span", "v5-modlabel", "Módulo"));
-  const seg = el("div", "v5-seg");
-  ["ventas", "confirmacion"].forEach((k) => {
-    const m = MODULES[k];
-    const b = el("button", "v5-segbtn", esc(m.agent));
-    b.setAttribute("aria-pressed", String(state.module === k));
-    b.onclick = () => { state.module = k; state.screen = m.screens[0].key; render(); };
-    seg.appendChild(b);
-  });
-  modwrap.appendChild(seg);
-
-  const swap = el("button", "v5-swap", `⇄ Cambiar de operación`);
-  swap.onclick = () => { state.v5confirm = !state.v5confirm; render(); };
-  modwrap.appendChild(swap);
-  bar.appendChild(modwrap);
-  frag.appendChild(bar);
-
-  if (state.v5confirm) {
-    const other = OPS[state.country === "GT" ? "CO" : "GT"];
-    const box = el("div", "v5-confirm");
-    box.innerHTML = `
-      <div style="display:flex;align-items:center;gap:10px">
-        ${flag(other.code, "lg")}
-        <div>
-          <div style="font-weight:600;font-size:13.5px">Pasar a ${esc(other.name)}</div>
-          <div class="soft" style="font-size:11.5px;margin-top:2px">${esc(other.status)}</div>
-        </div>
-      </div>
-      <p class="muted" style="font-size:12px;line-height:1.55">
-        A partir de ahí escribes desde <strong class="num" style="color:var(--text)">${esc(other.phone)}</strong>,
-        cobras en ${esc(other.currencyLong)} y cargas en ${esc(other.store)}.
-      </p>
-    `;
-    const row = el("div", "v5-confirm-row");
-    const ok = el("button", "btn-primary", `Cambiar a ${esc(other.name)}`);
-    ok.onclick = () => { state.country = other.code; state.v5confirm = false; render(); };
-    const no = el("button", "btn-ghost", "Quedarme");
-    no.onclick = () => { state.v5confirm = false; render(); };
-    row.appendChild(ok); row.appendChild(no);
-    box.appendChild(row);
-    frag.appendChild(box);
+  // R5 mete la consecuencia junto al color: el tinte no va solo.
+  if (variantId === "r5") {
+    const o = op();
+    const c = el("div", "conseq" + (o.live ? "" : " off"));
+    c.innerHTML = o.live
+      ? `<div class="conseq-row"><span class="conseq-k">Vas a escribir desde</span><span class="conseq-v num">${esc(o.phone)}</span></div>
+         <div class="conseq-row"><span class="conseq-k">Vas a cobrar en</span><span class="conseq-v">${esc(o.currencyLong)}</span></div>`
+      : `<div class="conseq-row"><span class="conseq-k">Nada sale de aquí</span><span class="conseq-v">la operación no está activa</span></div>
+         <div class="conseq-row"><span class="conseq-k">Número</span><span class="conseq-v num">${esc(o.phone)}</span></div>`;
+    col.appendChild(c);
   }
 
+  col.appendChild(variantId === "r3" ? buildModTabs() : buildGroups());
+  if (variantId === "r3") col.appendChild(navFor(state.module));
+  col.appendChild(colFoot());
+  shell.appendChild(col);
+
+  const main = el("div", "main");
+  const page = el("div", "page ctx-anim");
+  page.appendChild(content());
+  main.appendChild(page);
+  shell.appendChild(main);
+
+  // R2 pinta el borde superior sobre todo, como la consola de AWS.
+  if (variantId === "r2") {
+    const o = op();
+    frag.appendChild(el("div", "aws-edge"));
+    frag.appendChild(el("div", "aws-chip ctx-anim", `${flag(o.code)}${esc(o.name)}`));
+  }
+
+  frag.appendChild(shell);
   return frag;
 }
 
 /* ==================================================================== */
 
-const RENDERERS = [renderV1, renderV2, renderV3, renderV4, renderV5];
-
 function render() {
   const v = VARIANTS[state.variant];
-  const o = op();
+  const p = pal();
+  const hex = p[state.country];
 
-  // Solo la variante 1 tiñe el marco con la identidad del país.
   const root = document.documentElement.style;
-  if (v.id === "v1") {
-    root.setProperty("--op-accent", o.tint.accent);
-    root.setProperty("--op-accent-strong", o.tint.strong);
-    root.setProperty("--op-tint", o.tint.t1);
-    root.setProperty("--op-tint-2", o.tint.t2);
-  } else {
-    root.setProperty("--op-accent", "#6ee7b7");
-    root.setProperty("--op-accent-strong", "#34d399");
-    root.setProperty("--op-tint", "rgba(110,231,183,0.08)");
-    root.setProperty("--op-tint-2", "rgba(110,231,183,0.16)");
-  }
+  root.setProperty("--op", hex);
+  root.setProperty("--op-line", rgba(hex, 0.45));
+  root.setProperty("--op-soft", rgba(hex, 0.13));
+  root.setProperty("--op-faint", rgba(hex, 0.07));
 
-  // La pantalla activa siempre pertenece al módulo activo.
   if (!mod().screens.some((s) => s.key === state.screen)) state.screen = mod().screens[0].key;
 
   const app = document.getElementById("app");
   app.innerHTML = "";
-  app.setAttribute("data-variant", v.id);
-  app.appendChild(RENDERERS[state.variant]());
-
+  app.appendChild(buildShell(v.id));
   syncPicker();
 }
 
-/* ------------------------- El instrumento ------------------------- */
+/* ---------------------- El instrumento ---------------------- */
 
 function syncPicker() {
   const v = VARIANTS[state.variant];
-  document.getElementById("pk-vnum").textContent = `Variante ${state.variant + 1} de 5`;
+  document.getElementById("pk-vnum").textContent = `${state.variant + 1} de 5`;
   document.getElementById("pk-vlabel").textContent = v.label;
-  document.getElementById("pk-vlabel").title = v.tag;
+  document.getElementById("pk-vtag").textContent = v.tag;
+
+  const pbox = document.getElementById("pk-palette");
+  pbox.innerHTML = "";
+  PALETTES.forEach((p) => {
+    const b = el("button", "pk-opt",
+      `<span class="pk-swatch" style="background:${p.GT}"></span><span class="pk-swatch" style="background:${p.CO};margin-left:-3px"></span>`);
+    b.title = p.label;
+    b.setAttribute("aria-pressed", String(state.palette === p.key));
+    b.onclick = () => { state.palette = p.key; render(); };
+    pbox.appendChild(b);
+  });
 
   const screens = document.querySelector('[data-key="screen"]');
   screens.innerHTML = "";
@@ -1499,40 +789,31 @@ function syncPicker() {
     screens.appendChild(b);
   });
 
-  document.querySelectorAll(".pk-opts[data-key]").forEach((group) => {
-    const key = group.dataset.key;
-    if (key === "screen") return;
-    group.querySelectorAll(".pk-opt").forEach((b) => {
-      b.setAttribute("aria-pressed", String(state[key] === b.dataset.val));
-    });
+  document.querySelectorAll(".pk-opts[data-key]").forEach((g) => {
+    const key = g.dataset.key;
+    if (key === "screen" || key === "palette") return;
+    g.querySelectorAll(".pk-opt").forEach((b) => b.setAttribute("aria-pressed", String(state[key] === b.dataset.val)));
   });
 }
 
-document.querySelectorAll('.pk-opts[data-key]').forEach((group) => {
-  const key = group.dataset.key;
-  if (key === "screen") return;
-  group.querySelectorAll(".pk-opt").forEach((b) => {
+document.querySelectorAll('.pk-opts[data-key]').forEach((g) => {
+  const key = g.dataset.key;
+  if (key === "screen" || key === "palette") return;
+  g.querySelectorAll(".pk-opt").forEach((b) => {
     b.onclick = () => {
       state[key] = b.dataset.val;
       if (key === "module") state.screen = MODULES[b.dataset.val].screens[0].key;
-      if (key === "conv") state.screen = state.module === "ventas" ? "conversaciones" : state.screen;
-      if (key === "catalog" || key === "ads") state.screen = state.module === "ventas" ? "catalogo" : state.screen;
-      state.v4pop = false; state.v5confirm = false;
+      if (key === "conv" && state.module === "ventas") state.screen = "conversaciones";
+      if ((key === "catalog" || key === "ads") && state.module === "ventas") state.screen = "catalogo";
       render();
     };
   });
 });
 
-function step(d) {
-  state.variant = (state.variant + d + VARIANTS.length) % VARIANTS.length;
-  state.v4pop = false; state.v5confirm = false;
-  render();
-}
+function step(d) { state.variant = (state.variant + d + VARIANTS.length) % VARIANTS.length; render(); }
 document.getElementById("pk-prev").onclick = () => step(-1);
 document.getElementById("pk-next").onclick = () => step(1);
-document.getElementById("pk-min").onclick = () => {
-  document.getElementById("picker").classList.toggle("is-min");
-};
+document.getElementById("pk-min").onclick = () => document.getElementById("picker").classList.toggle("is-min");
 
 addEventListener("keydown", (e) => {
   if (e.target.closest("input, textarea")) return;
@@ -1540,15 +821,9 @@ addEventListener("keydown", (e) => {
   if (e.key === "ArrowRight") { step(1); e.preventDefault(); }
 });
 
-document.addEventListener("click", (e) => {
-  if (state.v4pop && !e.target.closest(".v4-pop, .v4-country")) { state.v4pop = false; render(); }
-});
-
-/* Arrastrable, como pide el método: el instrumento no puede tapar
-   justo la esquina que se está juzgando. */
+/* Arrastrable: el instrumento no puede tapar la esquina que se juzga. */
 (function drag() {
-  const box = document.getElementById("picker");
-  const head = document.getElementById("pk-head");
+  const box = document.getElementById("picker"), head = document.getElementById("pk-head");
   let dx = 0, dy = 0, on = false;
   head.addEventListener("mousedown", (e) => {
     if (e.target.closest("button")) return;
