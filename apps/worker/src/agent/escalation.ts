@@ -5,26 +5,83 @@ import {
   type Contact,
 } from "@wa/db";
 import { db } from "../db";
+import type { SalesEscalationTrigger } from "../sales/escalation-triggers";
 import { logger } from "../lib/logger";
 import { contactWaId } from "../lib/phone";
 import { ADMIN_ALERTA_TEMPLATE, sanitizeParam } from "../kapso/templates";
 import { enqueueOutbound } from "../jobs/outbound";
 import { getDropiConnection } from "../dropi/config";
 
+/**
+ * Por qué una conversación pasa a manos humanas.
+ *
+ * Los tres primeros son de siempre. Los cuatro `sales_*` los suma la
+ * conversación de venta, y **son motivos nuevos de este módulo, no un módulo
+ * nuevo**: la transición de `agent_mode`, el aviso al cliente, la alerta al
+ * admin de la operación correcta y la idempotencia por hora ya estaban
+ * resueltas aquí, y duplicarlas para el vendedor habría dado dos caminos que se
+ * desincronizan —el clásico: uno gana un arreglo y el otro no—. Quién decide
+ * escalar una venta es `sales/escalation-triggers.ts`, que es puro y no toca
+ * nada; qué se hace al escalar sigue siendo esto.
+ */
 export type EscalationReason =
   | "audio_message"
   | "agent_request"
-  | "manual";
+  | "manual"
+  | "sales_human_requested"
+  | "sales_out_of_rules"
+  | "sales_repeated_objection"
+  | "sales_product_unidentified";
 
 const REASON_LABEL: Record<EscalationReason, string> = {
   audio_message: "el cliente envió un audio",
   agent_request: "el agente pidió escalar",
   manual: "escalación manual",
+  sales_human_requested: "el cliente pidió hablar con una persona",
+  sales_out_of_rules: "el cliente pidió algo fuera de las reglas del negocio",
+  sales_repeated_objection: "el cliente repitió la misma objeción sin avanzar",
+  sales_product_unidentified:
+    "dos intentos sin lograr identificar de qué producto habla",
 };
 
+/**
+ * El aviso de cortesía al cliente, cuando corresponde.
+ *
+ * Los cuatro de ventas lo tienen y no es adorno: en una venta, el silencio
+ * mientras un humano toma el chat es el momento exacto en que el lead se va con
+ * la competencia. El de la petición de humano es además la historia 6 del spec
+ * —«quien pide hablar con una persona no tiene que insistir»—: se le dice que
+ * sí, de una, y no se intenta retenerlo.
+ */
 const CUSTOMER_NOTICE: Partial<Record<EscalationReason, string>> = {
   audio_message:
     "Recibí tu audio 🎙️ Un asesor te responderá en unos minutos por aquí mismo.",
+  sales_human_requested:
+    "¡Claro! 🙌 Un asesor te escribe por aquí en unos minutos.",
+  sales_out_of_rules:
+    "Déjame pasarte con un asesor para revisar eso contigo 🙌 Te escribe por aquí en unos minutos.",
+  sales_repeated_objection:
+    "Quiero que te resuelvan bien esa duda 🙌 Un asesor te escribe por aquí en unos minutos.",
+  sales_product_unidentified:
+    "Para no darte información equivocada, te paso con un asesor 🙌 Te escribe por aquí en unos minutos.",
+};
+
+/**
+ * Qué motivo le corresponde a cada disparador de venta.
+ *
+ * Existe para que los dos vocabularios no se confundan: el de allá nombra **por
+ * qué la conversación se atascó** y es lo que los tests de reglas ejercen; el de
+ * aquí nombra **qué se le cuenta al asesor**. La traducción es esta tabla y no
+ * un `switch` repartido por el runner.
+ */
+export const SALES_ESCALATION_REASON: Record<
+  SalesEscalationTrigger,
+  EscalationReason
+> = {
+  human_requested: "sales_human_requested",
+  out_of_rules_request: "sales_out_of_rules",
+  repeated_objection: "sales_repeated_objection",
+  product_unidentified: "sales_product_unidentified",
 };
 
 interface EscalateInput {
