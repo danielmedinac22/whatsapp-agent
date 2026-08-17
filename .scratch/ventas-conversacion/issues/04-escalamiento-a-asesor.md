@@ -4,7 +4,7 @@
 
 **Blocked by:** 02
 
-**Status:** ready-for-agent
+**Status:** claimed — worktree `sebastian-persona`, tanda del 17-ago-2026
 
 - [ ] El módulo de escalamiento existente suma los triggers del vendedor, sin duplicar lógica.
 - [ ] Escala ante palabra clave de petición de humano.

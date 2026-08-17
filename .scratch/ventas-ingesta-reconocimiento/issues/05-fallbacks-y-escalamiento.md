@@ -4,7 +4,7 @@
 
 **Blocked by:** 04
 
-**Status:** ready-for-agent
+**Status:** claimed — worktree `sebastian-persona`, tanda del 17-ago-2026
 
 - [ ] Un anuncio no registrado se resuelve comparando titular y cuerpo contra el catálogo.
 - [ ] **Ante candidatos de nombre muy parecido entre sí, el resultado es ambiguo, nunca una elección.** Este es el caso que motivó toda la decisión: la familia de cuatro SKUs casi homónimos concentra la mayoría del volumen.

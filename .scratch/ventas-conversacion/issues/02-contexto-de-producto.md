@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 · ventas-ingesta-reconocimiento 04 · Reconocimiento por ID de anuncio
 
-**Status:** ready-for-agent
+**Status:** claimed — worktree `sebastian-persona`, tanda del 17-ago-2026
 
 - [ ] El contexto del producto identificado se arma como bloque y se compone en el prompt efectivo, igual que ya se hace con los contextos existentes.
 - [ ] Un producto conectado a la tienda toma su información **en tiempo de uso**, no copiada — editar el producto en la tienda se refleja en la siguiente conversación.

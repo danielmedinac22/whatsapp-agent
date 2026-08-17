@@ -4,7 +4,7 @@
 
 **Blocked by:** ventas-ingesta-reconocimiento 01 · Distinguir un lead nuevo de un cliente existente · ventas-multi-operacion 05 · La configuración de agente cuelga de la operación
 
-**Status:** esquema en curso — worktree `esquema-0022` deja la tabla hermana; la funcionalidad sigue abierta
+**Status:** claimed — worktree `sebastian-persona`, tanda del 17-ago-2026
 
 - [ ] El vendedor tiene su **propio registro de configuración, en una tabla hermana** — no se generaliza la configuración existente, cuyas 65 referencias son en su mayoría campos de Katherine.
 - [ ] Esa configuración incluye nombre visible, mensajes base, límite de descuento, instrucciones de tono, modelo y esfuerzo de razonamiento.

@@ -4,7 +4,7 @@
 
 **Blocked by:** ventas-ingesta-reconocimiento 04 · Reconocimiento por ID de anuncio
 
-**Status:** ready-for-agent
+**Status:** claimed — worktree `ingesta-atribucion`, tanda del 17-ago-2026
 
 - [ ] El identificador de clic se extrae junto con la referencia del anuncio y se persiste en el primer contacto.
 - [ ] Se guarda asociado a la conversación y a su operación, no globalmente.

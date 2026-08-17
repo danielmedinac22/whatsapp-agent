@@ -6,7 +6,7 @@ Una sola función pura concentra validación, mapeo, clamp e idempotencia — es
 
 **Blocked by:** None — can start immediately.
 
-**Status:** ready-for-agent
+**Status:** claimed — worktree `constructor-orden`, tanda del 17-ago-2026
 
 - [ ] Valida los seis requeridos: nombre, apellido, teléfono, ciudad, departamento, y dirección **o** reclamo en oficina.
 - [ ] Teléfono en formato válido para el país de la operación.

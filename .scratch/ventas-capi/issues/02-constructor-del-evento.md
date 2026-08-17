@@ -6,7 +6,7 @@ Función pura, mismo patrón que el constructor de orden del spec de cierre: arm
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** claimed — worktree `capi-evento`, con migración `0023` para el píxel por operación, tanda del 17-ago-2026
 
 - [ ] El evento lleva **valor y moneda de la operación** — quetzales o pesos, sin valor por defecto. Sin el valor, Meta optimiza hacia cantidad de ventas en vez de hacia ingreso.
 - [ ] El píxel se resuelve **desde la operación**, nunca desde una constante.

@@ -4,7 +4,7 @@
 
 **Blocked by:** None — can start immediately.
 
-**Status:** esquema en curso — worktree `esquema-0022` deja las columnas de atribución; el parser sigue abierto
+**Status:** claimed — worktree `ingesta-atribucion`. La verificación contra un anuncio real queda fuera: depende de que Vorare tenga campaña corriendo., tanda del 17-ago-2026
 
 - [ ] El parser de mensajes entrantes expone la referencia del anuncio cuando el payload la trae.
 - [ ] Un payload sin referencia se sigue parseando igual que hoy, sin romper ni inventar campos.

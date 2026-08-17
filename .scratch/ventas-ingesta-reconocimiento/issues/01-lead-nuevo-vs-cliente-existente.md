@@ -6,7 +6,7 @@ Este problema no existía cuando los números eran dos. Ahora es la primera deci
 
 **Blocked by:** ventas-multi-operacion 02 · La conexión de WhatsApp cuelga de la operación
 
-**Status:** ready-for-agent
+**Status:** claimed — worktree `ingesta-atribucion`, tanda del 17-ago-2026
 
 - [ ] Un mensaje que trae referencia de anuncio se trata como lead de venta, siempre.
 - [ ] Un mensaje de alguien con pedido en curso se trata como consulta de postventa, aunque venga sin referencia.

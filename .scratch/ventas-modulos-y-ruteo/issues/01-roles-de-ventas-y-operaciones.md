@@ -4,7 +4,7 @@
 
 **Blocked by:** None — can start immediately.
 
-**Status:** esquema en curso — worktree `esquema-0022` deja los roles; la funcionalidad sigue abierta
+**Status:** claimed — worktree `roles-permisos`, tanda del 17-ago-2026
 
 Verificado: `user_role` tiene **solo dos referencias en el código**, así que el cambio es barato.
 
