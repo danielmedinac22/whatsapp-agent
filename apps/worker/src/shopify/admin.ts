@@ -1,12 +1,12 @@
 import { eq } from "@wa/db";
-import { shopifyConnection, type ShopifyConnection } from "@wa/db";
+import {
+  shopifyConnection,
+  type Operation,
+  type ShopifyConnection,
+} from "@wa/db";
 import { db } from "../db";
 import { logger } from "../lib/logger";
-import {
-  type OperationRef,
-  OperationScopedCache,
-  operationCacheKey,
-} from "../operations";
+import { OperationScopedCache } from "../operations";
 
 interface CacheEntry<T> {
   value: T;
@@ -24,12 +24,9 @@ interface CacheEntry<T> {
 const productCache = new Map<string, CacheEntry<ShopifyProduct>>();
 const PRODUCT_TTL_MS = 10 * 60 * 1000;
 
-function productCacheKey(operationId: OperationRef, gid: string): string {
-  return `${operationCacheKey(operationId)}:${gid}`;
+function productCacheKey(op: Operation, gid: string): string {
+  return `${op.id}:${gid}`;
 }
-
-/** La fila singleton previa a la migración: la operación única vive ahí. */
-const SINGLETON_ID = 1;
 
 const connectionCache = new OperationScopedCache<ShopifyConnection | null>(
   30 * 1000,
@@ -39,8 +36,9 @@ const connectionCache = new OperationScopedCache<ShopifyConnection | null>(
  * La tienda de una operación.
  *
  * **Estricta**, igual que la conexión de WhatsApp: una operación sin tienda
- * propia devuelve `null`, nunca la tienda de otra. `operationId: null` significa
- * *la operación única* y lee la fila singleton `id = 1`.
+ * propia devuelve `null`, nunca la tienda de otra. El contract (ticket 06) le
+ * quitó el caso `operationId: null`, que leía la fila singleton `id = 1` — o
+ * sea, siempre Guatemala.
  *
  * Aquí no hay versión con red — a diferencia del envío de WhatsApp, quedarse sin
  * tienda no calla la operación: apaga la lectura de productos, que es
@@ -48,32 +46,23 @@ const connectionCache = new OperationScopedCache<ShopifyConnection | null>(
  * tocando la tienda de otra sí sería un daño real.
  */
 export async function getShopifyConnection(
-  operationId: OperationRef,
+  op: Operation,
 ): Promise<ShopifyConnection | null> {
-  const hit = connectionCache.get(operationId);
+  const hit = connectionCache.get(op.id);
   if (hit) return hit.value;
   const [row] = await db
     .select()
     .from(shopifyConnection)
-    .where(
-      operationId === null
-        ? eq(shopifyConnection.id, SINGLETON_ID)
-        : eq(shopifyConnection.operationId, operationId),
-    )
+    .where(eq(shopifyConnection.operationId, op.id))
     .limit(1);
   const value = row ?? null;
-  connectionCache.set(operationId, value);
+  connectionCache.set(op.id, value);
   return value;
 }
 
-/**
- * Sin argumento borra la caché entera; con una operación borra su entrada y la
- * de la operación única. Ver {@link OperationScopedCache.invalidate}.
- */
-export function invalidateShopifyConnectionCache(
-  operationId?: OperationRef,
-): void {
-  connectionCache.invalidate(operationId);
+/** Sin argumento borra la caché entera; con una operación, solo su entrada. */
+export function invalidateShopifyConnectionCache(op?: Operation): void {
+  connectionCache.invalidate(op?.id);
   productCache.clear();
 }
 
@@ -237,11 +226,11 @@ function productGid(productId: string | number): string {
  * hay tienda para esa operación no se lee nada, en vez de leer la de al lado.
  */
 export async function getProductsByIds(
-  operationId: OperationRef,
+  op: Operation,
   ids: Array<string | number>,
 ): Promise<ShopifyProduct[]> {
   if (ids.length === 0) return [];
-  const conn = await getShopifyConnection(operationId);
+  const conn = await getShopifyConnection(op);
   if (!conn?.shopDomain || !conn?.adminAccessToken) return [];
 
   const now = Date.now();
@@ -249,7 +238,7 @@ export async function getProductsByIds(
   const cached: ShopifyProduct[] = [];
   const missing: string[] = [];
   for (const gid of gids) {
-    const hit = productCache.get(productCacheKey(operationId, gid));
+    const hit = productCache.get(productCacheKey(op, gid));
     if (hit && hit.expires > now) cached.push(hit.value);
     else missing.push(gid);
   }
@@ -264,14 +253,17 @@ export async function getProductsByIds(
       .map(toProduct)
       .filter((p): p is ShopifyProduct => Boolean(p));
     for (const p of fetched) {
-      productCache.set(productCacheKey(operationId, p.id), {
+      productCache.set(productCacheKey(op, p.id), {
         value: p,
         expires: now + PRODUCT_TTL_MS,
       });
     }
     return [...cached, ...fetched];
   } catch (err) {
-    logger.warn({ err, operationId }, "shopify admin getProductsByIds failed");
+    logger.warn(
+      { err, operation: op.countryCode },
+      "shopify admin getProductsByIds failed",
+    );
     return cached;
   }
 }

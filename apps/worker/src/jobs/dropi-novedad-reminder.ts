@@ -3,6 +3,7 @@ import {
   contacts,
   conversations,
   dropiOrders,
+  requireOperationById,
   type DropiOrder,
 } from "@wa/db";
 import { db } from "../db";
@@ -14,10 +15,7 @@ import {
   sanitizeParam,
 } from "../kapso/templates";
 import { enqueueOutbound } from "./outbound";
-import {
-  resolveDropiConnection,
-  resolveOperationForContact,
-} from "../dropi/config";
+import { getDropiConnection } from "../dropi/config";
 import { DROPI_NOVEDAD_REMINDER_QUEUE, getBoss } from "./queue";
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -91,9 +89,10 @@ async function escalateOrder(order: DropiOrder): Promise<boolean> {
       .where(eq(contacts.id, contact.id));
   }
 
-  // El admin de la operación del cliente, no «el» admin.
-  const conn = await resolveOperationForContact(order.contactId)
-    .then((op) => resolveDropiConnection(op))
+  // El admin de la operación del pedido, no «el» admin. Sale de la fila de
+  // logística, que desde la `0021` declara su operación.
+  const conn = await requireOperationById(order.operationId)
+    .then((op) => getDropiConnection(op))
     .catch(() => null);
   const adminPhone = conn?.adminPhone;
   if (adminPhone) {

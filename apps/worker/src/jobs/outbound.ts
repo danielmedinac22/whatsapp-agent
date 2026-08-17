@@ -20,12 +20,13 @@ import {
   uploadMedia,
 } from "../kapso/client";
 import { isStatusAdvance } from "../kapso/delivery";
-import { resolveKapsoConnection } from "../kapso/connection";
+import { getKapsoConnection } from "../kapso/connection";
 import { isTemplateApproved } from "../kapso/provisioning";
 import {
-  type OperationRef,
   getConversationOperationId,
   getOperationIdByWaId,
+  requireOperationOrSole,
+  type Operation,
 } from "../operations";
 import { renderTemplateBody } from "../kapso/templates";
 import { OUTBOUND_QUEUE, getBoss } from "./queue";
@@ -185,18 +186,20 @@ function humanSendError(err: unknown): string {
 /**
  * La operación por la que sale el mensaje: la de su conversación.
  *
- * `outbound_messages` no tiene operación propia en el expand, y no hace falta —
- * la conversación ya la guarda desde la ingesta. Sin conversación (un envío a
- * un número con el que nunca se ha hablado) queda `null`, que es la operación
- * única: exactamente lo que hacía el sistema antes de la migración.
+ * `outbound_messages` no tiene operación propia y no hace falta — la
+ * conversación ya la guarda desde la ingesta. Sin conversación (un envío a un
+ * número con el que nunca se ha hablado) cae al puente de la operación única,
+ * que es exactamente lo que hacía el sistema antes de la migración; el contract
+ * le quitó el caso `null`, que leía la fila singleton y por tanto el número de
+ * Guatemala.
  */
-async function resolveOutboundOperationId(
+async function resolveOutboundOperation(
   row: OutboundMessage,
-): Promise<OperationRef> {
-  if (row.conversationId) {
-    return await getConversationOperationId(row.conversationId);
-  }
-  return await getOperationIdByWaId(row.toWaId);
+): Promise<Operation> {
+  const operationId = row.conversationId
+    ? await getConversationOperationId(row.conversationId)
+    : await getOperationIdByWaId(row.toWaId);
+  return requireOperationOrSole(operationId);
 }
 
 async function resolveConversationId(
@@ -310,20 +313,25 @@ async function handleOutbound(payload: OutboundJob): Promise<void> {
     return;
   }
 
-  // La operación del mensaje sale de su conversación. Un fallo leyéndola no
-  // puede costar el envío: sin operación se atiende por la conexión única, que
-  // es el comportamiento previo a la migración.
-  const operationId = await resolveOutboundOperationId(row).catch(
-    (err): OperationRef => {
-      logger.error(
-        { err: String(err), outboundId: row.id },
-        "outbound: no se pudo resolver la operación; se envía por la conexión única",
-      );
-      return null;
-    },
-  );
+  // La operación del mensaje sale de su conversación. Antes, un fallo aquí
+  // caía en la conexión única y el mensaje salía igual; con dos operaciones eso
+  // es mandar el mensaje de un país por el número de otro, que es peor que no
+  // mandarlo. Ahora el mensaje **no se pierde**: queda como fallo transitorio y
+  // pg-boss lo reintenta, igual que cuando la conexión no está configurada.
+  let op: Operation;
+  try {
+    op = await resolveOutboundOperation(row);
+  } catch (err) {
+    logger.error(
+      { err: String(err), outboundId: row.id },
+      "outbound: no se pudo resolver la operación del mensaje",
+    );
+    const e = err instanceof Error ? err : new Error(String(err));
+    await markTransientFailure(row.id, e, row.attempts + 1);
+    throw e; // pg-boss reintenta
+  }
 
-  const conn = await resolveKapsoConnection(operationId);
+  const conn = await getKapsoConnection(op);
   if (!conn?.phoneNumberId) {
     await markTransientFailure(
       row.id,
@@ -386,7 +394,7 @@ async function handleOutbound(payload: OutboundJob): Promise<void> {
       waId = result.waMessageId;
     } else if (row.templateName) {
       const params = row.templateParams ?? [];
-      if (await isTemplateApproved(operationId, row.templateName)) {
+      if (await isTemplateApproved(op, row.templateName)) {
         const result = await sendTemplate({
           phoneNumberId,
           to: row.toWaId,
@@ -417,7 +425,7 @@ async function handleOutbound(payload: OutboundJob): Promise<void> {
         if (
           isWindowClosedError(err) &&
           row.fallbackTemplateName &&
-          (await isTemplateApproved(operationId, row.fallbackTemplateName))
+          (await isTemplateApproved(op, row.fallbackTemplateName))
         ) {
           const params = row.fallbackTemplateParams ?? [];
           const result = await sendTemplate({

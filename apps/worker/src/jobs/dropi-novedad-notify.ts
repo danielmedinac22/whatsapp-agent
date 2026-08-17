@@ -1,11 +1,11 @@
 import { generateText } from "ai";
 import { eq } from "@wa/db";
 import {
-  agentSettingsScope,
   contacts,
   conversations,
   dropiOrders,
   getAgentSettings,
+  requireOperationOrSole,
 } from "@wa/db";
 import { db } from "../db";
 import { logger } from "../lib/logger";
@@ -148,7 +148,9 @@ async function handleNovedadNotify({ dropiRowId }: NovedadNotifyPayload) {
   // El único efecto del reordenamiento es cuál de los dos avisos se registra
   // cuando falta el contacto Y falta la configuración: ninguno de los dos
   // envía nada.
-  const settings = await getAgentSettings(agentSettingsScope(conv?.operationId));
+  const settings = await getAgentSettings(
+    await requireOperationOrSole(conv?.operationId),
+  );
   if (!settings) {
     logger.warn(
       { dropiOrderId: order.dropiOrderId, operationId: conv?.operationId },

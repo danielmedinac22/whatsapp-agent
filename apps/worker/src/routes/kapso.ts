@@ -1,7 +1,12 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { desc, eq } from "@wa/db";
-import { waTemplates, webhookEvents } from "@wa/db";
+import {
+  panelOperation,
+  requireOperationById,
+  waTemplates,
+  webhookEvents,
+} from "@wa/db";
 import { db } from "../db";
 import { logger } from "../lib/logger";
 import {
@@ -81,10 +86,11 @@ kapsoWebhook.post("/webhook", async (c) => {
 /** Admin API (behind the Bearer middleware, /api/kapso/*). */
 export const kapsoAdmin = new Hono();
 
-// El panel de administración todavía muestra una sola conexión: `null` es la
-// operación única. Cuando el panel deje elegir operación, ese id entra por aquí.
+// El panel de administración todavía muestra una sola conexión:
+// `panelOperation()` resuelve la única activa y falla con dos, en vez de mostrar
+// siempre la de Guatemala. Cuando llegue el selector (ticket 07) se cambia ahí.
 kapsoAdmin.get("/status", async (c) => {
-  const conn = await getKapsoConnection(null);
+  const conn = await getKapsoConnection(await panelOperation());
   const templates = conn?.businessAccountId
     ? await db
         .select({
@@ -106,31 +112,33 @@ kapsoAdmin.get("/numbers", async (c) => {
 
 const connectSchema = z.object({
   phoneNumberId: z.string().min(3),
-  /** A qué operación pertenece el número. Omitido = la operación única. */
+  /** A qué operación pertenece el número. Omitido = la del panel. */
   operationId: z.string().uuid().optional(),
 });
 
 kapsoAdmin.post("/connect", async (c) => {
   const parsed = connectSchema.safeParse(await c.req.json());
   if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
-  const conn = await connectKapsoNumber(
-    parsed.data.phoneNumberId,
-    parsed.data.operationId,
-  );
-  const operationId = conn.operationId;
+  // Conectar un número es decir de qué operación es: o lo dice quien llama, o
+  // es la del panel. Ya no existe la forma de guardarlo sin operación.
+  const op = parsed.data.operationId
+    ? await requireOperationById(parsed.data.operationId)
+    : await panelOperation();
+  const conn = await connectKapsoNumber(op, parsed.data.phoneNumberId);
   // Sandbox numbers have no real WABA review flow; template submit may fail
   // there — logged, non-fatal.
-  await ensureKapsoTemplates(operationId).catch((err) =>
+  await ensureKapsoTemplates(op).catch((err) =>
     logger.warn({ err: String(err) }, "kapso connect: template submit failed"),
   );
-  await refreshKapsoTemplateStatuses(operationId).catch(() => {});
+  await refreshKapsoTemplateStatuses(op).catch(() => {});
   return c.json({ ok: true, connection: conn });
 });
 
 kapsoAdmin.post("/templates/sync", async (c) => {
-  await ensureKapsoTemplates(null);
-  await refreshKapsoTemplateStatuses(null);
-  const conn = await getKapsoConnection(null);
+  const op = await panelOperation();
+  await ensureKapsoTemplates(op);
+  await refreshKapsoTemplateStatuses(op);
+  const conn = await getKapsoConnection(op);
   const templates = conn?.businessAccountId
     ? await db
         .select({ name: waTemplates.name, status: waTemplates.status })

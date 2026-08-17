@@ -32,7 +32,7 @@ import {
   startDropiSyncWorker,
 } from "./jobs/dropi-sync";
 import { startDropiConfirmWorker } from "./jobs/dropi-confirm";
-import { GLOBAL_AGENT_SETTINGS } from "@wa/db";
+import { listActiveOperations } from "@wa/db";
 import { ensureDropiTemplates } from "./dropi/seed-templates";
 import {
   scheduleDropiPoll,
@@ -75,6 +75,23 @@ app.route("/api/kapso", kapsoAdmin);
 
 const port = Number(process.env.PORT ?? 3001);
 
+/**
+ * Siembra las plantillas de logística de cada operación activa, sobre su propia
+ * configuración. Un fallo en una no puede impedir la siembra de las demás.
+ */
+async function seedDropiTemplatesForActiveOperations(): Promise<void> {
+  for (const op of await listActiveOperations()) {
+    try {
+      await ensureDropiTemplates(op);
+    } catch (err) {
+      logger.error(
+        { err, operation: op.countryCode },
+        "ensureDropiTemplates failed",
+      );
+    }
+  }
+}
+
 serve({ fetch: app.fetch, port }, (info) => {
   logger.info({ port: info.port }, "worker listening");
   startKapsoTemplateWorker().catch((err) =>
@@ -113,9 +130,11 @@ serve({ fetch: app.fetch, port }, (info) => {
   scheduleDropiAuthRefresh().catch((err) =>
     logger.error({ err }, "dropi auth refresh scheduling failed"),
   );
-  // El arranque siembra las plantillas de la configuración global; cada
-  // operación nueva las siembra con su propio ámbito.
-  ensureDropiTemplates(GLOBAL_AGENT_SETTINGS).catch((err) =>
+  // El arranque siembra las plantillas de logística de cada operación activa,
+  // sobre su propia configuración. Antes sembraba la fila global `id = 1`, que
+  // es Guatemala: la segunda operación se habría quedado sin plantillas o, peor,
+  // habría heredado las FK guatemaltecas.
+  seedDropiTemplatesForActiveOperations().catch((err) =>
     logger.error({ err }, "ensureDropiTemplates failed"),
   );
   startDropiNovedadNotifyWorker().catch((err) =>

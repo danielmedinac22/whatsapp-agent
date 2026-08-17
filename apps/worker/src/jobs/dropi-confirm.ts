@@ -2,14 +2,14 @@ import { eq, and } from "@wa/db";
 import {
   dropiOrders,
   getAgentSettings,
-  GLOBAL_AGENT_SETTINGS,
+  requireOperationById,
+  resolveOperationForContact,
   shopifyOrders,
 } from "@wa/db";
 import { db } from "../db";
 import { logger } from "../lib/logger";
 import { confirmOrder } from "../dropi/orders";
 import { DropiHttpError } from "../dropi/client";
-import { resolveOperationForContact } from "../dropi/config";
 import { DROPI_CONFIRM_QUEUE, getBoss } from "./queue";
 
 interface DropiConfirmPayload {
@@ -19,18 +19,13 @@ interface DropiConfirmPayload {
 const RETRY_DELAY_S = 15 * 60;
 
 async function handleDropiConfirm({ shopifyOrderRowId }: DropiConfirmPayload) {
-  // Ámbito global y no por operación: lo que decide si se confirma en
-  // logística —`dropiEnabled`, `dropiDryRun`— pertenece a la conexión de
-  // Dropi, y esa conexión todavía no dice de qué operación es (ticket 04).
-  // Resolverlo aquí por el contacto del pedido crearía una segunda fuente de
-  // verdad que contradiría a la conexión. Con una sola operación es la misma
-  // fila que se leía antes.
-  const s = await getAgentSettings(GLOBAL_AGENT_SETTINGS);
-  if (!s?.dropiEnabled) {
-    logger.info({ shopifyOrderRowId }, "dropi confirm: disabled, skipping");
-    return;
-  }
-
+  // El pedido primero, porque de él sale la operación. El lote 05 leía la
+  // configuración en ámbito global porque `dropiEnabled` y `dropiDryRun`
+  // pertenecen a la conexión de Dropi y esa conexión todavía no decía de qué
+  // operación era; desde el ticket 04 sí lo dice, así que la banderita se lee
+  // en la operación que va a recibir la confirmación — la misma que se usa dos
+  // pasos más abajo para el PUT. No hay dos fuentes de verdad: hay una sola,
+  // consultada antes.
   const [shop] = await db
     .select()
     .from(shopifyOrders)
@@ -38,6 +33,16 @@ async function handleDropiConfirm({ shopifyOrderRowId }: DropiConfirmPayload) {
     .limit(1);
   if (!shop) {
     logger.warn({ shopifyOrderRowId }, "dropi confirm: shopify order not found");
+    return;
+  }
+
+  const op = await resolveOperationForContact(shop.contactId);
+  const s = await getAgentSettings(op);
+  if (!s?.dropiEnabled) {
+    logger.info(
+      { shopifyOrderRowId, operation: op.countryCode },
+      "dropi confirm: disabled, skipping",
+    );
     return;
   }
 
@@ -82,7 +87,6 @@ async function handleDropiConfirm({ shopifyOrderRowId }: DropiConfirmPayload) {
   }
 
   // La confirmación viaja a la logística de la operación del pedido.
-  const op = await resolveOperationForContact(shop.contactId);
   try {
     await confirmOrder(op, match.dropiOrderId);
   } catch (err) {
@@ -125,17 +129,20 @@ export async function confirmDropiOrderById(
   dropiRowId: string,
   opts: { force?: boolean } = {},
 ): Promise<{ ok: true; dryRun: boolean; alreadyDone: boolean }> {
-  // Global por lo mismo que el job de arriba: la bandera es de la conexión.
-  const s = await getAgentSettings(GLOBAL_AGENT_SETTINGS);
-  if (!s?.dropiEnabled) {
-    throw new Error("Integración Dropi deshabilitada (toggle en /agente)");
-  }
   const [match] = await db
     .select()
     .from(dropiOrders)
     .where(eq(dropiOrders.id, dropiRowId))
     .limit(1);
   if (!match) throw new Error("Pedido Dropi no encontrado");
+
+  // Por operación, igual que el job de arriba: la fila de logística ya dice de
+  // qué operación es, así que la bandera se lee en la suya.
+  const op = await requireOperationById(match.operationId);
+  const s = await getAgentSettings(op);
+  if (!s?.dropiEnabled) {
+    throw new Error("Integración Dropi deshabilitada (toggle en /agente)");
+  }
 
   if (match.confirmPutAt) {
     return { ok: true, dryRun: false, alreadyDone: true };
@@ -153,7 +160,6 @@ export async function confirmDropiOrderById(
     return { ok: true, dryRun: true, alreadyDone: false };
   }
 
-  const op = await resolveOperationForContact(match.contactId);
   try {
     await confirmOrder(op, match.dropiOrderId);
   } catch (err) {

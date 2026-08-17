@@ -3,7 +3,7 @@ import {
   agentSettings,
   getAgentSettings,
   templates,
-  type AgentSettingsScope,
+  type Operation,
 } from "@wa/db";
 import type { TemplateType } from "@wa/shared";
 import { db } from "../db";
@@ -73,21 +73,19 @@ function extractVars(body: string): string[] {
 
 /**
  * Crea las plantillas de logística que falten y las asigna a la configuración
- * **de un solo ámbito**.
+ * **de una sola operación**.
  *
  * Las seis FK a `templates` son por operación: cada operación elige qué
  * plantilla usa para «guía generada» y para «entregado». El seed asigna las
  * suyas y no toca las de las demás — una plantilla guatemalteca en la fila
- * colombiana es la fuga que este spec existe para impedir. Por eso el ámbito
+ * colombiana es la fuga que este spec existe para impedir. Por eso la operación
  * es un parámetro obligatorio y no un `id = 1` implícito.
  */
-export async function ensureDropiTemplates(
-  scope: AgentSettingsScope,
-): Promise<{
+export async function ensureDropiTemplates(op: Operation): Promise<{
   inserted: number;
   assigned: number;
 }> {
-  const settings = await getAgentSettings(scope);
+  const settings = await getAgentSettings(op);
   let inserted = 0;
   let assigned = 0;
   for (const t of DEFAULTS) {

@@ -4,16 +4,14 @@ import {
   conversations,
   dropiOrders,
   messages,
+  requireOperationById,
 } from "@wa/db";
 import { db } from "../db";
 import { logger } from "../lib/logger";
 import { contactWaId } from "../lib/phone";
 import { ADMIN_AVISO_TEMPLATE, sanitizeParam } from "../kapso/templates";
 import { enqueueOutbound } from "./outbound";
-import {
-  resolveDropiConnection,
-  resolveOperationForContact,
-} from "../dropi/config";
+import { getDropiConnection } from "../dropi/config";
 import { DROPI_NOVEDAD_HANDOFF_QUEUE, getBoss } from "./queue";
 
 interface NovedadHandoffPayload {
@@ -89,9 +87,12 @@ async function handleNovedadHandoff({ dropiRowId }: NovedadHandoffPayload) {
     clientReplies = rows.map((r) => quoteBody(r.body));
   }
 
-  // El pedido es de la operación de su cliente: a ese admin hay que avisarle.
-  const conn = await resolveOperationForContact(order.contactId)
-    .then((op) => resolveDropiConnection(op))
+  // El admin a avisar es el de la operación del pedido, no «el» admin. Desde
+  // la `0021` la fila de logística declara su operación, así que sale de ahí y
+  // no de la conversación del cliente: es la misma cuenta de Dropi que reportó
+  // la novedad.
+  const conn = await requireOperationById(order.operationId)
+    .then((op) => getDropiConnection(op))
     .catch(() => null);
   const adminPhone = conn?.adminPhone;
   if (!adminPhone) {

@@ -158,9 +158,9 @@ export const operationStatus = pgEnum("operation_status", [
 
 /**
  * De cada operación cuelgan su número de WhatsApp, su tienda, su logística y
- * su configuración de agente. Hoy solo existe Guatemala y las conexiones
- * siguen siendo singletons `id = 1`: la referencia se agrega al lado (nullable)
- * y se vuelve obligatoria cuando ya nadie lea el singleton.
+ * su configuración de agente. Desde el contract (`0021`) esa referencia es
+ * obligatoria y única en las cuatro tablas de configuración: no existe forma de
+ * guardar ni de pedir «la» conexión sin decir de qué operación es.
  */
 export const operations = pgTable(
   "operations",
@@ -222,29 +222,37 @@ export const waSession = pgTable("wa_session", {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
-// kapso connection (singleton row, id=1)
+// kapso connection (una por operación; `id` entero heredado del singleton)
 // ────────────────────────────────────────────────────────────────────────────
 
-export const kapsoConnection = pgTable("kapso_connection", {
-  id: integer("id").primaryKey().default(1),
-  /** Nullable hasta el contract: los accesores de hoy siguen leyendo `id = 1`. */
-  operationId: uuid("operation_id").references(() => operations.id, {
-    onDelete: "restrict",
-  }),
-  phoneNumberId: text("phone_number_id"),
-  businessAccountId: text("business_account_id"),
-  displayPhoneNumber: text("display_phone_number"),
-  displayName: text("display_name"),
-  // "sandbox" | "dedicated" — sandbox numbers can't submit Meta templates
-  kind: text("kind"),
-  webhookRegisteredAt: timestamp("webhook_registered_at", {
-    withTimezone: true,
-  }),
-  connectedAt: timestamp("connected_at", { withTimezone: true }),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+export const kapsoConnection = pgTable(
+  "kapso_connection",
+  {
+    id: integer("id").primaryKey().default(1),
+    /**
+     * Obligatoria desde el contract (`0021`). El `id` entero con `default 1` es
+     * la clave primaria heredada del singleton; la clave del modelo es esta, y
+     * el índice único de abajo la hace cumplir: una conexión por operación.
+     */
+    operationId: uuid("operation_id")
+      .notNull()
+      .references(() => operations.id, { onDelete: "restrict" }),
+    phoneNumberId: text("phone_number_id"),
+    businessAccountId: text("business_account_id"),
+    displayPhoneNumber: text("display_phone_number"),
+    displayName: text("display_name"),
+    // "sandbox" | "dedicated" — sandbox numbers can't submit Meta templates
+    kind: text("kind"),
+    webhookRegisteredAt: timestamp("webhook_registered_at", {
+      withTimezone: true,
+    }),
+    connectedAt: timestamp("connected_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [uniqueIndex("kapso_connection_operation_idx").on(t.operationId)],
+);
 
 // ────────────────────────────────────────────────────────────────────────────
 // webhook events (idempotency ledger for inbound webhooks)
@@ -341,9 +349,15 @@ export const conversations = pgTable(
       .references(() => contacts.id, { onDelete: "cascade" }),
     /**
      * La operación de la conversación, resuelta en la ingesta por el número que
-     * recibió el mensaje y conservada de principio a fin. Nullable hasta el
-     * contract: hoy nadie la lee — el expand la deja puesta y la empieza a
-     * escribir el lote de la conexión de WhatsApp.
+     * recibió el mensaje y conservada de principio a fin.
+     *
+     * **Sigue nullable después del contract, a propósito.** Quien la escribe
+     * —el pipeline de entrada y el webhook de la tienda— puede legítimamente no
+     * saberla: un mensaje que entra por un número que no reconocemos, o un
+     * pedido web cuando exista una segunda tienda que distinguir (ticket 08).
+     * Volverla obligatoria convertiría «no sé de qué operación es» en «pierdo
+     * el mensaje» o «pierdo el pedido», que es justo lo contrario de lo que el
+     * lote 02 decidió al no darle al pipeline ninguna forma de descartar.
      *
      * `restrict` y no `cascade`: dar de baja una operación no puede llevarse por
      * delante el historial de conversaciones.
@@ -454,70 +468,78 @@ export const templates = pgTable(
 );
 
 // ────────────────────────────────────────────────────────────────────────────
-// agent settings (singleton row, id=1)
+// agent settings (una por operación; `id` entero heredado del singleton)
 // ────────────────────────────────────────────────────────────────────────────
 
-export const agentSettings = pgTable("agent_settings", {
-  id: integer("id").primaryKey().default(1),
-  /** Nullable hasta el contract: las lecturas de hoy siguen filtrando `id = 1`. */
-  operationId: uuid("operation_id").references(() => operations.id, {
-    onDelete: "restrict",
-  }),
-  systemPrompt: text("system_prompt").notNull().default(""),
-  model: text("model").notNull().default("anthropic/claude-sonnet-4.6"),
-  debounceMs: integer("debounce_ms").notNull().default(8000),
-  followupDelayMs: integer("followup_delay_ms").notNull().default(300_000),
-  followupTemplateId: uuid("followup_template_id").references(
-    () => templates.id,
-    { onDelete: "set null" },
-  ),
-  remarketingDelayMs: integer("remarketing_delay_ms")
-    .notNull()
-    .default(3 * 60 * 60 * 1000),
-  remarketingTemplateId: uuid("remarketing_template_id").references(
-    () => templates.id,
-    { onDelete: "set null" },
-  ),
-  confirmationAckTemplateId: uuid("confirmation_ack_template_id").references(
-    () => templates.id,
-    { onDelete: "set null" },
-  ),
-  activateAgentOnConfirm: boolean("activate_agent_on_confirm")
-    .notNull()
-    .default(true),
-  memoryWindow: integer("memory_window").notNull().default(30),
-  dropiEnabled: boolean("dropi_enabled").notNull().default(false),
-  dropiDryRun: boolean("dropi_dry_run").notNull().default(true),
-  dropiPollIntervalMin: integer("dropi_poll_interval_min").notNull().default(10),
-  dropiSyncIntervalMin: integer("dropi_sync_interval_min").notNull().default(15),
-  dropiMatchWindowDays: integer("dropi_match_window_days").notNull().default(5),
-  dropiTemplateGuiaId: uuid("dropi_template_guia_id").references(
-    () => templates.id,
-    { onDelete: "set null" },
-  ),
-  dropiTemplateRecolectadoId: uuid("dropi_template_recolectado_id").references(
-    () => templates.id,
-    { onDelete: "set null" },
-  ),
-  dropiTemplateEnTransitoId: uuid("dropi_template_en_transito_id").references(
-    () => templates.id,
-    { onDelete: "set null" },
-  ),
-  dropiTemplateConMensajeroId: uuid(
-    "dropi_template_con_mensajero_id",
-  ).references(() => templates.id, { onDelete: "set null" }),
-  dropiTemplateEntregadoId: uuid("dropi_template_entregado_id").references(
-    () => templates.id,
-    { onDelete: "set null" },
-  ),
-  dropiTemplateEnOficinaId: uuid("dropi_template_en_oficina_id").references(
-    () => templates.id,
-    { onDelete: "set null" },
-  ),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+export const agentSettings = pgTable(
+  "agent_settings",
+  {
+    id: integer("id").primaryKey().default(1),
+    /**
+     * Obligatoria desde el contract (`0021`), y única: una configuración por
+     * operación. El único es lo que hace determinista la resolución — con dos
+     * filas de la misma operación, cuál gana era arbitrario.
+     */
+    operationId: uuid("operation_id")
+      .notNull()
+      .references(() => operations.id, { onDelete: "restrict" }),
+    systemPrompt: text("system_prompt").notNull().default(""),
+    model: text("model").notNull().default("anthropic/claude-sonnet-4.6"),
+    debounceMs: integer("debounce_ms").notNull().default(8000),
+    followupDelayMs: integer("followup_delay_ms").notNull().default(300_000),
+    followupTemplateId: uuid("followup_template_id").references(
+      () => templates.id,
+      { onDelete: "set null" },
+    ),
+    remarketingDelayMs: integer("remarketing_delay_ms")
+      .notNull()
+      .default(3 * 60 * 60 * 1000),
+    remarketingTemplateId: uuid("remarketing_template_id").references(
+      () => templates.id,
+      { onDelete: "set null" },
+    ),
+    confirmationAckTemplateId: uuid("confirmation_ack_template_id").references(
+      () => templates.id,
+      { onDelete: "set null" },
+    ),
+    activateAgentOnConfirm: boolean("activate_agent_on_confirm")
+      .notNull()
+      .default(true),
+    memoryWindow: integer("memory_window").notNull().default(30),
+    dropiEnabled: boolean("dropi_enabled").notNull().default(false),
+    dropiDryRun: boolean("dropi_dry_run").notNull().default(true),
+    dropiPollIntervalMin: integer("dropi_poll_interval_min").notNull().default(10),
+    dropiSyncIntervalMin: integer("dropi_sync_interval_min").notNull().default(15),
+    dropiMatchWindowDays: integer("dropi_match_window_days").notNull().default(5),
+    dropiTemplateGuiaId: uuid("dropi_template_guia_id").references(
+      () => templates.id,
+      { onDelete: "set null" },
+    ),
+    dropiTemplateRecolectadoId: uuid("dropi_template_recolectado_id").references(
+      () => templates.id,
+      { onDelete: "set null" },
+    ),
+    dropiTemplateEnTransitoId: uuid("dropi_template_en_transito_id").references(
+      () => templates.id,
+      { onDelete: "set null" },
+    ),
+    dropiTemplateConMensajeroId: uuid(
+      "dropi_template_con_mensajero_id",
+    ).references(() => templates.id, { onDelete: "set null" }),
+    dropiTemplateEntregadoId: uuid("dropi_template_entregado_id").references(
+      () => templates.id,
+      { onDelete: "set null" },
+    ),
+    dropiTemplateEnOficinaId: uuid("dropi_template_en_oficina_id").references(
+      () => templates.id,
+      { onDelete: "set null" },
+    ),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [uniqueIndex("agent_settings_operation_idx").on(t.operationId)],
+);
 
 // ────────────────────────────────────────────────────────────────────────────
 // agent prompt versions — historial append-only del system prompt
@@ -540,23 +562,27 @@ export const agentPromptVersions = pgTable(
 );
 
 // ────────────────────────────────────────────────────────────────────────────
-// shopify connection (singleton row, id=1)
+// shopify connection (una por operación; `id` entero heredado del singleton)
 // ────────────────────────────────────────────────────────────────────────────
 
-export const shopifyConnection = pgTable("shopify_connection", {
-  id: integer("id").primaryKey().default(1),
-  /** Nullable hasta el contract; la tabla está vacía, el backfill no la toca. */
-  operationId: uuid("operation_id").references(() => operations.id, {
-    onDelete: "restrict",
-  }),
-  shopDomain: text("shop_domain"),
-  adminAccessToken: text("admin_access_token"),
-  apiVersion: text("api_version").notNull().default("2025-01"),
-  connectedAt: timestamp("connected_at", { withTimezone: true }),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+export const shopifyConnection = pgTable(
+  "shopify_connection",
+  {
+    id: integer("id").primaryKey().default(1),
+    /** Obligatoria desde el contract (`0021`). La tabla está vacía hoy. */
+    operationId: uuid("operation_id")
+      .notNull()
+      .references(() => operations.id, { onDelete: "restrict" }),
+    shopDomain: text("shop_domain"),
+    adminAccessToken: text("admin_access_token"),
+    apiVersion: text("api_version").notNull().default("2025-01"),
+    connectedAt: timestamp("connected_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [uniqueIndex("shopify_connection_operation_idx").on(t.operationId)],
+);
 
 // ────────────────────────────────────────────────────────────────────────────
 // shopify orders
@@ -601,46 +627,69 @@ export const shopifyOrders = pgTable(
 );
 
 // ────────────────────────────────────────────────────────────────────────────
-// dropi connection (singleton row, id=1) + orders mapping
+// dropi connection (una por operación; `id` entero heredado del singleton) + orders mapping
 // ────────────────────────────────────────────────────────────────────────────
 
-export const dropiConnection = pgTable("dropi_connection", {
-  id: integer("id").primaryKey().default(1),
-  /** Nullable hasta el contract: los accesores de hoy siguen leyendo `id = 1`. */
-  operationId: uuid("operation_id").references(() => operations.id, {
-    onDelete: "restrict",
-  }),
-  apiBaseUrl: text("api_base_url")
-    .notNull()
-    .default("https://api.dropi.gt/api"),
-  email: text("email"),
-  password: text("password"),
-  userId: integer("user_id"),
-  bearerToken: text("bearer_token"),
-  tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }),
-  assetsBaseUrl: text("assets_base_url")
-    .notNull()
-    .default("https://d2ob47cxeawi8a.cloudfront.net"),
-  connectedAt: timestamp("connected_at", { withTimezone: true }),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  lastAutoLoginAt: timestamp("last_auto_login_at", { withTimezone: true }),
-  lastAutoLoginError: text("last_auto_login_error"),
-  adminPhone: text("admin_phone"),
-  pending2faToken: text("pending_2fa_token"),
-  pending2faExpiresAt: timestamp("pending_2fa_expires_at", {
-    withTimezone: true,
-  }),
-  pending2faRequestedAt: timestamp("pending_2fa_requested_at", {
-    withTimezone: true,
-  }),
-});
+export const dropiConnection = pgTable(
+  "dropi_connection",
+  {
+    id: integer("id").primaryKey().default(1),
+    /**
+     * Obligatoria desde el contract (`0021`), y única: la logística de una
+     * operación es una sola cuenta de Dropi.
+     */
+    operationId: uuid("operation_id")
+      .notNull()
+      .references(() => operations.id, { onDelete: "restrict" }),
+    apiBaseUrl: text("api_base_url")
+      .notNull()
+      .default("https://api.dropi.gt/api"),
+    email: text("email"),
+    password: text("password"),
+    userId: integer("user_id"),
+    bearerToken: text("bearer_token"),
+    tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }),
+    assetsBaseUrl: text("assets_base_url")
+      .notNull()
+      .default("https://d2ob47cxeawi8a.cloudfront.net"),
+    connectedAt: timestamp("connected_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    lastAutoLoginAt: timestamp("last_auto_login_at", { withTimezone: true }),
+    lastAutoLoginError: text("last_auto_login_error"),
+    adminPhone: text("admin_phone"),
+    pending2faToken: text("pending_2fa_token"),
+    pending2faExpiresAt: timestamp("pending_2fa_expires_at", {
+      withTimezone: true,
+    }),
+    pending2faRequestedAt: timestamp("pending_2fa_requested_at", {
+      withTimezone: true,
+    }),
+  },
+  (t) => [uniqueIndex("dropi_connection_operation_idx").on(t.operationId)],
+);
 
 export const dropiOrders = pgTable(
   "dropi_orders",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    /**
+     * La operación cuya cuenta de Dropi trajo este pedido.
+     *
+     * Obligatoria desde el contract (`0021`), y no nullable como en
+     * `conversations`: aquí el que escribe **siempre** sabe la operación —el
+     * sondeo y la sincronización le preguntaron a la cuenta Dropi *de esa
+     * operación*—, así que «no la sé» no es un estado alcanzable.
+     *
+     * Sin ella, el id de pedido de Dropi —único dentro de una cuenta, no entre
+     * cuentas— hacía que dos operaciones con el pedido 942698 fueran la misma
+     * fila: el sondeo de una pisaba el pedido de la otra, y el único de abajo
+     * directamente impedía guardar el segundo.
+     */
+    operationId: uuid("operation_id")
+      .notNull()
+      .references(() => operations.id, { onDelete: "restrict" }),
     dropiOrderId: integer("dropi_order_id").notNull(),
     shopifyOrderRowId: uuid("shopify_order_row_id").references(
       () => shopifyOrders.id,
@@ -691,7 +740,10 @@ export const dropiOrders = pgTable(
       .defaultNow(),
   },
   (t) => [
-    uniqueIndex("dropi_orders_id_idx").on(t.dropiOrderId),
+    // El id de Dropi es único **dentro** de una cuenta. El único de antes era
+    // sobre `dropi_order_id` a secas, y con dos operaciones habría rechazado el
+    // pedido legítimo de la segunda por chocar con el número de la primera.
+    uniqueIndex("dropi_orders_operation_id_idx").on(t.operationId, t.dropiOrderId),
     index("dropi_orders_phone_idx").on(t.customerPhone),
     index("dropi_orders_status_idx").on(t.status),
     index("dropi_orders_shopify_idx").on(t.shopifyOrderRowId),

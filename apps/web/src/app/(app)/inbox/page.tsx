@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { listApprovedWaTemplates, listConversations } from "@/lib/queries";
-import { dropiConnection, eq } from "@wa/db";
+import { dropiConnection, eq, panelOperation } from "@wa/db";
 import { InboxClient } from "./inbox-client";
 
 export const dynamic = "force-dynamic";
@@ -23,12 +23,16 @@ export default async function InboxPage({
   searchParams: Promise<{ q?: string; c?: string }>;
 }) {
   const { q, c } = await searchParams;
+  // El CDN del PDF de la guía sale de la logística de la operación del panel.
+  // Antes leía `dropi_connection` por `id = 1`: el último `id = 1` del panel, y
+  // el que le habría puesto el CDN guatemalteco a las guías colombianas.
+  const op = await panelOperation();
   const [items, [conn], approvedTemplates] = await Promise.all([
     listConversations(q, c),
     db
       .select({ assetsBaseUrl: dropiConnection.assetsBaseUrl })
       .from(dropiConnection)
-      .where(eq(dropiConnection.id, 1))
+      .where(eq(dropiConnection.operationId, op.id))
       .limit(1),
     listApprovedWaTemplates(),
   ]);

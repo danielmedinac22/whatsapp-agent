@@ -1,9 +1,9 @@
 import { generateText, type ModelMessage } from "ai";
 import {
-  agentSettingsScope,
   conversations,
   eq,
   getAgentSettings,
+  requireOperationOrSole,
 } from "@wa/db";
 import { db } from "../db";
 import { openrouter } from "./openrouter";
@@ -49,7 +49,7 @@ export async function previewAgentReply(
       // usar los parámetros de Guatemala. Sin conversación no hay operación de
       // la que hablar, y tampoco hay historial que recortar.
       const settings = await getAgentSettings(
-        agentSettingsScope(conv.operationId),
+        await requireOperationOrSole(conv.operationId),
       );
       history = await loadHistory(
         conv.id,

@@ -10,10 +10,10 @@ import {
 import { dropiConnectionInput } from "@wa/shared";
 import { db } from "../db";
 import { logger } from "../lib/logger";
+import { panelOperation } from "@wa/db";
 import {
   getDropiConnection,
   invalidateDropiConnectionCache,
-  requireSoleActiveOperation,
   upsertDropiConnection,
 } from "../dropi/config";
 import { enqueueDropiSyncNow, runDropiSync } from "../jobs/dropi-sync";
@@ -25,16 +25,6 @@ import { enqueueDropiPollNow } from "../jobs/dropi-poll";
 import { DropiHttpError } from "../dropi/client";
 
 export const dropi = new Hono();
-
-/**
- * De qué operación habla el panel. Hasta que exista el selector (ticket 07) el
- * panel no manda ninguna, así que se resuelve la única activa — y con dos
- * activas falla en vez de adivinar. Cuando llegue el selector, se cambia aquí
- * y todas las rutas de este archivo quedan migradas de una vez.
- */
-async function panelOperation(): Promise<Operation> {
-  return requireSoleActiveOperation();
-}
 
 dropi.get("/connection", async (c) => {
   const op = await panelOperation().catch(() => null);

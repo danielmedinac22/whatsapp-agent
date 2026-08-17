@@ -1,6 +1,10 @@
 import { and, desc, eq, gte, shopifyOrders } from "@wa/db";
 import { db } from "../db";
-import { getOperationIdByContactId } from "../operations";
+import {
+  getOperationById,
+  getOperationIdByContactId,
+  getSingleActiveOperation,
+} from "../operations";
 import { logger } from "../lib/logger";
 import {
   extractProductIdsFromOrder,
@@ -58,8 +62,17 @@ function renderProduct(product: ShopifyProduct): string {
 export async function buildShopifyContextBlock(
   contactId: string,
 ): Promise<string | null> {
+  // Con las primitivas que devuelven `null`, no con el puente que lanza: no
+  // poder resolver la operación aquí solo apaga el bloque de productos del
+  // prompt —que es lo que hace hoy, con la tabla de tiendas vacía—, y eso no
+  // justifica reventar la respuesta del agente.
   const operationId = await getOperationIdByContactId(contactId);
-  const conn = await getShopifyConnection(operationId);
+  const op = operationId
+    ? await getOperationById(operationId)
+    : await getSingleActiveOperation();
+  if (!op) return null;
+
+  const conn = await getShopifyConnection(op);
   if (!conn?.shopDomain || !conn?.adminAccessToken) return null;
 
   const since = new Date(Date.now() - ORDER_LOOKBACK_DAYS * 24 * 60 * 60_000);
@@ -83,7 +96,7 @@ export async function buildShopifyContextBlock(
 
   let products: ShopifyProduct[] = [];
   try {
-    products = await getProductsByIds(operationId, productIds);
+    products = await getProductsByIds(op, productIds);
   } catch (err) {
     logger.warn({ err, contactId }, "buildShopifyContextBlock: fetch failed");
     return null;

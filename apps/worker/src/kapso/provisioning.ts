@@ -3,8 +3,8 @@ import { waTemplates } from "@wa/db";
 import { db } from "../db";
 import { logger } from "../lib/logger";
 import { KapsoApiError, createTemplate, listTemplatesByName } from "./client";
-import { resolveKapsoConnection } from "./connection";
-import type { OperationRef } from "../operations";
+import { getKapsoConnection } from "./connection";
+import type { Operation } from "@wa/db";
 import { VORARE_TEMPLATES, toMetaDefinition } from "./templates";
 
 /**
@@ -17,9 +17,9 @@ import { VORARE_TEMPLATES, toMetaDefinition } from "./templates";
  * propia conexión, nunca contra "la" conexión.
  */
 export async function ensureKapsoTemplates(
-  operationId: OperationRef,
+  op: Operation,
 ): Promise<void> {
-  const conn = await resolveKapsoConnection(operationId);
+  const conn = await getKapsoConnection(op);
   const wabaId = conn?.businessAccountId;
   if (!wabaId) {
     logger.warn("kapso templates: no WABA connected yet, skipping submit");
@@ -104,9 +104,9 @@ export async function ensureKapsoTemplates(
  * template-status webhook). Run periodically from a pg-boss cron.
  */
 export async function refreshKapsoTemplateStatuses(
-  operationId: OperationRef,
+  op: Operation,
 ): Promise<void> {
-  const conn = await resolveKapsoConnection(operationId);
+  const conn = await getKapsoConnection(op);
   const wabaId = conn?.businessAccountId;
   if (!wabaId) return;
 
@@ -163,10 +163,10 @@ export async function refreshKapsoTemplateStatuses(
  * la operación que va a enviar.
  */
 export async function isTemplateApproved(
-  operationId: OperationRef,
+  op: Operation,
   name: string,
 ): Promise<boolean> {
-  const conn = await resolveKapsoConnection(operationId);
+  const conn = await getKapsoConnection(op);
   const wabaId = conn?.businessAccountId;
   if (!wabaId) return false;
   const [row] = await db

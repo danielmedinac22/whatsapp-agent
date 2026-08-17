@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { OperationScopedCache } from "./cache";
 import {
   type OperationConnectionRef,
-  canUseSingleOperationFallback,
   decideInboundOperation,
   resolveOperationIdByPhoneNumberId,
 } from "./resolve";
@@ -51,16 +50,19 @@ describe("resolveOperationIdByPhoneNumberId", () => {
     );
   });
 
-  it("una conexión sin operación declarada no atribuye el mensaje a nadie", () => {
-    expect(
-      resolveOperationIdByPhoneNumberId(NUMERO_GUATEMALA, [
-        { operationId: null, phoneNumberId: NUMERO_GUATEMALA },
-      ]),
-    ).toBeNull();
-  });
-
   it("sin conexiones registradas no inventa una operación", () => {
     expect(resolveOperationIdByPhoneNumberId(NUMERO_GUATEMALA, [])).toBeNull();
+  });
+
+  it("una conexión sin `phone_number_id` no atribuye nada", () => {
+    // Es el estado de una conexión a medio configurar. Desde la `0021` una
+    // conexión sin operación ya no puede existir —`operation_id` es obligatoria—
+    // pero sí una sin número, que es lo que se prueba aquí.
+    expect(
+      resolveOperationIdByPhoneNumberId(NUMERO_GUATEMALA, [
+        { operationId: COLOMBIA, phoneNumberId: null },
+      ]),
+    ).toBeNull();
   });
 });
 
@@ -94,7 +96,7 @@ describe("decideInboundOperation", () => {
         conexionGuatemala,
         { operationId: COLOMBIA, phoneNumberId: NUMERO_COLOMBIA },
       ],
-      // `null` es lo que devuelve `getSingleOperationId()` cuando hay más de
+      // `null` es lo que devuelve `getSingleActiveOperation()` cuando hay más de
       // una operación activa: la red se desarma sola.
       singleOperationId: null,
     });
@@ -103,33 +105,17 @@ describe("decideInboundOperation", () => {
     expect(decision.usedSingleOperationFallback).toBe(false);
   });
 
-  it("una conexión conocida sin operación declarada no se reporta como número desconocido", () => {
+  it("sin red y sin conexión reconocida, el mensaje sigue su curso sin operación", () => {
+    // Es el estado que obliga a que `conversations.operation_id` siga siendo
+    // nullable después del contract: la decisión no tiene un caso «descartar»,
+    // así que el pipeline guarda el mensaje sin operación en vez de perderlo.
     const decision = decideInboundOperation({
-      phoneNumberId: NUMERO_GUATEMALA,
-      connections: [{ operationId: null, phoneNumberId: NUMERO_GUATEMALA }],
-      singleOperationId: GUATEMALA,
+      phoneNumberId: NUMERO_DESCONOCIDO,
+      connections: [],
+      singleOperationId: null,
     });
-    expect(decision.connectionIsUnknown).toBe(false);
-    expect(decision.operationId).toBe(GUATEMALA);
-  });
-});
-
-describe("canUseSingleOperationFallback", () => {
-  it("la operación única sin conexión etiquetada se atiende con la fila singleton", () => {
-    expect(canUseSingleOperationFallback(GUATEMALA, GUATEMALA)).toBe(true);
-  });
-
-  it("no atiende a una operación con la conexión de otra", () => {
-    expect(canUseSingleOperationFallback(COLOMBIA, GUATEMALA)).toBe(false);
-  });
-
-  it("con dos operaciones activas la red se desarma sola", () => {
-    // `null` es lo que devuelve `getSingleOperationId()` con más de una activa.
-    expect(canUseSingleOperationFallback(GUATEMALA, null)).toBe(false);
-  });
-
-  it("quien ya pide la operación única no tiene de dónde caer", () => {
-    expect(canUseSingleOperationFallback(null, GUATEMALA)).toBe(false);
+    expect(decision.operationId).toBeNull();
+    expect(decision.connectionIsUnknown).toBe(true);
   });
 });
 
@@ -141,24 +127,18 @@ describe("OperationScopedCache", () => {
     expect(cache.get(COLOMBIA)).toBeNull();
   });
 
-  it("la operación única tiene su propia entrada y no la comparte", () => {
+  it("invalidar una operación no toca la de al lado", () => {
+    // Antes había además una clave de «la operación única» que apuntaba a la
+    // misma fila y había que invalidar en pareja. El contract la borró junto
+    // con el `operationId: null` de los accesores: una fila, una clave.
     const cache = new OperationScopedCache<string>();
-    cache.set(null, "fila-singleton");
-    expect(cache.get(null)?.value).toBe("fila-singleton");
-    expect(cache.get(GUATEMALA)).toBeNull();
-  });
-
-  it("invalidar una operación limpia también la de la operación única, que puede ser la misma fila", () => {
-    const cache = new OperationScopedCache<string>();
-    cache.set(GUATEMALA, "misma-fila");
-    cache.set(null, "misma-fila");
-    cache.set(COLOMBIA, "otra-fila");
+    cache.set(GUATEMALA, "gt");
+    cache.set(COLOMBIA, "co");
 
     cache.invalidate(GUATEMALA);
 
     expect(cache.get(GUATEMALA)).toBeNull();
-    expect(cache.get(null)).toBeNull();
-    expect(cache.get(COLOMBIA)?.value).toBe("otra-fila");
+    expect(cache.get(COLOMBIA)?.value).toBe("co");
   });
 
   it("invalidar sin argumento borra la caché entera", () => {
