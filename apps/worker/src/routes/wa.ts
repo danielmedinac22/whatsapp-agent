@@ -12,6 +12,10 @@ import {
 } from "../kapso/templates";
 import { normalizePhone } from "../lib/phone";
 import { enqueueOutbound } from "../jobs/outbound";
+import {
+  getConversationOperationId,
+  getOperationIdByWaId,
+} from "../operations";
 
 export const wa = new Hono();
 
@@ -39,9 +43,12 @@ wa.get("/media/:id", async (c) => {
   });
 });
 
-/** Connection status — fed by kapso_connection (no QR/session lifecycle). */
+/**
+ * Connection status — fed by kapso_connection (no QR/session lifecycle).
+ * El panel todavía muestra una sola conexión: `null` es la operación única.
+ */
 wa.get("/status", async (c) => {
-  const conn = await getKapsoConnection();
+  const conn = await getKapsoConnection(null);
   return c.json({
     status: conn?.phoneNumberId ? "connected" : "disconnected",
     phone: conn?.displayPhoneNumber ?? null,
@@ -73,7 +80,9 @@ wa.post("/send", async (c) => {
     source: "manual",
     dedupKey: `manual:${randomUUID()}`,
   });
-  const conn = await getKapsoConnection();
+  // Estado que se le muestra al asesor tras encolar; el envío en sí resuelve su
+  // propia operación desde la conversación (ver `jobs/outbound.ts`).
+  const conn = await getKapsoConnection(null);
   return c.json({
     ok: true,
     outboundId,
@@ -176,7 +185,12 @@ wa.post("/send-template", async (c) => {
       400,
     );
   }
-  if (!(await isTemplateApproved(templateName))) {
+  // La plantilla se aprueba por WABA, y la WABA es la de la operación del
+  // destinatario. Sin conversación todavía, `null`: la operación única.
+  const operationId = conversationId
+    ? await getConversationOperationId(conversationId)
+    : await getOperationIdByWaId(waId);
+  if (!(await isTemplateApproved(operationId, templateName))) {
     return c.json({ error: "template not approved for this WABA" }, 409);
   }
 

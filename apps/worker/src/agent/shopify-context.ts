@@ -1,5 +1,6 @@
 import { and, desc, eq, gte, shopifyOrders } from "@wa/db";
 import { db } from "../db";
+import { getOperationIdByContactId } from "../operations";
 import { logger } from "../lib/logger";
 import {
   extractProductIdsFromOrder,
@@ -46,10 +47,19 @@ function renderProduct(product: ShopifyProduct): string {
   return lines.join("\n");
 }
 
+/**
+ * El bloque de contexto de tienda que se le inyecta al agente.
+ *
+ * La operación sale de la conversación del contacto y no se recibe por
+ * parámetro: quien arma el prompt no tiene por qué saber de operaciones, y así
+ * toda lectura contra la tienda pasa por la operación de la conversación sin
+ * que ningún llamador pueda olvidarse de pasarla.
+ */
 export async function buildShopifyContextBlock(
   contactId: string,
 ): Promise<string | null> {
-  const conn = await getShopifyConnection();
+  const operationId = await getOperationIdByContactId(contactId);
+  const conn = await getShopifyConnection(operationId);
   if (!conn?.shopDomain || !conn?.adminAccessToken) return null;
 
   const since = new Date(Date.now() - ORDER_LOOKBACK_DAYS * 24 * 60 * 60_000);
@@ -73,7 +83,7 @@ export async function buildShopifyContextBlock(
 
   let products: ShopifyProduct[] = [];
   try {
-    products = await getProductsByIds(productIds);
+    products = await getProductsByIds(operationId, productIds);
   } catch (err) {
     logger.warn({ err, contactId }, "buildShopifyContextBlock: fetch failed");
     return null;

@@ -20,8 +20,13 @@ import {
   uploadMedia,
 } from "../kapso/client";
 import { isStatusAdvance } from "../kapso/delivery";
-import { getKapsoConnection } from "../kapso/connection";
+import { resolveKapsoConnection } from "../kapso/connection";
 import { isTemplateApproved } from "../kapso/provisioning";
+import {
+  type OperationRef,
+  getConversationOperationId,
+  getOperationIdByWaId,
+} from "../operations";
 import { renderTemplateBody } from "../kapso/templates";
 import { OUTBOUND_QUEUE, getBoss } from "./queue";
 
@@ -177,6 +182,23 @@ function humanSendError(err: unknown): string {
   return "No se pudo enviar el mensaje.";
 }
 
+/**
+ * La operación por la que sale el mensaje: la de su conversación.
+ *
+ * `outbound_messages` no tiene operación propia en el expand, y no hace falta —
+ * la conversación ya la guarda desde la ingesta. Sin conversación (un envío a
+ * un número con el que nunca se ha hablado) queda `null`, que es la operación
+ * única: exactamente lo que hacía el sistema antes de la migración.
+ */
+async function resolveOutboundOperationId(
+  row: OutboundMessage,
+): Promise<OperationRef> {
+  if (row.conversationId) {
+    return await getConversationOperationId(row.conversationId);
+  }
+  return await getOperationIdByWaId(row.toWaId);
+}
+
 async function resolveConversationId(
   row: OutboundMessage,
 ): Promise<string | null> {
@@ -288,7 +310,20 @@ async function handleOutbound(payload: OutboundJob): Promise<void> {
     return;
   }
 
-  const conn = await getKapsoConnection();
+  // La operación del mensaje sale de su conversación. Un fallo leyéndola no
+  // puede costar el envío: sin operación se atiende por la conexión única, que
+  // es el comportamiento previo a la migración.
+  const operationId = await resolveOutboundOperationId(row).catch(
+    (err): OperationRef => {
+      logger.error(
+        { err: String(err), outboundId: row.id },
+        "outbound: no se pudo resolver la operación; se envía por la conexión única",
+      );
+      return null;
+    },
+  );
+
+  const conn = await resolveKapsoConnection(operationId);
   if (!conn?.phoneNumberId) {
     await markTransientFailure(
       row.id,
@@ -351,7 +386,7 @@ async function handleOutbound(payload: OutboundJob): Promise<void> {
       waId = result.waMessageId;
     } else if (row.templateName) {
       const params = row.templateParams ?? [];
-      if (await isTemplateApproved(row.templateName)) {
+      if (await isTemplateApproved(operationId, row.templateName)) {
         const result = await sendTemplate({
           phoneNumberId,
           to: row.toWaId,
@@ -382,7 +417,7 @@ async function handleOutbound(payload: OutboundJob): Promise<void> {
         if (
           isWindowClosedError(err) &&
           row.fallbackTemplateName &&
-          (await isTemplateApproved(row.fallbackTemplateName))
+          (await isTemplateApproved(operationId, row.fallbackTemplateName))
         ) {
           const params = row.fallbackTemplateParams ?? [];
           const result = await sendTemplate({

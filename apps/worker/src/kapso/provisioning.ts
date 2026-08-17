@@ -3,7 +3,8 @@ import { waTemplates } from "@wa/db";
 import { db } from "../db";
 import { logger } from "../lib/logger";
 import { KapsoApiError, createTemplate, listTemplatesByName } from "./client";
-import { getKapsoConnection } from "./connection";
+import { resolveKapsoConnection } from "./connection";
+import type { OperationRef } from "../operations";
 import { VORARE_TEMPLATES, toMetaDefinition } from "./templates";
 
 /**
@@ -11,9 +12,14 @@ import { VORARE_TEMPLATES, toMetaDefinition } from "./templates";
  * whichever WABA the connected number belongs to. Idempotent: already
  * submitted/approved names are skipped; a template that already exists on the
  * WABA (Meta error) is recorded as submitted and picked up by the next poll.
+ *
+ * Y una WABA por operación: el catálogo de una operación se somete contra su
+ * propia conexión, nunca contra "la" conexión.
  */
-export async function ensureKapsoTemplates(): Promise<void> {
-  const conn = await getKapsoConnection();
+export async function ensureKapsoTemplates(
+  operationId: OperationRef,
+): Promise<void> {
+  const conn = await resolveKapsoConnection(operationId);
   const wabaId = conn?.businessAccountId;
   if (!wabaId) {
     logger.warn("kapso templates: no WABA connected yet, skipping submit");
@@ -97,8 +103,10 @@ export async function ensureKapsoTemplates(): Promise<void> {
  * Poll Meta for approval status of non-terminal templates (Kapso has no
  * template-status webhook). Run periodically from a pg-boss cron.
  */
-export async function refreshKapsoTemplateStatuses(): Promise<void> {
-  const conn = await getKapsoConnection();
+export async function refreshKapsoTemplateStatuses(
+  operationId: OperationRef,
+): Promise<void> {
+  const conn = await resolveKapsoConnection(operationId);
   const wabaId = conn?.businessAccountId;
   if (!wabaId) return;
 
@@ -150,9 +158,15 @@ export async function refreshKapsoTemplateStatuses(): Promise<void> {
   }
 }
 
-/** Send gate: never send a template Meta hasn't approved for this WABA. */
-export async function isTemplateApproved(name: string): Promise<boolean> {
-  const conn = await getKapsoConnection();
+/**
+ * Send gate: never send a template Meta hasn't approved for this WABA — la de
+ * la operación que va a enviar.
+ */
+export async function isTemplateApproved(
+  operationId: OperationRef,
+  name: string,
+): Promise<boolean> {
+  const conn = await resolveKapsoConnection(operationId);
   const wabaId = conn?.businessAccountId;
   if (!wabaId) return false;
   const [row] = await db

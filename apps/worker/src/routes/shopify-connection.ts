@@ -3,6 +3,7 @@ import { eq } from "@wa/db";
 import { shopifyConnection } from "@wa/db";
 import { shopifyConnectionInput } from "@wa/shared";
 import { db } from "../db";
+import { getSingleOperationId } from "../operations";
 import {
   invalidateShopifyConnectionCache,
   pingShopify,
@@ -42,26 +43,27 @@ shopifyConn.put("/connection", async (c) => {
     return c.json({ error: `no se pudo conectar: ${ping.error}` }, 400);
   }
 
+  // La tienda declara a qué operación pertenece. Con una sola operación se
+  // etiqueta con ella; con más de una, `getSingleOperationId()` devuelve null,
+  // el campo se omite y la fila conserva la operación que ya tuviera —
+  // reconfigurar la tienda no puede cambiarle el país por descuido. Elegir
+  // operación desde el panel es trabajo del ticket de contract.
+  const owner = await getSingleOperationId();
   const now = new Date();
+  const values = {
+    ...(owner ? { operationId: owner } : {}),
+    shopDomain: v.shopDomain,
+    adminAccessToken: v.adminAccessToken,
+    apiVersion,
+    connectedAt: now,
+    updatedAt: now,
+  };
   await db
     .insert(shopifyConnection)
-    .values({
-      id: 1,
-      shopDomain: v.shopDomain,
-      adminAccessToken: v.adminAccessToken,
-      apiVersion,
-      connectedAt: now,
-      updatedAt: now,
-    })
+    .values({ id: 1, ...values })
     .onConflictDoUpdate({
       target: shopifyConnection.id,
-      set: {
-        shopDomain: v.shopDomain,
-        adminAccessToken: v.adminAccessToken,
-        apiVersion,
-        connectedAt: now,
-        updatedAt: now,
-      },
+      set: values,
     });
   invalidateShopifyConnectionCache();
   return c.json({ ok: true, shopName: ping.shopName });
