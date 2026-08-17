@@ -6,14 +6,14 @@ Es el nivel primario de la cascada. Los fallbacks van en el ticket siguiente.
 
 **Blocked by:** 01 · 02 · 03
 
-**Status:** claimed (parte pura) — worktree `reconocimiento-cascada`, tanda del 17-ago-2026. La persistencia espera al esquema `0022`.
+**Status:** resolved — parte pura en el worktree `reconocimiento-cascada`; persistencia cableada en el worktree `ingesta-atribucion`. Tanda del 17-ago-2026, sin merge ni deploy.
 
 - [x] La cascada de reconocimiento es una función pura que recibe la referencia del anuncio, el catálogo y un matcher semántico inyectado.
 - [x] Devuelve tres formas distinguibles: resuelto a un producto, ambiguo con la lista de candidatos, o desconocido.
 - [x] Un anuncio registrado que apunta a un solo producto da resuelto.
 - [x] Un anuncio registrado que apunta a varios productos da ambiguo con esa lista, no con el catálogo entero.
-- [ ] La atribución del lead a su anuncio y a su producto se persiste en el primer contacto.
-- [ ] Un mensaje posterior de la misma conversación —incluida una respuesta de botón, que no trae referencia— sigue teniendo su producto y su anuncio.
+- [x] La atribución del lead a su anuncio y a su producto se persiste en el primer contacto.
+- [x] Un mensaje posterior de la misma conversación —incluida una respuesta de botón, que no trae referencia— sigue teniendo su producto y su anuncio.
 - [x] Los tests cubren la cascada con el matcher semántico stubeado, sin llamar a ningún modelo.
 
 ## Answer
@@ -82,3 +82,68 @@ Ambos leen y escriben tablas de la `0022` que otro worktree está creando:
 - **Que un mensaje posterior siga teniendo su producto**: leer la atribución guardada en vez de la referencia, porque las respuestas de botón no la traen. La cascada no se toca para eso — solo cambia de dónde sale el `referral` que recibe (o si se llama siquiera).
 
 Cuando la `0022` aterrice, el borde son ~10 líneas: mapear filas → `CatalogProduct[]` / `AdProductMapping[]`, y elegir el matcher real (ticket 05).
+
+## Answer — la persistencia, cableada el 17-ago-2026 (worktree `ingesta-atribucion`)
+
+**Los dos criterios que faltaban están cerrados.** La cascada no se tocó: ni su firma, ni
+su lógica, ni sus 17 tests. Lo que se agregó es el borde que la alimenta y lo que guarda
+su resultado.
+
+### El borde: `apps/worker/src/sales/catalog.ts`
+
+Son las ~10 líneas que el ticket anticipaba, y hacen exactamente lo previsto:
+
+```ts
+recognizeProductForReferral({ operationId, referral }): Promise<ProductRecognition>
+```
+
+- `loadCatalog(operationId)` → `CatalogProduct[]`, filtrando **por operación**. Un lead
+  guatemalteco no se resuelve contra productos colombianos aunque el anuncio estuviera mal
+  etiquetado — y la cascada, además, descarta por su cuenta los ids del mapeo que no estén
+  en ese catálogo.
+- `loadAdMappings(operationId, adId)` → una fila por par `(anuncio, producto)`, tal cual;
+  la cascada las junta sola. Sin `adId` no se consulta el mapeo: no hay con qué buscar.
+- El **matcher semántico entra vacío** (`NO_SEMANTIC_MATCHER`, cero candidatos). El nivel 2
+  llama a un modelo y es del ticket 05, así que hoy la cascada solo puede resolver por id
+  de anuncio, que es justo el alcance de *este* ticket. Se exporta
+  `SEMANTIC_LEVEL_WIRED = false` y va en el log del reconocimiento **para que nadie lea un
+  `low-confidence` como «el modelo miró el anuncio y no supo»**: hoy significa «el anuncio
+  no está registrado y nadie más miró».
+
+Un apunte que hereda el ticket 05: `products.name` es **nulo** para los productos
+conectados a Shopify (el nombre se lee de la tienda en tiempo de uso, a propósito). Al
+nivel 1 no le importa, pero **el matcher real tendrá que resolver los nombres contra
+Shopify antes de matchear** o le estaría preguntando a un modelo por productos sin nombre.
+
+### Qué se guarda, y cuándo
+
+Solo `kind: "resolved"` escribe `conversations.product_id`. **Ambiguo no escribe nada**:
+elegir uno de varios candidatos es mandarle al cliente información del SKU equivocado, y
+la lista corta es del ticket 05.
+
+El orden importa y es deliberado: primero se guarda la **atribución** (anuncio + clic +
+crudo), que es lo irrecuperable, y después se reconoce el producto, que es derivable. Si
+el reconocimiento falla, la conversación queda con su anuncio y sin producto — que es el
+estado que hace que el vendedor pregunte, y no una pérdida.
+
+**Un clic nuevo deja el producto en `null`** como parte de la misma escritura de la
+atribución, y la cascada lo vuelve a resolver sobre el anuncio nuevo. Conservar el
+anterior dejaría el producto de julio colgado del anuncio de agosto.
+
+### Criterio 6: el mensaje posterior
+
+Se cumple sin volver a llamar a la cascada, que es como el ticket lo anticipaba: **cambia
+de dónde sale la información, no la función**. Un mensaje sin referencia —toda respuesta
+de botón o de lista— no escribe nada y la conversación conserva `ad_id`, `ctwa_clid` y
+`product_id`; el reconocimiento **ni siquiera se invoca**, porque pedirle a la cascada que
+resuelva sin referencia sería preguntarle lo que ya está contestado. Está probado en
+`sales/attribution.test.ts` y en `sales/owner.test.ts` («una respuesta de botón sigue
+teniendo su anuncio, su producto y su clic»).
+
+### Verificación
+
+`pnpm -r typecheck` limpio en los 4 paquetes. `pnpm --filter @wa/worker test`: **180 tests
+en 12 archivos** — los 17 de la cascada intactos y sin tocar. Contra producción, solo
+lectura: `products` y `product_ads` de Guatemala están vacías, así que hoy el nivel 1 no
+puede resolver nada todavía; las consultas del borde se ejecutaron igual contra la base
+real para comprobar que corren.
