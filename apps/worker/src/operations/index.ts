@@ -1,60 +1,41 @@
 /**
- * Accesores de la tabla `operations`.
+ * Lo que el worker sabe de operaciones.
  *
- * Es el módulo compartido de la migración multi-operación: de aquí sale la
- * operación que después se le pasa a cada conexión (WhatsApp, tienda,
- * logística, configuración de agente). La regla pura de resolución vive en
- * `./resolve.ts` y se prueba sin base.
+ * Los accesores de la tabla `operations` **ya no viven aquí**: el contract
+ * (ticket 06) los unificó en `@wa/db` (`operations.ts`), porque había dos
+ * vocabularios para la misma idea —`getSingleOperationId()` aquí y
+ * `requireSoleActiveOperation()` en `dropi/config.ts`, con dos
+ * `listActiveOperations()` y dos cachés— y el panel los necesita también. Se
+ * re-exportan desde aquí para que los llamadores del worker no tengan que saber
+ * dónde quedaron.
+ *
+ * Lo propio del worker es lo de abajo: la regla pura de ruteo del entrante y la
+ * caché por operación de las conexiones.
  */
 import { eq } from "@wa/db";
-import { contacts, conversations, operations } from "@wa/db";
+import { contacts, conversations, type OperationId } from "@wa/db";
 import { db } from "../db";
-import { OPERATION_CACHE_MS } from "./cache";
-import type { OperationId } from "./resolve";
+
+export {
+  getOperationById,
+  getSingleActiveOperation,
+  invalidateOperationsCache,
+  listActiveOperations,
+  requireOperationById,
+  requireOperationOrSole,
+  requireSoleActiveOperation,
+  resolveOperationForContact,
+  type Operation,
+  type OperationId,
+} from "@wa/db";
 
 export { OPERATION_CACHE_MS, OperationScopedCache } from "./cache";
 export {
   type InboundOperationDecision,
   type OperationConnectionRef,
-  type OperationId,
-  type OperationRef,
-  SINGLE_OPERATION_CACHE_KEY,
-  canUseSingleOperationFallback,
   decideInboundOperation,
-  operationCacheKey,
   resolveOperationIdByPhoneNumberId,
 } from "./resolve";
-
-const CACHE_MS = OPERATION_CACHE_MS;
-
-let singleOperationCache: { id: OperationId | null; at: number } | null = null;
-
-/**
- * El id de la operación activa **única**, o `null` si hay cero o más de una.
- *
- * Es la red de seguridad de toda la migración. Mientras el sistema tenga una
- * sola operación activa, cualquier camino que no logre resolver la suya puede
- * seguir atendiéndola sin ambigüedad: no hay a quién más atribuirle el trabajo.
- * En cuanto se dé de alta la segunda operación activa esta función devuelve
- * `null`, la red se desarma sola y los caminos tienen que resolver de verdad.
- *
- * Cuenta solo las `active` a propósito: dar de alta Colombia en `inactive` deja
- * la red puesta hasta que Colombia realmente empiece a operar.
- */
-export async function getSingleOperationId(): Promise<OperationId | null> {
-  if (singleOperationCache && Date.now() - singleOperationCache.at < CACHE_MS) {
-    return singleOperationCache.id;
-  }
-  // `limit(2)`: no hace falta contarlas todas, solo saber si hay más de una.
-  const rows = await db
-    .select({ id: operations.id })
-    .from(operations)
-    .where(eq(operations.status, "active"))
-    .limit(2);
-  const id = rows.length === 1 ? (rows[0]?.id ?? null) : null;
-  singleOperationCache = { id, at: Date.now() };
-  return id;
-}
 
 /** La operación que una conversación guarda, si ya tiene una. */
 export async function getConversationOperationId(
@@ -94,12 +75,4 @@ export async function getOperationIdByWaId(
     .where(eq(contacts.waId, waId))
     .limit(1);
   return row?.operationId ?? null;
-}
-
-/**
- * A llamar cuando se da de alta o se desactiva una operación: es lo que arma o
- * desarma la red de seguridad de {@link getSingleOperationId}.
- */
-export function invalidateSingleOperationCache(): void {
-  singleOperationCache = null;
 }

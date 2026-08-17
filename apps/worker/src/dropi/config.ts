@@ -1,80 +1,27 @@
-import { asc, eq, isNull, sql } from "@wa/db";
+import { eq, sql } from "@wa/db";
 import {
-  conversations,
   dropiConnection,
   operations,
   type DropiConnection,
   type Operation,
 } from "@wa/db";
 import { db } from "../db";
-import { logger } from "../lib/logger";
+import { OperationScopedCache } from "../operations";
 
 // ────────────────────────────────────────────────────────────────────────────
-// Operación · helpers locales
+// Los helpers de operación **ya no viven aquí**.
 //
-// Deliberadamente locales a `dropi/`: el lote de la conexión de WhatsApp y la
-// tienda define la forma común de resolver operaciones, y ahí se unifican.
-// Esto es lo mínimo para que la conexión de logística cuelgue de su operación
-// sin inventar vocabulario compartido que después haya que deshacer.
+// Este archivo tenía su propio `listActiveOperations`, `requireSoleActiveOperation`
+// y `resolveOperationForContact`, y una caché en `Map` equivalente a
+// `OperationScopedCache`, porque el lote de logística corrió en paralelo con el
+// de WhatsApp y no podían verse. El contract (ticket 06) los unificó en
+// `@wa/db` (`operations.ts`): dos implementaciones de «cuál es la única
+// operación activa» se desincronizan en cuanto una se toque, y la que quede
+// vieja responde con el país equivocado.
+//
+// Lo único que se quedó es lo que de verdad es de logística: encontrar la
+// operación por el teléfono del administrador de Dropi.
 // ────────────────────────────────────────────────────────────────────────────
-
-/** Las operaciones que atienden hoy. `inactive` existe pero no opera. */
-export async function listActiveOperations(): Promise<Operation[]> {
-  return db
-    .select()
-    .from(operations)
-    .where(eq(operations.status, "active"))
-    .orderBy(asc(operations.countryCode));
-}
-
-/**
- * Puente de la migración, para quien todavía no recibe la operación por
- * parámetro: el panel (que no tiene selector hasta el ticket 07) y las filas
- * sin conversación de la que deducirla.
- *
- * Con dos operaciones activas **lanza en vez de elegir**. Elegir en silencio es
- * exactamente el error que este lote existe para hacer imposible: un pedido
- * colombiano confirmado contra la logística guatemalteca. Lanzar convierte el
- * puente en algo que hay que quitar antes de abrir Colombia, no en un default
- * que sobrevive callado. El contract (ticket 06) lo borra.
- */
-export async function requireSoleActiveOperation(): Promise<Operation> {
-  const rows = await listActiveOperations();
-  const only = rows[0];
-  if (!only) {
-    throw new Error("no hay ninguna operación activa configurada");
-  }
-  if (rows.length > 1) {
-    const codes = rows.map((r) => r.countryCode).join(", ");
-    throw new Error(
-      `hay ${rows.length} operaciones activas (${codes}): quien llama tiene que decir de cuál`,
-    );
-  }
-  return only;
-}
-
-/**
- * La operación de un contacto es la de su conversación — `operation_id` la
- * backfilleó el ticket 01 (1.688/1.688 en producción) y la empieza a escribir
- * el lote de la conexión de WhatsApp.
- *
- * Una conversación recién creada todavía la trae vacía, así que cae al puente:
- * con una sola operación eso es Guatemala, que es la respuesta correcta hoy.
- */
-export async function resolveOperationForContact(
-  contactId: string | null,
-): Promise<Operation> {
-  if (contactId) {
-    const [row] = await db
-      .select({ operation: operations })
-      .from(conversations)
-      .innerJoin(operations, eq(operations.id, conversations.operationId))
-      .where(eq(conversations.contactId, contactId))
-      .limit(1);
-    if (row) return row.operation;
-  }
-  return requireSoleActiveOperation();
-}
 
 /**
  * La operación cuya logística tiene configurado ese teléfono de administrador.
@@ -102,99 +49,58 @@ export async function findOperationByDropiAdminPhone(
 // La conexión de logística de una operación
 // ────────────────────────────────────────────────────────────────────────────
 
-const CONNECTION_TTL_MS = 30 * 1000;
+/**
+ * Caché indexada por operación. Con una sola entrada —como estaba antes de la
+ * migración— la segunda operación recibiría la conexión de la primera durante
+ * 30 segundos, sin fallar ni compilar mal: pediría guías al Dropi del país
+ * equivocado.
+ *
+ * Es la misma `OperationScopedCache` que usan las conexiones de WhatsApp y de
+ * la tienda: el contract cambió el `Map` propio de este archivo por la clase
+ * compartida y probada.
+ */
+const connectionCache = new OperationScopedCache<DropiConnection | null>();
 
 /**
- * Caché indexada por operación. Con una sola entrada —como estaba— la segunda
- * operación recibiría la conexión de la primera durante 30 segundos, sin fallar
- * ni compilar mal: pediría guías al Dropi del país equivocado.
+ * La conexión de logística de una operación. **Estricta.**
+ *
+ * El contract (ticket 06) borró `resolveDropiConnection`, la versión con red:
+ * caía en la fila «huérfana» —una `dropi_connection` con `operation_id` en
+ * `NULL`, la que habría dejado el código anterior a la migración— cuando `op`
+ * era la única operación activa. La `0021` volvió `operation_id` obligatoria,
+ * así que esa fila huérfana ya no puede existir y la red no tenía nada que
+ * atrapar. Una red que no puede atrapar nada promete una garantía que nadie
+ * prueba.
  */
-const connectionCache = new Map<
-  string,
-  { value: DropiConnection | null; expires: number }
->();
-
 export async function getDropiConnection(
   op: Operation,
 ): Promise<DropiConnection | null> {
-  const now = Date.now();
-  const cached = connectionCache.get(op.id);
-  if (cached && cached.expires > now) {
-    return cached.value;
-  }
+  const hit = connectionCache.get(op.id);
+  if (hit) return hit.value;
   const [row] = await db
     .select()
     .from(dropiConnection)
     .where(eq(dropiConnection.operationId, op.id))
     .limit(1);
   const value = row ?? null;
-  connectionCache.set(op.id, { value, expires: now + CONNECTION_TTL_MS });
+  connectionCache.set(op.id, value);
   return value;
 }
 
 /** Invalida solo la operación tocada: la de al lado sigue siendo válida. */
 export function invalidateDropiConnectionCache(op: Operation): void {
-  connectionCache.delete(op.id);
-}
-
-/**
- * Busca la fila singleton huérfana —la que quedaría si alguien creara una
- * conexión con el código viejo, que insertaba sin operación— y solo la
- * devuelve si `op` es la única operación activa: en ese caso esa fila no puede
- * ser de otro país.
- *
- * La red se desarma sola el día que Colombia opere, sin que nadie tenga que
- * acordarse de quitarla.
- */
-async function orphanConnectionFor(
-  op: Operation,
-): Promise<DropiConnection | null> {
-  const activas = await listActiveOperations();
-  if (activas.length !== 1 || activas[0]?.id !== op.id) return null;
-  const [huerfana] = await db
-    .select()
-    .from(dropiConnection)
-    .where(isNull(dropiConnection.operationId))
-    .limit(1);
-  return huerfana ?? null;
-}
-
-/**
- * La conexión de logística de una operación, **con red**: si la operación no
- * tiene conexión propia pero es la única activa, cae en la fila huérfana y lo
- * grita en los logs.
- *
- * La red va aquí y no en `getDropiConnection` porque perder la logística frena
- * las confirmaciones de la operación que factura, y porque una fila sin
- * operación solo puede existir por el código viejo. Quien pinta el panel usa
- * la versión estricta: la pantalla tiene que decir la verdad.
- */
-export async function resolveDropiConnection(
-  op: Operation,
-): Promise<DropiConnection | null> {
-  const propia = await getDropiConnection(op);
-  if (propia) return propia;
-  const huerfana = await orphanConnectionFor(op);
-  if (!huerfana) return null;
-  logger.error(
-    { operation: op.countryCode, dropiConnectionId: huerfana.id },
-    "dropi_connection sin operación: usando la fila huérfana porque solo hay una operación activa",
-  );
-  return huerfana;
+  connectionCache.invalidate(op.id);
 }
 
 export async function upsertDropiConnection(
   op: Operation,
   patch: Partial<DropiConnection>,
 ): Promise<void> {
-  // La misma red que la lectura, y de paso la repara: escribir sobre la fila
-  // huérfana la deja asociada a su operación en vez de crear una duplicada.
-  const [propia] = await db
+  const [existing] = await db
     .select()
     .from(dropiConnection)
     .where(eq(dropiConnection.operationId, op.id))
     .limit(1);
-  const existing = propia ?? (await orphanConnectionFor(op));
   if (existing) {
     await db
       .update(dropiConnection)

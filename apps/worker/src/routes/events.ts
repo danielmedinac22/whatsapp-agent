@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import type { WaEvent } from "@wa/shared";
+import { panelOperation } from "@wa/db";
 import { events as bus } from "../lib/events";
 import { getKapsoConnection } from "../kapso/connection";
 
@@ -27,9 +28,13 @@ events.get("/", (c) =>
     };
 
     // initial snapshot — connection state now lives in kapso_connection.
-    // El panel todavía muestra una sola conexión: `null` es la operación única.
-    // El día que el panel elija operación, ese id entra por aquí.
-    const conn = await getKapsoConnection(null).catch(() => null);
+    // El panel todavía muestra una sola conexión: `panelOperation()` resuelve la
+    // única activa y falla con dos, en vez de mostrar siempre la de Guatemala.
+    // Aquí el fallo se traga a propósito: un SSE de estado que no puede resolver
+    // la operación reporta "disconnected", no rompe la pantalla entera.
+    const conn = await panelOperation()
+      .then((op) => getKapsoConnection(op))
+      .catch(() => null);
     await send({
       type: "status",
       status: conn?.phoneNumberId ? "connected" : "disconnected",

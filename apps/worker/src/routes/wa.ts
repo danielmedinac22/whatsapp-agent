@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import { z } from "zod";
-import { eq, messageMedia } from "@wa/db";
+import { eq, messageMedia, panelOperation } from "@wa/db";
 import { db } from "../db";
 import { getKapsoConnection } from "../kapso/connection";
 import { isTemplateApproved } from "../kapso/provisioning";
@@ -15,6 +15,7 @@ import { enqueueOutbound } from "../jobs/outbound";
 import {
   getConversationOperationId,
   getOperationIdByWaId,
+  requireOperationOrSole,
 } from "../operations";
 
 export const wa = new Hono();
@@ -45,10 +46,11 @@ wa.get("/media/:id", async (c) => {
 
 /**
  * Connection status — fed by kapso_connection (no QR/session lifecycle).
- * El panel todavía muestra una sola conexión: `null` es la operación única.
+ * El panel todavía muestra una sola conexión: la del panel (ticket 07 trae el
+ * selector). Ya no es `null` = la fila singleton = Guatemala.
  */
 wa.get("/status", async (c) => {
-  const conn = await getKapsoConnection(null);
+  const conn = await getKapsoConnection(await panelOperation());
   return c.json({
     status: conn?.phoneNumberId ? "connected" : "disconnected",
     phone: conn?.displayPhoneNumber ?? null,
@@ -82,7 +84,7 @@ wa.post("/send", async (c) => {
   });
   // Estado que se le muestra al asesor tras encolar; el envío en sí resuelve su
   // propia operación desde la conversación (ver `jobs/outbound.ts`).
-  const conn = await getKapsoConnection(null);
+  const conn = await getKapsoConnection(await panelOperation());
   return c.json({
     ok: true,
     outboundId,
@@ -186,11 +188,13 @@ wa.post("/send-template", async (c) => {
     );
   }
   // La plantilla se aprueba por WABA, y la WABA es la de la operación del
-  // destinatario. Sin conversación todavía, `null`: la operación única.
-  const operationId = conversationId
-    ? await getConversationOperationId(conversationId)
-    : await getOperationIdByWaId(waId);
-  if (!(await isTemplateApproved(operationId, templateName))) {
+  // destinatario. Sin conversación todavía, el puente de la operación única.
+  const op = await requireOperationOrSole(
+    conversationId
+      ? await getConversationOperationId(conversationId)
+      : await getOperationIdByWaId(waId),
+  );
+  if (!(await isTemplateApproved(op, templateName))) {
     return c.json({ error: "template not approved for this WABA" }, 409);
   }
 

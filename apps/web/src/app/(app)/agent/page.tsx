@@ -1,4 +1,4 @@
-import { GLOBAL_AGENT_SETTINGS } from "@wa/db";
+import { panelOperation } from "@wa/db";
 import {
   getAgentSettings,
   listRecentConversationOptions,
@@ -10,9 +10,11 @@ export const dynamic = "force-dynamic";
 
 export default async function AgentPage() {
   const [settings, templates, conversations] = await Promise.all([
-    // La pantalla de configuración edita la fila global: el selector de
-    // operación del panel es de otro ticket.
-    getAgentSettings(GLOBAL_AGENT_SETTINGS),
+    // La pantalla de configuración edita la de **una** operación: la del panel,
+    // que hasta el selector (ticket 07) es la única activa. Antes editaba la
+    // fila global `id = 1` — que es Guatemala, y por tanto el país equivocado
+    // en cuanto exista el segundo.
+    panelOperation().then(getAgentSettings),
     listTemplates(),
     listRecentConversationOptions(),
   ]);

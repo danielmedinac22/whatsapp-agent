@@ -148,6 +148,13 @@
       "when": 1786933044761,
       "tag": "0020_entidad_operacion",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1786936819820,
+      "tag": "0021_contract_operacion_obligatoria",
+      "breakpoints": true
     }
   ]
 }

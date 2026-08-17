@@ -6,13 +6,13 @@ Paso **contract**: se borra la forma vieja ahora que nadie la usa.
 
 **Blocked by:** 02 · 03 · 04 · 05
 
-**Status:** claimed — worktree `op-06-contract`, tanda del 16-ago-2026
+**Status:** resolved — worktree `op-06-contract`, tanda del 16-ago-2026, migración `0021` aplicada a producción
 
-- [ ] Ningún accesor devuelve una conexión o configuración sin recibir la operación.
-- [ ] La referencia a operación pasa a ser obligatoria en las cuatro tablas.
-- [ ] No queda ningún valor por defecto que resuelva a Guatemala implícitamente.
-- [ ] La suite completa pasa en verde.
-- [ ] El comportamiento observable de la operación de Guatemala sigue idéntico.
+- [x] Ningún accesor devuelve una conexión o configuración sin recibir la operación.
+- [x] La referencia a operación pasa a ser obligatoria en las cuatro tablas. *(y en una quinta, `dropi_orders`; `conversations` se queda nullable a propósito — ver abajo)*
+- [x] No queda ningún valor por defecto que resuelva a Guatemala implícitamente.
+- [x] La suite completa pasa en verde.
+- [x] El comportamiento observable de la operación de Guatemala sigue idéntico.
 
 ## Medido contra el código (16-ago-2026)
 

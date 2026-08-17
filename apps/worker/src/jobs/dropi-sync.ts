@@ -3,7 +3,7 @@ import {
   contacts,
   dropiOrders,
   getAgentSettings,
-  GLOBAL_AGENT_SETTINGS,
+  listActiveOperations,
   shopifyOrders,
   type AgentSettings,
   type DropiOrder,
@@ -14,7 +14,6 @@ import { logger } from "../lib/logger";
 import { listAllOrders, type DropiOrderRow } from "../dropi/orders";
 import { deriveDropiState } from "../dropi/normalize";
 import { maybeNotifyDropiStatus } from "../dropi/notify";
-import { listActiveOperations } from "../dropi/config";
 import {
   belongsToOperation,
   pickShopifyMatch,
@@ -135,10 +134,17 @@ async function upsertDropiOrder(
   const phone = normalizePhone(row.customer_phone);
   const createdAt = parseCreatedAt(row.created_at);
 
+  // Por (operación, id de Dropi): el número de pedido es único dentro de una
+  // cuenta de Dropi, no entre cuentas.
   const [existing] = await db
     .select()
     .from(dropiOrders)
-    .where(eq(dropiOrders.dropiOrderId, row.id))
+    .where(
+      and(
+        eq(dropiOrders.operationId, op.id),
+        eq(dropiOrders.dropiOrderId, row.id),
+      ),
+    )
     .limit(1);
 
   let match: ShopifyMatch | null = null;
@@ -187,6 +193,7 @@ async function upsertDropiOrder(
   const [inserted] = await db
     .insert(dropiOrders)
     .values({
+      operationId: op.id,
       dropiOrderId: row.id,
       ...patch,
     })
@@ -210,14 +217,6 @@ export async function runDropiSync(opts?: {
   windowDays?: number;
   pageSize?: number;
 }): Promise<DropiSyncResult> {
-  // Global: el sync barre los pedidos de la conexión de Dropi, que todavía no
-  // dice de qué operación es (ticket 04). Misma fila que se leía antes.
-  const s = await getAgentSettings(GLOBAL_AGENT_SETTINGS);
-  if (!s?.dropiEnabled) {
-    logger.info("dropi sync: disabled in agent_settings, skipping");
-    return { fetched: 0, upserted: 0, matched: 0, errors: 0 };
-  }
-
   const ops = await listActiveOperations();
   if (ops.length === 0) {
     logger.warn("dropi sync: no hay operaciones activas, nada que sincronizar");
@@ -233,6 +232,17 @@ export async function runDropiSync(opts?: {
   const failures: unknown[] = [];
   for (const op of ops) {
     try {
+      // La configuración es la de esta operación. El lote 05 la leyó en ámbito
+      // global porque `dropiEnabled` pertenece a la conexión de Dropi y esa
+      // conexión todavía no declaraba su operación; desde el ticket 04 sí.
+      const s = await getAgentSettings(op);
+      if (!s?.dropiEnabled) {
+        logger.info(
+          { operation: op.countryCode },
+          "dropi sync: disabled in agent_settings, skipping",
+        );
+        continue;
+      }
       const r = await runDropiSyncForOperation(op, s, opts);
       total.fetched += r.fetched;
       total.upserted += r.upserted;
@@ -343,11 +353,26 @@ export async function startDropiSyncWorker() {
   logger.info("dropi sync worker started");
 }
 
+/**
+ * Cada cuánto corre el cron de la sincronización.
+ *
+ * El cron es **uno solo por proceso** y el intervalo es por operación, así que
+ * se toma el menor de los configurados: nadie queda sincronizado más lento de
+ * lo que pidió. Con una sola operación es exactamente el valor de antes.
+ */
+async function syncIntervalMinutes(): Promise<number> {
+  const ops = await listActiveOperations();
+  const configurados: number[] = [];
+  for (const op of ops) {
+    const s = await getAgentSettings(op);
+    if (s?.dropiSyncIntervalMin) configurados.push(s.dropiSyncIntervalMin);
+  }
+  return configurados.length > 0 ? Math.min(...configurados) : 15;
+}
+
 export async function scheduleDropiSync(): Promise<void> {
   const boss = await getBoss();
-  // El cron del sync es uno solo por proceso: ámbito global.
-  const s = await getAgentSettings(GLOBAL_AGENT_SETTINGS);
-  const minutes = s?.dropiSyncIntervalMin ?? 15;
+  const minutes = await syncIntervalMinutes();
   // pg-boss schedule: cron-like. */N * * * *
   const cron = `*/${Math.max(1, minutes)} * * * *`;
   await boss.schedule(DROPI_SYNC_QUEUE, cron, {});

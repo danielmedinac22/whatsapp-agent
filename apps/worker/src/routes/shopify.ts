@@ -1,9 +1,9 @@
 import { Hono } from "hono";
 import { eq } from "@wa/db";
 import {
-  agentSettingsScope,
   conversations,
   getAgentSettings,
+  requireOperationOrSole,
   shopifyOrders,
 } from "@wa/db";
 import { shopifyOrderWebhook } from "@wa/shared";
@@ -14,7 +14,7 @@ import { scheduleFollowup } from "../jobs/followup";
 import { scheduleRemarketing } from "../jobs/remarketing";
 import { normalizePhone } from "../lib/phone";
 import { upsertContactByWaId } from "../inbound/contacts";
-import { getSingleOperationId } from "../operations";
+import { getSingleActiveOperation } from "../operations";
 
 export const shopify = new Hono();
 
@@ -61,9 +61,14 @@ shopify.post("/webhook", async (c) => {
   // exista una sola se le atribuye a ella y es exacto. Resolver la operación de
   // un pedido web por su tienda de origen exige una segunda tienda que
   // distinguir y es trabajo del ticket 08 — no se inventa aquí un mecanismo que
-  // no se puede probar. Con dos operaciones, `getSingleOperationId()` devuelve
-  // null y el pedido queda sin atribuir en vez de atribuido al país equivocado.
-  const operationId = await getSingleOperationId();
+  // no se puede probar.
+  //
+  // **Es la primitiva que devuelve `null`, no el puente que lanza**, y por eso
+  // `conversations.operation_id` sigue siendo nullable después del contract:
+  // con dos operaciones el pedido queda sin atribuir —visible— en vez de
+  // atribuido al país equivocado o, peor, perdido con un error de restricción.
+  // Por ahí entran los 1.681 pedidos que facturan (R4).
+  const operationId = (await getSingleActiveOperation())?.id ?? null;
 
   let [conv] = await db
     .select()
@@ -91,7 +96,7 @@ shopify.post("/webhook", async (c) => {
   // Los tiempos de seguimiento y remarketing salen de la operación dueña de la
   // conversación del cliente, que es la que recibió el pedido.
   const settings = await getAgentSettings(
-    agentSettingsScope(conv?.operationId),
+    await requireOperationOrSole(conv?.operationId),
   );
   const followupDelay = settings?.followupDelayMs ?? 5 * 60_000;
   const remarketingDelay = settings?.remarketingDelayMs ?? 3 * 60 * 60_000;

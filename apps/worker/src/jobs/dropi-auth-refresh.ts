@@ -1,6 +1,7 @@
 import type { Operation } from "@wa/db";
 import { logger } from "../lib/logger";
-import { resolveDropiConnection, listActiveOperations } from "../dropi/config";
+import { listActiveOperations } from "@wa/db";
+import { getDropiConnection } from "../dropi/config";
 import { Dropi2FAPendingError, refreshDropiAuth } from "../dropi/auth";
 import { DROPI_AUTH_REFRESH_QUEUE, getBoss } from "./queue";
 
@@ -22,7 +23,7 @@ export interface DropiAuthRefreshResult {
 export async function runDropiAuthRefreshForOperation(
   op: Operation,
 ): Promise<DropiAuthRefreshResult> {
-  const conn = await resolveDropiConnection(op);
+  const conn = await getDropiConnection(op);
   if (!conn?.email || !conn?.password) {
     return {
       skipped: true,

@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import { randomBytes } from "node:crypto";
 import { getDb, getRawClient } from "./client";
+import { requireSoleActiveOperation } from "./operations";
 import {
   users,
   agentSettings,
@@ -43,10 +44,16 @@ async function main() {
     .onConflictDoNothing({ target: templates.name })
     .returning();
 
+  // La configuración de agente cuelga de una operación desde el contract
+  // (ticket 06). En una base recién migrada la operación ya existe: la crea la
+  // migración `0020`. Si no hay ninguna, esto falla en vez de sembrar una fila
+  // sin dueño — que es justo lo que la `0021` ya no admite.
+  const op = await requireSoleActiveOperation();
   await db
     .insert(agentSettings)
     .values({
       id: 1,
+      operationId: op.id,
       systemPrompt: DEFAULT_SYSTEM_PROMPT,
       model: "anthropic/claude-sonnet-4.6",
       debounceMs: 8000,

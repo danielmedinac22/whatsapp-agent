@@ -23,7 +23,7 @@ import {
   sanitizeParam,
 } from "../kapso/templates";
 import { enqueueOutbound } from "../jobs/outbound";
-import { resolveDropiConnection } from "./config";
+import { getDropiConnection } from "./config";
 import { extractNovedadReason } from "./novedad";
 import { enqueueNovedadNotify } from "../jobs/dropi-novedad-notify";
 
@@ -141,7 +141,7 @@ async function sendStatusNotification(
   }
 
   // El PDF de la guía vive en el CDN de la logística de esta operación.
-  const conn = await resolveDropiConnection(op);
+  const conn = await getDropiConnection(op);
   const assetsBase = (conn?.assetsBaseUrl ?? "").replace(/\/$/, "");
   const pdfGuia =
     assetsBase && order.guidePdfPath

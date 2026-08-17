@@ -2,12 +2,12 @@ import { createHash } from "node:crypto";
 import { generateText, type ModelMessage } from "ai";
 import {
   agentRuns,
-  agentSettingsScope,
   asc,
   desc,
   eq,
   getAgentSettings,
   messages,
+  requireOperationOrSole,
   type Contact,
   type Conversation,
 } from "@wa/db";
@@ -42,8 +42,8 @@ const buffers = new Map<string, Buffered>();
  * El agente contesta con el prompt, el modelo y los tiempos de la operación
  * dueña de la conversación.
  */
-function loadSettings(conversation: Conversation) {
-  return getAgentSettings(agentSettingsScope(conversation.operationId));
+async function loadSettings(conversation: Conversation) {
+  return getAgentSettings(await requireOperationOrSole(conversation.operationId));
 }
 
 /**

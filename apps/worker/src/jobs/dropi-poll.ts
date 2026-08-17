@@ -1,9 +1,8 @@
-import { eq, inArray } from "@wa/db";
+import { and, eq, inArray } from "@wa/db";
 import {
   dropiOrders,
   getAgentSettings,
-  GLOBAL_AGENT_SETTINGS,
-  shopifyOrders,
+  listActiveOperations,
   type AgentSettings,
   type DropiOrder,
   type Operation,
@@ -13,8 +12,6 @@ import { logger } from "../lib/logger";
 import { listAllOrders, type DropiOrderRow } from "../dropi/orders";
 import { deriveDropiState } from "../dropi/normalize";
 import { maybeNotifyDropiStatus } from "../dropi/notify";
-import { listActiveOperations } from "../dropi/config";
-import { belongsToOperation } from "../dropi/match-shopify";
 import { DROPI_POLL_QUEUE, getBoss } from "./queue";
 
 type DropiStatus = DropiOrder["status"];
@@ -37,31 +34,21 @@ async function processRow(
   const newStatus = state.status;
 
   // El id de Dropi es único dentro de una cuenta, no entre cuentas: dos
-  // operaciones pueden traer el mismo número. Mientras `dropi_orders` no tenga
-  // `operation_id`, lo más cerca que se puede estar de comprobarlo es la moneda
-  // del pedido de tienda con el que está cruzado.
-  const [found] = await db
-    .select({ order: dropiOrders, shopCurrency: shopifyOrders.currency })
+  // operaciones pueden traer el mismo número. La fila se busca por (operación,
+  // id de Dropi), que es el único de la tabla desde la `0021`. Antes de esa
+  // columna, lo más cerca que se podía estar era comparar la moneda del pedido
+  // de tienda cruzado — y eso dejaba fuera a los pedidos sin cruzar.
+  const [existing] = await db
+    .select()
     .from(dropiOrders)
-    .leftJoin(shopifyOrders, eq(dropiOrders.shopifyOrderRowId, shopifyOrders.id))
-    .where(eq(dropiOrders.dropiOrderId, row.id))
+    .where(
+      and(
+        eq(dropiOrders.operationId, op.id),
+        eq(dropiOrders.dropiOrderId, row.id),
+      ),
+    )
     .limit(1);
-  if (!found) return { updated: false, notified: false };
-  const existing = found.order;
-  if (
-    found.shopCurrency &&
-    !belongsToOperation({ currency: found.shopCurrency }, op)
-  ) {
-    logger.warn(
-      {
-        dropiOrderId: row.id,
-        operation: op.countryCode,
-        currency: found.shopCurrency,
-      },
-      "dropi poll: el pedido guardado con ese id es de otra operación, se salta",
-    );
-    return { updated: false, notified: false };
-  }
+  if (!existing) return { updated: false, notified: false };
 
   const statusChanged = existing.status !== newStatus;
   const guideChanged = existing.guideNumber !== row.guide_number;
@@ -119,15 +106,6 @@ export interface DropiPollResult {
  * caída no calla a las demás, pero si ninguna pudo correr el fallo se propaga.
  */
 export async function runDropiPoll(): Promise<DropiPollResult> {
-  // Global: el poll recorre los pedidos de la conexión de Dropi, que todavía
-  // no dice de qué operación es (ticket 04). Las plantillas de logística que
-  // salgan de aquí son las de esta configuración, y `maybeNotifyDropiStatus`
-  // las recibe por parámetro — no vuelve a preguntar.
-  const s = await getAgentSettings(GLOBAL_AGENT_SETTINGS);
-  if (!s?.dropiEnabled) {
-    return { fetched: 0, changed: 0, notified: 0, errors: 0 };
-  }
-
   const ops = await listActiveOperations();
   if (ops.length === 0) {
     logger.warn("dropi poll: no hay operaciones activas, nada que sondear");
@@ -143,6 +121,12 @@ export async function runDropiPoll(): Promise<DropiPollResult> {
   const failures: unknown[] = [];
   for (const op of ops) {
     try {
+      // La configuración es la de esta operación: `dropiEnabled` y las
+      // plantillas de logística que salgan de aquí son las suyas. El lote 05
+      // tuvo que leerlas en ámbito global porque la conexión de Dropi todavía
+      // no declaraba su operación; desde el ticket 04 sí lo hace.
+      const s = await getAgentSettings(op);
+      if (!s?.dropiEnabled) continue;
       const r = await runDropiPollForOperation(op, s);
       total.fetched += r.fetched;
       total.changed += r.changed;
@@ -175,17 +159,17 @@ export async function runDropiPollForOperation(
   // i.e. include terminal rows whose terminal status hasn't been notified yet,
   // so a backfilled `entregado` still triggers notify on first poll cycle.
   //
-  // El conjunto activo se arma sobre toda la tabla porque `dropi_orders` no
-  // tiene `operation_id`: lo que acota de verdad es que los pedidos vienen de
-  // la cuenta Dropi de esta operación, y `processRow` descarta el id que
-  // resulte ser de otra.
+  // Acotado a los pedidos de esta operación: desde la `0021`, `dropi_orders`
+  // dice de qué operación es cada fila, así que el sondeo de una ya no puede
+  // toparse con el pedido guardado de otra que tenga el mismo id de Dropi.
   const all = await db
     .select({
       id: dropiOrders.dropiOrderId,
       status: dropiOrders.status,
       lastNotifiedStatus: dropiOrders.lastNotifiedStatus,
     })
-    .from(dropiOrders);
+    .from(dropiOrders)
+    .where(eq(dropiOrders.operationId, op.id));
   const active = all.filter(
     (a) =>
       !QUIESCENT.includes(a.status) || a.lastNotifiedStatus !== a.status,
@@ -247,6 +231,24 @@ export async function runDropiPollForOperation(
   return { fetched: rows.length, changed, notified, errors };
 }
 
+/**
+ * Cada cuánto corre el cron del sondeo.
+ *
+ * El cron es **uno solo por proceso** y el intervalo es por operación, así que
+ * se toma el menor de los configurados: nadie queda sondeado más lento de lo
+ * que pidió, y el trabajo de cada operación lo acota `runDropiPollForOperation`.
+ * Con una sola operación es exactamente el valor que se leía antes.
+ */
+async function pollIntervalMinutes(): Promise<number> {
+  const ops = await listActiveOperations();
+  const configurados: number[] = [];
+  for (const op of ops) {
+    const s = await getAgentSettings(op);
+    if (s?.dropiPollIntervalMin) configurados.push(s.dropiPollIntervalMin);
+  }
+  return configurados.length > 0 ? Math.min(...configurados) : 10;
+}
+
 export async function startDropiPollWorker() {
   const boss = await getBoss();
   await boss.work(DROPI_POLL_QUEUE, async (raw) => {
@@ -265,9 +267,7 @@ export async function startDropiPollWorker() {
 
 export async function scheduleDropiPoll(): Promise<void> {
   const boss = await getBoss();
-  // El cron del poll es uno solo por proceso: ámbito global.
-  const s = await getAgentSettings(GLOBAL_AGENT_SETTINGS);
-  const minutes = s?.dropiPollIntervalMin ?? 10;
+  const minutes = await pollIntervalMinutes();
   const cron = `*/${Math.max(1, minutes)} * * * *`;
   await boss.schedule(DROPI_POLL_QUEUE, cron, {});
   logger.info({ cron }, "dropi poll scheduled");

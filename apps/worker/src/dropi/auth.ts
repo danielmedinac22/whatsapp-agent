@@ -1,8 +1,8 @@
 import type { Operation } from "@wa/db";
 import { logger } from "../lib/logger";
 import {
+  getDropiConnection,
   invalidateDropiConnectionCache,
-  resolveDropiConnection,
   upsertDropiConnection,
 } from "./config";
 import { DROPI_DEFAULT_HEADERS } from "./headers";
@@ -331,7 +331,7 @@ async function persistDropiToken(
  * sync sigue funcionando hasta que llegue el código y se canjee.
  */
 async function loginAndPersist(op: Operation): Promise<DropiAuth> {
-  const conn = await resolveDropiConnection(op);
+  const conn = await getDropiConnection(op);
   if (!conn) {
     throw new Error(
       `dropi_connection not configured for operation ${op.countryCode}`,
@@ -439,7 +439,7 @@ export async function submitDropi2FACode(
   op: Operation,
   code: string,
 ): Promise<{ ok: true; auth: DropiAuth } | { ok: false; error: string }> {
-  const conn = await resolveDropiConnection(op);
+  const conn = await getDropiConnection(op);
   if (!conn) return { ok: false, error: "dropi_connection not configured" };
   if (!conn.pending2faToken) {
     return { ok: false, error: "no hay challenge 2FA pendiente" };
@@ -563,7 +563,7 @@ export async function refreshDropiAuth(op: Operation): Promise<DropiAuth> {
 }
 
 export async function getValidDropiAuth(op: Operation): Promise<DropiAuth> {
-  const conn = await resolveDropiConnection(op);
+  const conn = await getDropiConnection(op);
   if (!conn) {
     throw new Error(
       `dropi_connection not configured for operation ${op.countryCode}`,

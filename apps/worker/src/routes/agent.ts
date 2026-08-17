@@ -10,8 +10,7 @@ import {
   agentSettings,
   eq,
   getAgentSettings,
-  GLOBAL_AGENT_SETTINGS,
-  GLOBAL_AGENT_SETTINGS_ID,
+  panelOperation,
 } from "../db";
 import { logger } from "../lib/logger";
 import { previewAgentReply } from "../agent/preview";
@@ -32,14 +31,27 @@ function actorEmail(c: { req: { header: (n: string) => string | undefined } }) {
 }
 
 /**
- * El panel todavía edita la configuración global: no tiene selector de
- * operación —eso es otro ticket— así que aquí el ámbito se declara explícito
- * en vez de quedar implícito en un `id = 1` suelto. Las escrituras de abajo
- * apuntan a la misma fila por `GLOBAL_AGENT_SETTINGS_ID`, que es lo que el
- * contract (ticket 06) sale a buscar.
+ * El panel edita la configuración de **una** operación, y hasta el selector
+ * (ticket 07) esa operación es la única activa.
+ *
+ * El lote 05 dejó estas cuatro lecturas/escrituras en ámbito global explícito
+ * (`GLOBAL_AGENT_SETTINGS`, la fila `id = 1`). El contract lo borró: `id = 1`
+ * es Guatemala, y un panel que escribe siempre en Guatemala pasaría a editar el
+ * país equivocado en cuanto exista el segundo. `panelOperation()` no adivina —
+ * con dos operaciones activas falla y obliga a que el selector llegue antes que
+ * Colombia.
  */
 function loadSettings() {
-  return getAgentSettings(GLOBAL_AGENT_SETTINGS);
+  return panelOperation().then(getAgentSettings);
+}
+
+/**
+ * `id` es el entero con `default 1` heredado del singleton: la configuración de
+ * una segunda operación necesita el suyo o choca contra la clave primaria.
+ */
+async function nextAgentSettingsId(): Promise<number> {
+  const rows = await db.select({ id: agentSettings.id }).from(agentSettings);
+  return rows.reduce((max, r) => Math.max(max, r.id), 0) + 1;
 }
 
 agent.get("/settings", async (c) => {
@@ -50,7 +62,8 @@ agent.put("/settings", async (c) => {
   const parsed = agentSettingsInput.safeParse(await c.req.json());
   if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
   const v = parsed.data;
-  const previous = await loadSettings();
+  const op = await panelOperation();
+  const previous = await getAgentSettings(op);
   const fields = {
     systemPrompt: v.systemPrompt,
     model: v.model,
@@ -74,10 +87,18 @@ agent.put("/settings", async (c) => {
     dropiTemplateEnOficinaId: v.dropiTemplateEnOficinaId,
     updatedAt: new Date(),
   };
-  await db
-    .insert(agentSettings)
-    .values({ id: GLOBAL_AGENT_SETTINGS_ID, ...fields })
-    .onConflictDoUpdate({ target: agentSettings.id, set: fields });
+  if (previous) {
+    await db
+      .update(agentSettings)
+      .set(fields)
+      .where(eq(agentSettings.id, previous.id));
+  } else {
+    await db.insert(agentSettings).values({
+      id: await nextAgentSettingsId(),
+      operationId: op.id,
+      ...fields,
+    });
+  }
 
   // El prompt cambió desde la pantalla de configuración: queda en el historial.
   if (previous?.systemPrompt !== v.systemPrompt) {
@@ -107,7 +128,7 @@ agent.put("/prompt", async (c) => {
   await db
     .update(agentSettings)
     .set({ systemPrompt: prompt, updatedAt: new Date() })
-    .where(eq(agentSettings.id, GLOBAL_AGENT_SETTINGS_ID));
+    .where(eq(agentSettings.id, previous.id));
 
   if (previous.systemPrompt !== prompt) {
     await recordPromptVersion({
@@ -135,12 +156,15 @@ agent.post("/prompt/versions/:id/restore", async (c) => {
   if (!row) return c.json({ error: "not found" }, 404);
 
   const previous = await loadSettings();
+  if (!previous) {
+    return c.json({ error: "agent_settings sin configurar" }, 409);
+  }
   await db
     .update(agentSettings)
     .set({ systemPrompt: row.prompt, updatedAt: new Date() })
-    .where(eq(agentSettings.id, GLOBAL_AGENT_SETTINGS_ID));
+    .where(eq(agentSettings.id, previous.id));
 
-  if (previous?.systemPrompt !== row.prompt) {
+  if (previous.systemPrompt !== row.prompt) {
     const when = row.createdAt.toLocaleString("es-CO", {
       dateStyle: "short",
       timeStyle: "short",

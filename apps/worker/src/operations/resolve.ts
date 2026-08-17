@@ -1,40 +1,24 @@
 /**
- * A qué operación pertenece un mensaje.
+ * A qué operación pertenece un mensaje entrante.
  *
  * Todo lo de este archivo es PURO: no toca la base ni el reloj. La regla que
- * decide de quién es un mensaje entrante se prueba con fixtures y no con una
- * conexión a producción. Los accesores que sí van a la base viven en
- * `./index.ts`, y la conexión de WhatsApp en `../kapso/connection.ts`.
- */
-
-/** El uuid de una fila de `operations`. */
-export type OperationId = string;
-
-/**
- * La operación que un llamador pide.
+ * decide de quién es un mensaje se prueba con fixtures y no con una conexión a
+ * producción. Los accesores de la tabla `operations` viven en `@wa/db`
+ * (`operations.ts`) y la conexión de WhatsApp en `../kapso/connection.ts`.
  *
- * `null` no significa "no importa": significa **la operación única** — el
- * llamador no tiene una conversación de la que sacarla (un endpoint de estado,
- * el arranque del worker) y atiende la operación que existe mientras exista una
- * sola. Es el mismo comportamiento de antes de la migración, escrito de forma
- * que el contract lo pueda encontrar y borrar.
- *
- * El parámetro es obligatorio en todos los accesores a propósito: con
- * `strict: true`, volverlo obligatorio es lo que hace que el compilador liste
- * los llamadores que faltan por migrar.
+ * **Lo que el contract (ticket 06) borró de aquí:** el tipo `OperationRef`, que
+ * era `OperationId | null` y donde `null` significaba «la operación única» y
+ * leía la fila singleton `id = 1`. Era la última puerta para pedir una conexión
+ * sin decir de qué operación, y resolvía siempre a Guatemala. Con ella se fue
+ * `canUseSingleOperationFallback`: cubría el estado «operación viva cuya
+ * conexión quedó sin etiquetar», que la `0021` volvió imposible al hacer
+ * `operation_id` obligatoria. Una red que ya no puede atrapar nada es peor que
+ * ninguna, porque promete una garantía que nadie prueba.
  */
-export type OperationRef = OperationId | null;
 
-/**
- * Clave de caché de la operación única. Ninguna operación puede tener este
- * id porque los ids son uuid, así que no colisiona con una entrada real.
- */
-export const SINGLE_OPERATION_CACHE_KEY = "__operacion_unica__";
+import type { OperationId } from "@wa/db";
 
-/** La clave con la que se cachea lo que cuelga de una operación. */
-export function operationCacheKey(operationId: OperationRef): string {
-  return operationId ?? SINGLE_OPERATION_CACHE_KEY;
-}
+export type { OperationId };
 
 /**
  * Lo mínimo que hace falta de una conexión de WhatsApp para saber a qué
@@ -42,7 +26,7 @@ export function operationCacheKey(operationId: OperationRef): string {
  * tests puedan escribir fixtures de dos campos.
  */
 export interface OperationConnectionRef {
-  operationId: OperationId | null;
+  operationId: OperationId;
   phoneNumberId: string | null;
 }
 
@@ -64,7 +48,7 @@ export function resolveOperationIdByPhoneNumberId(
   const wanted = phoneNumberId.trim();
   if (!wanted) return null;
   for (const conn of connections) {
-    if (conn.phoneNumberId?.trim() === wanted && conn.operationId) {
+    if (conn.phoneNumberId?.trim() === wanted) {
       return conn.operationId;
     }
   }
@@ -79,31 +63,6 @@ function isKnownConnection(
   const wanted = phoneNumberId.trim();
   if (!wanted) return false;
   return connections.some((c) => c.phoneNumberId?.trim() === wanted);
-}
-
-/**
- * Si un llamador que no encontró la conexión de su operación puede atenderse
- * con la fila singleton — la red de seguridad de la migración.
- *
- * Solo cuando la operación pedida **es** la única activa que existe. Ahí la
- * fila singleton no puede ser de nadie más, así que caer en ella es exacto: el
- * estado que cubre es una operación viva cuya conexión quedó sin etiquetar, y
- * dejar de enviar por eso sería peor.
- *
- * `false` en todo lo demás, y en particular cuando la operación pedida no es la
- * única: mandar el mensaje de un país por el número de otro es peor que no
- * mandarlo. Ese es el escenario que aparece en cuanto exista Colombia, y por
- * eso la red se desarma sola en vez de tener que acordarse de quitarla.
- *
- * `operationId: null` también da `false`: quien pide la operación única ya lee
- * la fila singleton de frente, no tiene de dónde caer.
- */
-export function canUseSingleOperationFallback(
-  operationId: OperationRef,
-  singleOperationId: OperationId | null,
-): boolean {
-  if (operationId === null || singleOperationId === null) return false;
-  return operationId === singleOperationId;
 }
 
 /**
@@ -129,9 +88,12 @@ export interface InboundOperationDecision {
  * Resuelve estricto primero ({@link resolveOperationIdByPhoneNumberId}). Si no
  * reconoce el número, **no descarta el mensaje**: lo atiende con la operación
  * única y marca `connectionIsUnknown` para que el pipeline deje un error en el
- * log. En cuanto exista una segunda operación, `singleOperationId` llega en
- * `null` y la red se desarma sola: la conversación queda sin operación en vez
- * de quedar atribuida al país equivocado.
+ * log. En cuanto exista una segunda operación activa, `singleOperationId` llega
+ * en `null` y la red se desarma sola: la conversación queda sin operación en
+ * vez de quedar atribuida al país equivocado.
+ *
+ * Es la única red que el contract conservó, y por eso `conversations.operation_id`
+ * sigue siendo nullable: es el estado que esta decisión puede producir.
  */
 export function decideInboundOperation(input: {
   phoneNumberId: string;

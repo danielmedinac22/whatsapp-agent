@@ -1,8 +1,8 @@
 import { and, desc, eq, isNull, or } from "@wa/db";
 import {
-  agentSettingsScope,
   contacts,
   getAgentSettings,
+  requireOperationOrSole,
   shopifyOrders,
   templates,
   type Contact,
@@ -78,7 +78,9 @@ export async function handleInboundConfirmation({
 
   // El acuse y su plantilla son los de la operación dueña de la conversación:
   // el ACK de Guatemala no puede salir en un chat colombiano.
-  const s = await getAgentSettings(agentSettingsScope(conversation.operationId));
+  const s = await getAgentSettings(
+    await requireOperationOrSole(conversation.operationId),
+  );
 
   if (s?.activateAgentOnConfirm && !contact.agentMode) {
     await db

@@ -1,22 +1,28 @@
 import { Hono } from "hono";
 import { eq } from "@wa/db";
-import { shopifyConnection } from "@wa/db";
+import { panelOperation, shopifyConnection } from "@wa/db";
 import { shopifyConnectionInput } from "@wa/shared";
 import { db } from "../db";
-import { getSingleOperationId } from "../operations";
 import {
+  getShopifyConnection,
   invalidateShopifyConnectionCache,
   pingShopify,
 } from "../shopify/admin";
 
 export const shopifyConn = new Hono();
 
+/**
+ * Las tres rutas hablan de la tienda de **una** operación: la del panel, que
+ * hasta el selector (ticket 07) es la única activa.
+ *
+ * Antes leían y borraban `where(id = 1)` de frente, sin pasar por el accesor —
+ * el `id = 1` que este ticket sale a borrar. Un GET que siempre muestra la fila
+ * uno enseña la tienda de Guatemala aunque el operador crea estar viendo otra,
+ * y un DELETE que siempre borra la fila uno borra la de Guatemala.
+ */
+
 shopifyConn.get("/connection", async (c) => {
-  const [row] = await db
-    .select()
-    .from(shopifyConnection)
-    .where(eq(shopifyConnection.id, 1))
-    .limit(1);
+  const row = await getShopifyConnection(await panelOperation());
   if (!row) return c.json(null);
   // Never return the raw token to the browser; just signal it's set.
   return c.json({
@@ -43,34 +49,42 @@ shopifyConn.put("/connection", async (c) => {
     return c.json({ error: `no se pudo conectar: ${ping.error}` }, 400);
   }
 
-  // La tienda declara a qué operación pertenece. Con una sola operación se
-  // etiqueta con ella; con más de una, `getSingleOperationId()` devuelve null,
-  // el campo se omite y la fila conserva la operación que ya tuviera —
-  // reconfigurar la tienda no puede cambiarle el país por descuido. Elegir
-  // operación desde el panel es trabajo del ticket de contract.
-  const owner = await getSingleOperationId();
+  // La tienda declara a qué operación pertenece, y ya no hay forma de guardarla
+  // sin decirlo: `operation_id` es obligatoria desde la `0021`.
+  const op = await panelOperation();
+  const existing = await getShopifyConnection(op);
   const now = new Date();
   const values = {
-    ...(owner ? { operationId: owner } : {}),
+    operationId: op.id,
     shopDomain: v.shopDomain,
     adminAccessToken: v.adminAccessToken,
     apiVersion,
     connectedAt: now,
     updatedAt: now,
   };
-  await db
-    .insert(shopifyConnection)
-    .values({ id: 1, ...values })
-    .onConflictDoUpdate({
-      target: shopifyConnection.id,
-      set: values,
-    });
-  invalidateShopifyConnectionCache();
+  if (existing) {
+    await db
+      .update(shopifyConnection)
+      .set(values)
+      .where(eq(shopifyConnection.id, existing.id));
+  } else {
+    // `id` es el entero con `default 1` heredado del singleton: la tienda de una
+    // segunda operación necesita el suyo o choca contra la clave primaria.
+    const rows = await db
+      .select({ id: shopifyConnection.id })
+      .from(shopifyConnection);
+    const nextId = rows.reduce((max, r) => Math.max(max, r.id), 0) + 1;
+    await db.insert(shopifyConnection).values({ id: nextId, ...values });
+  }
+  invalidateShopifyConnectionCache(op);
   return c.json({ ok: true, shopName: ping.shopName });
 });
 
 shopifyConn.delete("/connection", async (c) => {
-  await db.delete(shopifyConnection).where(eq(shopifyConnection.id, 1));
-  invalidateShopifyConnectionCache();
+  const op = await panelOperation();
+  await db
+    .delete(shopifyConnection)
+    .where(eq(shopifyConnection.operationId, op.id));
+  invalidateShopifyConnectionCache(op);
   return c.json({ ok: true });
 });
