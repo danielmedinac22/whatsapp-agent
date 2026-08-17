@@ -2,36 +2,79 @@ import { eq } from "@wa/db";
 import { shopifyConnection, type ShopifyConnection } from "@wa/db";
 import { db } from "../db";
 import { logger } from "../lib/logger";
+import {
+  type OperationRef,
+  OperationScopedCache,
+  operationCacheKey,
+} from "../operations";
 
 interface CacheEntry<T> {
   value: T;
   expires: number;
 }
 
+/**
+ * Caché de producto, indexada por operación.
+ *
+ * Los ids de producto de Shopify son por tienda: dos tiendas pueden tener el
+ * producto `12345`. Sin la operación en la clave, el producto de una operación
+ * respondería por el de la otra — el catálogo equivocado en el prompt del
+ * agente, sin error ni fallo visible.
+ */
 const productCache = new Map<string, CacheEntry<ShopifyProduct>>();
 const PRODUCT_TTL_MS = 10 * 60 * 1000;
 
-let connectionCache: { value: ShopifyConnection | null; expires: number } | null =
-  null;
-const CONNECTION_TTL_MS = 30 * 1000;
+function productCacheKey(operationId: OperationRef, gid: string): string {
+  return `${operationCacheKey(operationId)}:${gid}`;
+}
 
-export async function getShopifyConnection(): Promise<ShopifyConnection | null> {
-  const now = Date.now();
-  if (connectionCache && connectionCache.expires > now) {
-    return connectionCache.value;
-  }
+/** La fila singleton previa a la migración: la operación única vive ahí. */
+const SINGLETON_ID = 1;
+
+const connectionCache = new OperationScopedCache<ShopifyConnection | null>(
+  30 * 1000,
+);
+
+/**
+ * La tienda de una operación.
+ *
+ * **Estricta**, igual que la conexión de WhatsApp: una operación sin tienda
+ * propia devuelve `null`, nunca la tienda de otra. `operationId: null` significa
+ * *la operación única* y lee la fila singleton `id = 1`.
+ *
+ * Aquí no hay versión con red — a diferencia del envío de WhatsApp, quedarse sin
+ * tienda no calla la operación: apaga la lectura de productos, que es
+ * exactamente lo que hace hoy (la tabla está vacía). Un pedido de una operación
+ * tocando la tienda de otra sí sería un daño real.
+ */
+export async function getShopifyConnection(
+  operationId: OperationRef,
+): Promise<ShopifyConnection | null> {
+  const hit = connectionCache.get(operationId);
+  if (hit) return hit.value;
   const [row] = await db
     .select()
     .from(shopifyConnection)
-    .where(eq(shopifyConnection.id, 1))
+    .where(
+      operationId === null
+        ? eq(shopifyConnection.id, SINGLETON_ID)
+        : eq(shopifyConnection.operationId, operationId),
+    )
     .limit(1);
   const value = row ?? null;
-  connectionCache = { value, expires: now + CONNECTION_TTL_MS };
+  connectionCache.set(operationId, value);
   return value;
 }
 
-export function invalidateShopifyConnectionCache(): void {
-  connectionCache = null;
+/**
+ * Sin argumento borra la caché entera; con una operación borra su entrada y la
+ * de la operación única. Ver {@link OperationScopedCache.invalidate}.
+ */
+export function invalidateShopifyConnectionCache(
+  operationId?: OperationRef,
+): void {
+  connectionCache.invalidate(operationId);
+  productCache.clear();
 }
 
 export interface ShopifyVariant {
@@ -187,11 +230,18 @@ function productGid(productId: string | number): string {
   return id.startsWith("gid://") ? id : `gid://shopify/Product/${id}`;
 }
 
+/**
+ * Los productos de una operación, leídos contra **su** tienda.
+ *
+ * La operación va primero, como en todos los accesores de la migración: si no
+ * hay tienda para esa operación no se lee nada, en vez de leer la de al lado.
+ */
 export async function getProductsByIds(
+  operationId: OperationRef,
   ids: Array<string | number>,
 ): Promise<ShopifyProduct[]> {
   if (ids.length === 0) return [];
-  const conn = await getShopifyConnection();
+  const conn = await getShopifyConnection(operationId);
   if (!conn?.shopDomain || !conn?.adminAccessToken) return [];
 
   const now = Date.now();
@@ -199,7 +249,7 @@ export async function getProductsByIds(
   const cached: ShopifyProduct[] = [];
   const missing: string[] = [];
   for (const gid of gids) {
-    const hit = productCache.get(gid);
+    const hit = productCache.get(productCacheKey(operationId, gid));
     if (hit && hit.expires > now) cached.push(hit.value);
     else missing.push(gid);
   }
@@ -214,11 +264,14 @@ export async function getProductsByIds(
       .map(toProduct)
       .filter((p): p is ShopifyProduct => Boolean(p));
     for (const p of fetched) {
-      productCache.set(p.id, { value: p, expires: now + PRODUCT_TTL_MS });
+      productCache.set(productCacheKey(operationId, p.id), {
+        value: p,
+        expires: now + PRODUCT_TTL_MS,
+      });
     }
     return [...cached, ...fetched];
   } catch (err) {
-    logger.warn({ err }, "shopify admin getProductsByIds failed");
+    logger.warn({ err, operationId }, "shopify admin getProductsByIds failed");
     return cached;
   }
 }

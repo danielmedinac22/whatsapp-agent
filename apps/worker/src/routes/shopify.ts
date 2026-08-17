@@ -9,6 +9,7 @@ import { scheduleFollowup } from "../jobs/followup";
 import { scheduleRemarketing } from "../jobs/remarketing";
 import { normalizePhone } from "../lib/phone";
 import { upsertContactByWaId } from "../inbound/contacts";
+import { getSingleOperationId } from "../operations";
 
 export const shopify = new Hono();
 
@@ -48,6 +49,17 @@ shopify.post("/webhook", async (c) => {
   // no dependency on a live socket (the old 503-when-disconnected is gone).
   const contact = await upsertContactByWaId(phone, { name: customerName });
 
+  // A qué operación se le atribuye el pedido.
+  //
+  // Este webhook se autentica con un secreto de entorno global: la carga útil
+  // no trae identidad de tienda de la que sacar la operación, así que mientras
+  // exista una sola se le atribuye a ella y es exacto. Resolver la operación de
+  // un pedido web por su tienda de origen exige una segunda tienda que
+  // distinguir y es trabajo del ticket 08 — no se inventa aquí un mecanismo que
+  // no se puede probar. Con dos operaciones, `getSingleOperationId()` devuelve
+  // null y el pedido queda sin atribuir en vez de atribuido al país equivocado.
+  const operationId = await getSingleOperationId();
+
   let [conv] = await db
     .select()
     .from(conversations)
@@ -56,7 +68,7 @@ shopify.post("/webhook", async (c) => {
   if (!conv) {
     [conv] = await db
       .insert(conversations)
-      .values({ contactId: contact.id })
+      .values({ contactId: contact.id, operationId })
       .returning();
   }
 
