@@ -1,5 +1,11 @@
 import { eq, inArray } from "@wa/db";
-import { agentSettings, dropiOrders, type DropiOrder } from "@wa/db";
+import {
+  agentSettings,
+  dropiOrders,
+  getAgentSettings,
+  GLOBAL_AGENT_SETTINGS,
+  type DropiOrder,
+} from "@wa/db";
 import { db } from "../db";
 import { logger } from "../lib/logger";
 import { listAllOrders, type DropiOrderRow } from "../dropi/orders";
@@ -84,11 +90,11 @@ export interface DropiPollResult {
 }
 
 export async function runDropiPoll(): Promise<DropiPollResult> {
-  const [s] = await db
-    .select()
-    .from(agentSettings)
-    .where(eq(agentSettings.id, 1))
-    .limit(1);
+  // Global: el poll recorre los pedidos de la conexión de Dropi, que todavía
+  // no dice de qué operación es (ticket 04). Las plantillas de logística que
+  // salgan de aquí son las de esta configuración, y `maybeNotifyDropiStatus`
+  // las recibe por parámetro — no vuelve a preguntar.
+  const s = await getAgentSettings(GLOBAL_AGENT_SETTINGS);
   if (!s?.dropiEnabled) {
     return { fetched: 0, changed: 0, notified: 0, errors: 0 };
   }
@@ -166,11 +172,8 @@ export async function startDropiPollWorker() {
 
 export async function scheduleDropiPoll(): Promise<void> {
   const boss = await getBoss();
-  const [s] = await db
-    .select()
-    .from(agentSettings)
-    .where(eq(agentSettings.id, 1))
-    .limit(1);
+  // El cron del poll es uno solo por proceso: ámbito global.
+  const s = await getAgentSettings(GLOBAL_AGENT_SETTINGS);
   const minutes = s?.dropiPollIntervalMin ?? 10;
   const cron = `*/${Math.max(1, minutes)} * * * *`;
   await boss.schedule(DROPI_POLL_QUEUE, cron, {});

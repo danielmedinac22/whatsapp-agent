@@ -1,6 +1,11 @@
 import { Hono } from "hono";
 import { eq } from "@wa/db";
-import { agentSettings, conversations, shopifyOrders } from "@wa/db";
+import {
+  agentSettingsScope,
+  conversations,
+  getAgentSettings,
+  shopifyOrders,
+} from "@wa/db";
 import { shopifyOrderWebhook } from "@wa/shared";
 import { db } from "../db";
 import { logger } from "../lib/logger";
@@ -71,11 +76,11 @@ shopify.post("/webhook", async (c) => {
     return c.json({ ok: true, duplicate: true });
   }
 
-  const [settings] = await db
-    .select()
-    .from(agentSettings)
-    .where(eq(agentSettings.id, 1))
-    .limit(1);
+  // Los tiempos de seguimiento y remarketing salen de la operación dueña de la
+  // conversación del cliente, que es la que recibió el pedido.
+  const settings = await getAgentSettings(
+    agentSettingsScope(conv?.operationId),
+  );
   const followupDelay = settings?.followupDelayMs ?? 5 * 60_000;
   const remarketingDelay = settings?.remarketingDelayMs ?? 3 * 60 * 60_000;
   const followupAt = new Date(Date.now() + followupDelay);

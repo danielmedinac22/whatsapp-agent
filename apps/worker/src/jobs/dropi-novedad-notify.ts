@@ -1,10 +1,11 @@
 import { generateText } from "ai";
 import { eq } from "@wa/db";
 import {
-  agentSettings,
+  agentSettingsScope,
   contacts,
   conversations,
   dropiOrders,
+  getAgentSettings,
 } from "@wa/db";
 import { db } from "../db";
 import { logger } from "../lib/logger";
@@ -70,15 +71,6 @@ Queríamos conocer un poco más sobre lo sucedido para poder ayudarte."
 
 Devuelve ÚNICAMENTE el texto del mensaje, sin comillas, sin etiquetas, sin explicación.`;
 
-async function loadSettings() {
-  const [s] = await db
-    .select()
-    .from(agentSettings)
-    .where(eq(agentSettings.id, 1))
-    .limit(1);
-  return s ?? null;
-}
-
 async function generateNovedadMessage(input: {
   reasonRaw: string;
   customerName: string | null;
@@ -133,12 +125,6 @@ async function handleNovedadNotify({ dropiRowId }: NovedadNotifyPayload) {
     return;
   }
 
-  const settings = await loadSettings();
-  if (!settings) {
-    logger.warn("novedad-notify: agent_settings missing, skipping");
-    return;
-  }
-
   const [contact] = await db
     .select()
     .from(contacts)
@@ -156,6 +142,20 @@ async function handleNovedadNotify({ dropiRowId }: NovedadNotifyPayload) {
     .from(conversations)
     .where(eq(conversations.contactId, contact.id))
     .limit(1);
+
+  // El modelo que redacta la novedad es el de la operación dueña del chat, así
+  // que la configuración se lee después de tener la conversación en la mano.
+  // El único efecto del reordenamiento es cuál de los dos avisos se registra
+  // cuando falta el contacto Y falta la configuración: ninguno de los dos
+  // envía nada.
+  const settings = await getAgentSettings(agentSettingsScope(conv?.operationId));
+  if (!settings) {
+    logger.warn(
+      { dropiOrderId: order.dropiOrderId, operationId: conv?.operationId },
+      "novedad-notify: agent_settings missing, skipping",
+    );
+    return;
+  }
 
   const text = await generateNovedadMessage({
     reasonRaw: reason,

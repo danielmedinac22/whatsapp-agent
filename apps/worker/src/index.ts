@@ -32,6 +32,7 @@ import {
   startDropiSyncWorker,
 } from "./jobs/dropi-sync";
 import { startDropiConfirmWorker } from "./jobs/dropi-confirm";
+import { GLOBAL_AGENT_SETTINGS } from "@wa/db";
 import { ensureDropiTemplates } from "./dropi/seed-templates";
 import {
   scheduleDropiPoll,
@@ -112,7 +113,9 @@ serve({ fetch: app.fetch, port }, (info) => {
   scheduleDropiAuthRefresh().catch((err) =>
     logger.error({ err }, "dropi auth refresh scheduling failed"),
   );
-  ensureDropiTemplates().catch((err) =>
+  // El arranque siembra las plantillas de la configuración global; cada
+  // operación nueva las siembra con su propio ámbito.
+  ensureDropiTemplates(GLOBAL_AGENT_SETTINGS).catch((err) =>
     logger.error({ err }, "ensureDropiTemplates failed"),
   );
   startDropiNovedadNotifyWorker().catch((err) =>

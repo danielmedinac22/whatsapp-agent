@@ -2,10 +2,11 @@ import { createHash } from "node:crypto";
 import { generateText, type ModelMessage } from "ai";
 import {
   agentRuns,
-  agentSettings,
+  agentSettingsScope,
   asc,
   desc,
   eq,
+  getAgentSettings,
   messages,
   type Contact,
   type Conversation,
@@ -37,13 +38,12 @@ type Buffered = {
 
 const buffers = new Map<string, Buffered>();
 
-async function loadSettings() {
-  const [row] = await db
-    .select()
-    .from(agentSettings)
-    .where(eq(agentSettings.id, 1))
-    .limit(1);
-  return row;
+/**
+ * El agente contesta con el prompt, el modelo y los tiempos de la operación
+ * dueña de la conversación.
+ */
+function loadSettings(conversation: Conversation) {
+  return getAgentSettings(agentSettingsScope(conversation.operationId));
 }
 
 /**
@@ -102,9 +102,12 @@ async function flushBuffer(contactId: string) {
   if (!entry) return;
   buffers.delete(contactId);
 
-  const settings = await loadSettings();
+  const settings = await loadSettings(entry.conversation);
   if (!settings) {
-    logger.warn("no agent_settings configured, skipping reply");
+    logger.warn(
+      { operationId: entry.conversation.operationId },
+      "no agent_settings configured, skipping reply",
+    );
     return;
   }
 
@@ -172,7 +175,7 @@ async function flushBuffer(contactId: string) {
 }
 
 export async function onAgentInbound(input: AgentInbound) {
-  const settings = await loadSettings();
+  const settings = await loadSettings(input.conversation);
   const debounceMs = Math.max(0, settings?.debounceMs ?? 8000);
 
   const existing = buffers.get(input.contact.id);

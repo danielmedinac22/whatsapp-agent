@@ -1,5 +1,10 @@
 import { generateText, type ModelMessage } from "ai";
-import { agentSettings, conversations, eq } from "@wa/db";
+import {
+  agentSettingsScope,
+  conversations,
+  eq,
+  getAgentSettings,
+} from "@wa/db";
 import { db } from "../db";
 import { openrouter } from "./openrouter";
 import { buildEffectiveSystemPrompt, loadHistory } from "./runner";
@@ -28,12 +33,6 @@ export interface PreviewResult {
 export async function previewAgentReply(
   input: PreviewInput,
 ): Promise<PreviewResult> {
-  const [settings] = await db
-    .select()
-    .from(agentSettings)
-    .where(eq(agentSettings.id, 1))
-    .limit(1);
-
   let contactId: string | null = null;
   let history: ModelMessage[] = [];
 
@@ -45,6 +44,13 @@ export async function previewAgentReply(
       .limit(1);
     if (conv) {
       contactId = conv.contactId;
+      // La ventana de memoria sale de la configuración de la operación dueña
+      // de esa conversación: probar el prompt sobre un chat guatemalteco debe
+      // usar los parámetros de Guatemala. Sin conversación no hay operación de
+      // la que hablar, y tampoco hay historial que recortar.
+      const settings = await getAgentSettings(
+        agentSettingsScope(conv.operationId),
+      );
       history = await loadHistory(
         conv.id,
         Math.max(5, settings?.memoryWindow ?? 30),
