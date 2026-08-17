@@ -49,6 +49,59 @@ El PRD final está en `prd.html` y la cotización cara-cliente en `artefacto.htm
 - La cuenta Kapso **ya topó el plan Free al menos una vez**: el 4-ago-2026 hubo envíos que el outbound worker marcó `dead` con `'Free plan message limit'`, y existe `apps/worker/src/scripts/resend-dead-402.ts` para reencolarlos. El script está **sin commitear** y no consta si se corrió ni si el plan se subió después. Es un asunto del servicio actual, ajeno a este mapa, pero confirma que el plan Free no da y que el Pro entra como dependencia real.
 - El worker **no crea** pedidos en Dropi — solo los lista y los confirma (`apps/worker/src/dropi/orders.ts`). La guía nace de una integración Shopify↔Dropi ajena a WaiChat.
 
+### Cambio de alcance del 16-ago-2026 (nota de voz del usuario)
+
+**Vorare opera en Guatemala, no en Colombia**, y va a abrir una segunda operación en Colombia. Verificado en producción: las 1.678 órdenes son 100% GTQ, prefijo 502, país Guatemala. Todo el análisis de catálogo de abajo es del **catálogo guatemalteco**.
+
+Decidido con el usuario:
+
+- **Colombia es una operación completa**, no solo un número de ventas: tienda, catálogo, confirmación y ventas.
+- **Un número por país, con operación completa cada uno.** Ventas y confirmación **comparten número** — lo que elimina la plantilla *nueva* y la aprobación de Meta del camino crítico, porque el primer toque tras una venta de Sebastián cae dentro de la ventana de 24 h. **Las plantillas existentes no desaparecen**: los pedidos que entran directo desde la tienda conservan el flujo actual completo (plantilla de confirmación y mensajes de actualización), y el seguimiento de guía y entrega sigue siendo plantilla para todos. Regla: **el origen decide contenido y demora; la ventana decide el mecanismo.**
+- **Dos tiendas Shopify separadas**, con un **selector de operación** en el panel.
+- **El precio se mantiene en 200.000 COP/mes.** Señalado que el trabajo cambia de naturaleza —de agregar una función a volver multi-inquilino un sistema que asume uno solo en 110 referencias— y reafirmado por el usuario.
+
+**Cuatro tablas singleton**, no dos: `agent_settings` (65 refs) · `dropi_connection` (19) · `shopify_connection` (16) · `kapso_connection` (10).
+
+**`shopify_connection` está vacía.** Los pedidos entran por webhook con secreto de entorno, pero **crear** órdenes por la Admin API necesita esa conexión y nadie la ha configurado. Prerequisito del cierre. Además `dropi_dry_run` está en `true`: las confirmaciones a Dropi se simulan.
+
+**Pendiente:** la tabla de costos de la cotización usa tarifas de Meta **para Colombia**. La operación es Guatemala. Hay que rehacerla con tarifas de ambos países.
+
+### Verificado contra la Graph API de Meta (16-ago-2026, credenciales reales, solo lectura)
+
+App **CLAUDE VORARE GUATEMALA** (`3918760311591600`), token de usuario sin expiración, con `ads_management`, `ads_read`, `business_management`, `catalog_management`, `leads_retrieval`, `whatsapp_business_management` y `whatsapp_business_messaging`.
+
+- **El número vivo es +502 3689 0343** — WABA «Vorare» (`1676368750161510`), CLOUD_API, calidad GREEN. Coincide con el fixture de `kapso/inbound.test.ts` (`from: "50236890343"`).
+- **El número de Colombia ya existe**: +57 304 5430173, WABA «Vorare Living» (`1301601911943339`, COP). Pero está en **ON_PREMISE**, no Cloud API — hay que migrarlo antes de usarlo.
+- Hay **cuatro WABAs** bajo el portafolio Vorare, no una. Las otras dos (+502 5946 7118, +502 4722 4176) están en ON_PREMISE.
+- **Cuenta publicitaria `act_2042265076620189` «CP - Vorare»: activa, en COP, zona Bogotá.** Se pauta en pesos y se factura en quetzales.
+- **Píxel `1825130408114773` «Pixel Vorare Guatemala»**: disponible, uso publicitario habilitado. CAPI no tiene bloqueo técnico.
+- **Seis portafolios de negocio** accesibles con este token: Vorare, Prime Luxury, Tu tienda online y Esencia Urbana verificados; Mp Perfumes y Carpas JJ sin verificar.
+- **`whatsapp_business_management` + `whatsapp_business_messaging` abren una salida al riesgo abierto**: esta app podría recibir los webhooks de WhatsApp directo de Meta, con `referral` sin recortar, y volver innecesaria la verificación pendiente contra Kapso.
+- **Advertencia del administrador de la cuenta**: existe un segundo token, de usuario de sistema, que sirve para CAPI y lectura pero **no** para crear anuncios (choca con la certificación de no discriminación). El de usuario sí crea anuncios.
+
+**CAPI entra al alcance y no se cotiza aparte** — decisión del usuario, tras señalarle que era la única pieza cuya naturaleza justificaba revisar el precio.
+
+**Resuelto por investigación** ([`research/06-app-meta-multicliente.md`](research/06-app-meta-multicliente.md)):
+
+- **Multi-cliente: sí, Meta lo contempla** como *Tech Provider* (Platform Terms §5.b) — la misma figura bajo la que opera Kapso. **No** hace falta ser Business Partner ni Solution Partner. Pero la app hoy no califica: faltan Business Verification, App Review con Advanced Access, Marketing API Full Access (que exige **500 llamadas en 15 días con menos de 15% de error — hay que acumular historial antes de pedirlo**) y aislamiento de datos por cliente, que es obligación contractual y no preferencia. Dos restricciones: prohibido meter varios anunciantes en una misma cuenta publicitaria, y el acceso se degrada tras 30 días sin uso. Si el agente no crea campañas conviene pedir solo `ads_read` y omitir `ads_management`, que es la revisión más dura. El flujo correcto es Facebook Login for Business con *configuration* más un token de usuario de sistema por cliente.
+- **Dos apps sobre una misma WABA: sí.** El endpoint añade, no reemplaza, y los reintentos van a todas las suscritas. Se puede suscribir solo al campo de mensajes sin tocar la configuración de Kapso.
+- **Falta el permiso `whatsapp_business_manage_events`**, que Meta exige para CAPI sobre anuncios CTWA. No está en el token — **corrige lo dicho antes de que nada bloqueaba CAPI técnicamente.**
+- **No existe endpoint para recuperar la referencia después del hecho.** Si no se captura en el webhook, el identificador de clic se pierde. **Toda pauta que corra antes de que la captura funcione es atribución perdida** — reordena la prioridad: captura antes que inversión.
+
+### Módulos y ruteo de bandeja (revisión con Pablo, 16-ago-2026)
+
+Una sola plataforma con **dos módulos separados** dentro de cada operación: el de Katherine —plantillas de confirmación, pedidos, logística— y el de Sebastián —plantillas de venta, persona, catálogo, anuncios—. Quien entra a uno ve lo suyo.
+
+- **País primero, módulo dentro.** Equivocarse de módulo es molestia; equivocarse de país despacha al lugar equivocado.
+- **Los módulos separan pantallas y configuración, NO el historial.** Al abrir un chat se ve la conversación completa. *Corrige una recomendación previa mía de que ambos equipos vieran todo: Pablo quiere vistas separadas, y es su operación.*
+- **Roles nuevos: ventas y operaciones**, además de admin, que ve ambos. `user_role` tiene solo 2 referencias en el código — cambio barato. **La separación la impone el rol, no el módulo.**
+- **El estado no se guarda: se deriva, y su trabajo es rutear.** Ya hay tres máquinas de estado (pipeline del pedido, `confirmation_status`, 15 estados de Dropi); una cuarta guardada tendría que mantenerse de acuerdo con todas, y la que miente siempre es la que un humano olvidó actualizar. Derivarla la vuelve incapaz de desactualizarse.
+- **Lo único guardado es la asignación** — «este lo estoy trabajando yo» — porque el sistema no lo puede deducir.
+- **La conexión de la tienda es de la operación, no del módulo de ventas.** Si viviera ahí, apagar ventas tumbaría la confirmación. El catálogo sí es de Sebastián.
+- **El recomprador va a la bandeja de ventas**: un clic de anuncio posterior al último pedido es intención de compra nueva.
+
+Consecuencia estructural: hay **una conversación por contacto, para siempre** (índice único sobre `contact_id`). Por eso el ruteo no puede ser un campo que se sobrescriba — un recomprador tendría encima su estado de julio.
+
 ### Datos reales de producción (consultados 15-ago-2026, solo lectura)
 
 - **1.640 pedidos** entre el 29-abr-2026 y el 15-ago-2026 → ~**470 pedidos/mes**.
@@ -80,8 +133,9 @@ El PRD final está en `prd.html` y la cotización cara-cliente en `artefacto.htm
 ## Out of scope
 
 - **Pagos en línea** — el modelo es contraentrega (PRD §2).
-- **Handoff en un mismo número visible** — v1 usa números separados (PRD §2).
-- **Multi-cliente (LogiGho y otros)** — v1 arranca solo con Vorare (PRD §2). El modelo de datos se prepara; el alcance cotizado no lo cubre.
+- ~~**Handoff en un mismo número visible**~~ — **entró al alcance el 16-ago-2026.** Ventas y confirmación comparten número por operación. Consecuencia: el primer toque de Katherine cae **dentro** de la ventana de 24 h, así que es mensaje libre y no plantilla — desaparece la aprobación de Meta del camino crítico.
+- ~~**Multi-tienda**~~ — **entró al alcance el 16-ago-2026.** Dos operaciones desde el día uno: Guatemala y Colombia.
+- **Multi-cliente (LogiGho y otros)** — sigue fuera. Multi-**operación** para un mismo cliente no es lo mismo que multi-cliente.
 - **Auto-registro de IDs de anuncio vía Meta Ads API** (PRD §2).
 - **Creación automática de la orden en Dropi** — decidido al trazar el mapa: la guía nace hoy de una integración Shopify↔Dropi ajena a WaiChat y sigue igual. El documento describe el paso y lo excluye; construirlo sería un segundo integrador completo.
 - **Mover a Katherine de `gpt-5.4-mini` a GPT-5.6 Luna** — apareció al decidir el modelo de Sebastián. Le cortaría el costo **7,5x** con un modelo de generación más nueva, y confirmar y clasificar es exactamente lo que Luna dice hacer bien. Es plata gratis para Vorare, pero en el **servicio que ya opera**, no en el módulo cotizado. Vale la pena hacerlo aparte.

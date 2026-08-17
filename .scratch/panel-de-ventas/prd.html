@@ -429,11 +429,26 @@
       y el sistema se ve roto. Pero <strong>saltarse la confirmación entera no es opción</strong>: es donde
       se valida la dirección, y en contraentrega ahí es donde se caen las entregas.
     </p>
+    <h3>Corrección del 16-ago-2026: un número por operación</h3>
+    <p>
+      Al compartir número venta y confirmación, el primer toque tras una venta de Sebastián cae
+      <strong>dentro</strong> de la ventana de 24 h y es texto libre. <strong>Ya no hace falta aprobar
+      ninguna plantilla nueva</strong>, y desaparece el único elemento con espera externa del proyecto.
+    </p>
+    <p>
+      <strong>Pero las plantillas no desaparecen.</strong> Los pedidos que entran directo desde la tienda
+      conservan el flujo actual completo — plantilla de confirmación, demora actual y mensajes de
+      actualización— porque quien compra en la web puede no haber escrito nunca al número. Y el
+      seguimiento de guía, recolección, tránsito, mensajero y entrega sigue siendo plantilla para
+      ambos orígenes.
+    </p>
     <p class="nota riesgo">
-      <strong>Camino crítico.</strong> El primer toque cae fuera de la ventana de 24 h, así que es
-      plantilla y necesita <strong>aprobación de Meta</strong> — trámite que no controlamos. Además,
-      <code>followupDelayMs</code> es hoy un campo único en la fila única de <code>agent_settings</code>:
-      un tiempo distinto por origen del pedido es campo aparte o lógica nueva.
+      <strong>La regla que evita un fallo silencioso:</strong> el <strong>origen</strong> decide contenido
+      y demora; la <strong>ventana</strong> decide el mecanismo. Atarlo solo al origen haría que un pedido
+      de ventas atascado en la cola de reintentos más de 24 h se intentara enviar como texto libre y
+      fallara sin ruido, justo donde ya hubo un problema. La plantilla es el camino seguro y debe existir
+      siempre como respaldo. Además, <code>followupDelayMs</code> es hoy un campo único en la fila única
+      de <code>agent_settings</code>: un tiempo distinto por origen es campo aparte o lógica nueva.
     </p>
   </section>
 

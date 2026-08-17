@@ -14,7 +14,7 @@ Y hay una parte que no es de tono sino de plata: un vendedor tiene que poder neg
 
 ## Solution
 
-**Sebastián**: un segundo agente, con su propia configuración, que atiende el número de ventas.
+**Sebastián**: un segundo agente, con su propia configuración por operación, que atiende **el mismo número** que Katherine. La conversación tiene un agente dueño en cada momento: el vendedor desde que entra el lead hasta que el pedido queda creado, y de ahí en adelante el de confirmación.
 
 Su persona se configura de forma **híbrida** — estructurado lo que tiene consecuencia, libre lo que es tono:
 
@@ -55,7 +55,9 @@ Escala a un asesor ante descuento fuera de rango, dos intentos sin identificar p
 
 Medido antes de decidir: la tabla de configuración del agente tiene **65 referencias en 15 archivos**, y la mayoría son campos de Katherine — plantillas de Dropi, demoras de seguimiento, acuse de confirmación. No es "configuración de agente": es la configuración de Katherine con un nombre genérico.
 
-Generalizarla a multi-fila obligaría a un expand–contract sobre esos 65 call sites para que el vendedor use una fracción de las columnas. En su lugar, el vendedor recibe **su propio registro de configuración**, con solo los campos que le importan: nombre visible, mensajes base, límite de descuento, instrucciones de tono, modelo y esfuerzo de razonamiento. Radio de impacto sobre lo existente: cero.
+Generalizarla a multi-fila obligaría a un expand–contract sobre esos 65 call sites para que el vendedor use una fracción de las columnas. En su lugar, el vendedor recibe **su propio registro de configuración, uno por operación**, con solo los campos que le importan: nombre visible, mensajes base, límite de descuento, instrucciones de tono, modelo y esfuerzo de razonamiento. Radio de impacto sobre lo existente: cero.
+
+**Un agente dueño por conversación.** Como venta y confirmación comparten número, hace falta saber quién responde. La conversación declara su agente dueño; el vendedor lo es hasta que el pedido se crea, y ahí la propiedad pasa. Un asesor que toma el chat suspende a ambos.
 
 El punto donde ambos agentes se encuentran es el **constructor de prompt efectivo**, que recibe la identidad y resuelve de dónde leer. Ese es el único lugar que aprende que hay más de un agente.
 

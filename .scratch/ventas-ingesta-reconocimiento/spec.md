@@ -14,7 +14,7 @@ Y el catálogo hace el problema peor de lo que parece: cuatro de los productos d
 
 ## Solution
 
-Un **número de WhatsApp dedicado a ventas**, separado del de confirmación, cuyos mensajes entrantes traen la metadata del anuncio que los originó.
+**Un número por operación**, que atiende tanto la venta como la confirmación, y cuyos mensajes entrantes conservan la metadata del anuncio que los originó. El número resuelve a qué operación pertenece el lead, y de ahí sale qué catálogo se consulta.
 
 Cuando un lead entra, una **cascada fija de tres niveles** resuelve el producto:
 
@@ -45,7 +45,9 @@ La **atribución del lead a su anuncio se persiste en el primer contacto**, porq
 
 ## Implementation Decisions
 
-**Segunda conexión de WhatsApp.** La tabla de conexión de Kapso es hoy de fila única. Deja de serlo: el sistema debe sostener al menos dos conexiones con roles distintos —confirmación y ventas— y el ruteo de mensajes entrantes debe resolver a qué agente pertenece cada mensaje según la conexión por la que llegó. Es cambio de modelo de datos, no configuración.
+**Las conexiones son por operación, no por rol.** Corregido el 16-ago-2026: no hay número de ventas separado. Cada operación —Guatemala, Colombia— tiene **un número** que atiende venta y confirmación, y el mensaje entrante resuelve su operación por la conexión que lo recibió. Ese trabajo vive en el [spec de Operaciones](../ventas-multi-operacion/spec.md), del que este depende.
+
+**El catálogo consultado es el de la operación.** Un lead guatemalteco nunca se resuelve contra productos colombianos, aunque el anuncio estuviera mal etiquetado.
 
 **El parser de entrantes carga la metadata del anuncio.** La función que hoy normaliza el payload de Kapso a un mensaje entrante tipado se extiende para exponer el objeto de referencia CTWA cuando venga: identificador del anuncio, titular, cuerpo, URL de origen e identificador de clic. Es el punto más alto de la ingesta y ya tiene cobertura de tests.
 
@@ -87,6 +89,11 @@ La orquestación que toca base de datos no se prueba, en línea con la convenci�
 
 **Riesgo abierto que puede cambiar este spec.** Kapso documenta que entrega el objeto de referencia CTWA en el evento de mensaje recibido, pero la ruta exacta del campo no aparece en ninguna de sus specs, y se comprobó que su serializador recorta campos que Meta sí manda. Falta verificarlo con un anuncio activo y un clic real.
 
-Si el campo se recorta, la salida es configurar el webhook en modo passthrough de Meta, con estas advertencias: el modo no se puede cambiar en un webhook existente, es uno por número, no hay buffering, y la firma HMAC en ese modo no está documentada. Ese cambio afectaría la ingesta, no la cascada — la función de reconocimiento no se entera.
+Si el campo se recorta hay **dos salidas**, y ninguna está decidida:
+
+1. **Webhook en modo passthrough del proveedor.** Advertencias: el modo no se puede cambiar en un webhook existente, es uno por número, no hay buffering, y la firma en ese modo no está documentada.
+2. **Recibir los webhooks directo de Meta.** Verificado el 16-ago-2026: el token de la app trae `whatsapp_business_management` y `whatsapp_business_messaging`, así que técnicamente se puede. **Pero** si Meta solo admite una app suscrita por cuenta de WhatsApp, tomar este camino desplazaría al proveedor actual y rompería el flujo que hoy factura. Hay investigación en curso sobre ese punto exacto.
+
+Cualquiera de las dos afecta la ingesta, no la cascada — la función de reconocimiento no se entera.
 
 Si el mecanismo no resultara viable del todo, el nivel 1 desaparece y la cascada arranca en el nivel 2. El módulo sigue funcionando con un paso más para el cliente.

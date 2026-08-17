@@ -9,7 +9,11 @@ Una sola función pura concentra validación, mapeo, clamp e idempotencia — es
 **Status:** ready-for-agent
 
 - [ ] Valida los seis requeridos: nombre, apellido, teléfono, ciudad, departamento, y dirección **o** reclamo en oficina.
-- [ ] Teléfono en formato válido; ciudad y departamento contra la lista de Colombia.
+- [ ] Teléfono en formato válido para el país de la operación.
+- [ ] **Ciudad y división administrativa contra la lista del país de la operación**, no contra una lista fija. Guatemala y Colombia tienen listas distintas.
+- [ ] **El pedido lleva la moneda de su operación** —quetzales o pesos— sin valor por defecto.
+- [ ] **El pedido se construye para la tienda de su operación.** Que un pedido de una operación pueda apuntar a la tienda de otra es el error más caro del módulo: produce un despacho al país equivocado.
+- [ ] Hay test que demuestra que una dirección válida en un país falla contra la lista del otro.
 - [ ] **Dirección y reclamo en oficina coexistiendo es un error de validación**, no una preferencia.
 - [ ] El payload lleva líneas con producto, variante y cantidad; cliente; dirección o etiqueta de reclamo en oficina; estado financiero pendiente por contraentrega; y las etiquetas de origen de ventas y nombre del vendedor.
 - [ ] **Un descuento por encima del límite configurado sale clampeado al precio válido, y el resultado señala que hubo clamp** para que el orquestador escale.

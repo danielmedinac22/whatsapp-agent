@@ -14,7 +14,7 @@ Tres cosas hacen esto delicado en contraentrega:
 - **Una orden duplicada es plata perdida.** Si el cierre se dispara dos veces, salen dos envíos contraentrega del mismo producto al mismo cliente.
 - **Una orden que falla en silencio es peor que no vender.** El cliente ya se despidió creyendo que compró; si Shopify rechaza la creación y nadie se entera, el pedido no existe y nadie lo reclama hasta que el cliente escribe molesto.
 
-Y al final del cierre hay una costura incómoda: el cliente acaba de comprarle a Sebastián, y minutos después le escribe otro número con otro nombre pidiéndole que confirme el pedido que acaba de hacer.
+Y al final del cierre hay una costura: el cliente acaba de comprarle a Sebastián, y minutos después alguien le pide que confirme el pedido que acaba de hacer. **Desde el 16-ago-2026 eso ocurre en el mismo hilo y el mismo número**, lo que lo hace menos extraño para el cliente pero exige que el sistema sepa quién de los dos agentes está hablando.
 
 ## Solution
 
@@ -24,7 +24,11 @@ La creación es **idempotente**: dos disparos del mismo cierre producen una sola
 
 El **descuento se valida aquí**, en el mismo punto donde se construye la orden. Fuera del límite configurado, la orden se crea al precio válido y el caso escala a un asesor.
 
-El **handoff no necesita camino nuevo**: la orden creada dispara el webhook de Shopify que el pipeline de confirmación ya consume. Lo único que cambia es que los pedidos originados en ventas usan una **plantilla distinta** —que reconoce la compra y se enfoca en verificar la dirección— y salen a los **diez minutos** en vez de cinco.
+El **handoff no necesita camino nuevo**: la orden creada dispara el webhook de la tienda que el pipeline de confirmación ya consume. Los pedidos originados en ventas salen a los **diez minutos** en vez de cinco, con un mensaje que reconoce la compra y se enfoca en verificar la dirección.
+
+**Ese mensaje no es plantilla, cuando puede no serlo.** Como venta y confirmación comparten número y el cliente acaba de escribir, la ventana de veinticuatro horas suele estar abierta y el mensaje sale como texto libre. No hace falta aprobar ninguna plantilla nueva.
+
+**Los pedidos que no vienen de Sebastián conservan el flujo de hoy, intacto.** Alguien que compra directo en la tienda puede no haber escrito nunca al número, así que su ventana está cerrada y su primer toque **es plantilla**, con la demora actual — exactamente como funciona hoy. Y el seguimiento posterior de guía, recolección, tránsito, mensajero y entrega **sigue siendo plantilla para ambos orígenes**, porque cae fuera de ventana. Todas esas ya existen y no cambian.
 
 ## User Stories
 
@@ -51,7 +55,11 @@ El **handoff no necesita camino nuevo**: la orden creada dispara el webhook de S
 
 **Datos de cierre.** Requeridos: nombre, apellido, teléfono, ciudad, departamento, y dirección **o** reclamo en oficina. Opcional: correo. Derivados de la conversación: producto y variante, cantidad, valor y método de pago, siempre contraentrega.
 
-**Validaciones.** Teléfono en formato válido. Ciudad y departamento contra la lista de Colombia. Dirección y reclamo en oficina son **mutuamente excluyentes**: que coexistan es un error de validación, no una preferencia.
+**Validaciones, parametrizadas por operación.** Teléfono en formato válido para el país de la operación. Ciudad y división administrativa **contra la lista del país de la operación** — no contra una lista fija. Corregido el 16-ago-2026: el PRD original decía Colombia, pero la operación viva es Guatemala y la lista tiene que salir de la operación. Dirección y reclamo en oficina son **mutuamente excluyentes**: que coexistan es un error de validación, no una preferencia.
+
+**Moneda por operación.** El pedido se crea en la moneda de su operación: quetzales en Guatemala, pesos en Colombia. No hay moneda por defecto.
+
+**La tienda destino es la de la operación.** Un pedido de una operación nunca se crea en la tienda de otra. Es el error más caro que este módulo puede cometer, porque produce un despacho al país equivocado.
 
 **Forma de la orden.** Líneas con producto, variante y cantidad. Cliente con nombre, apellido, teléfono y correo si existe. Dirección de envío, o la etiqueta de reclamo en oficina cuando aplique. Estado financiero pendiente, por contraentrega. Etiquetas que identifican el origen de ventas y el nombre del vendedor.
 
@@ -63,9 +71,17 @@ El **handoff no necesita camino nuevo**: la orden creada dispara el webhook de S
 
 **El handoff reutiliza el pipeline existente.** El receptor del webhook de Shopify ya valida firma, hace inserción idempotente por identificador de orden y agenda seguimiento y remarketing. La orden creada por Sebastián entra por ahí sin código nuevo.
 
-**Plan de seguimiento por origen.** Una **función pura** recibe la orden y devuelve qué plantilla y qué demora le corresponden: los pedidos con etiqueta de ventas usan la plantilla nueva y diez minutos; el resto conserva el comportamiento actual. Hoy la demora es un campo único en la configuración; deja de serlo o se resuelve por origen.
+**Plan de seguimiento: el origen decide el contenido, la ventana decide el mecanismo.** Una **función pura** recibe el pedido y el estado de la ventana de conversación, y devuelve qué mensaje, con qué mecanismo y con qué demora.
 
-**Plantilla nueva.** El primer toque cae fuera de la ventana de veinticuatro horas, así que es plantilla y requiere aprobación de Meta. Su contenido reconoce la compra reciente y se enfoca en verificar los datos de envío. No se salta la confirmación: es donde se valida la dirección, y en contraentrega ahí es donde se caen las entregas.
+- **Origen ventas** → contenido que reconoce la compra, demora de diez minutos.
+- **Origen directo** → contenido y demora actuales, sin cambio alguno.
+- **Ventana abierta** → texto libre. **Ventana cerrada** → plantilla.
+
+Separar las dos dimensiones importa por un borde real: si un pedido de ventas se atrasa en la cola de reintentos más de veinticuatro horas, su ventana también se cierra. Atar el mecanismo al origen haría que ese mensaje se intentara enviar como texto libre y **fallara en silencio**, justo en el caso donde ya hubo un problema. **La plantilla es el camino seguro y siempre debe existir como respaldo**, incluso para pedidos de ventas.
+
+Hoy la demora es un campo único en la configuración; deja de serlo o se resuelve por origen.
+
+**Mensaje de confirmación en sesión, no plantilla.** Al compartir número, el primer toque cae **dentro** de la ventana de veinticuatro horas y es texto libre. No se salta la confirmación: es donde se valida la dirección, y en contraentrega ahí es donde se caen las entregas.
 
 ## Testing Decisions
 
@@ -76,7 +92,7 @@ Un buen test aquí verifica **qué payload sale y qué errores salen**, dada una
 - El constructor de orden, que concentra toda la decisión.
 - El resolutor del plan de seguimiento.
 
-**Casos que deben quedar cubiertos en el constructor de orden:** datos completos con dirección; datos completos con reclamo en oficina; dirección y reclamo en oficina coexistiendo, que debe fallar; teléfono inválido; ciudad o departamento fuera de la lista de Colombia; campo requerido faltante; descuento dentro del límite; **descuento por encima del límite, que debe salir clampeado y señalado**; límite en cero con descuento pactado; y dos construcciones del mismo cierre produciendo la misma llave de idempotencia.
+**Casos que deben quedar cubiertos en el constructor de orden:** datos completos con dirección; datos completos con reclamo en oficina; dirección y reclamo en oficina coexistiendo, que debe fallar; teléfono inválido para el país de la operación; ciudad o división administrativa fuera de la lista **del país de la operación**; una dirección válida en un país que debe fallar contra la lista del otro; moneda tomada de la operación; campo requerido faltante; descuento dentro del límite; **descuento por encima del límite, que debe salir clampeado y señalado**; límite en cero con descuento pactado; y dos construcciones del mismo cierre produciendo la misma llave de idempotencia.
 
 **Casos del plan de seguimiento:** orden con etiqueta de ventas, que debe dar la plantilla nueva y diez minutos; orden sin la etiqueta, que debe conservar el comportamiento actual.
 
@@ -94,6 +110,8 @@ La creación real contra Shopify y el comportamiento de la cola de reintentos no
 
 ## Further Notes
 
-**La aprobación de la plantilla por Meta está en camino crítico** y no la controlamos. Con el cronograma comprimido a dos semanas, ese trámite tiene que caer dentro de la semana dos. Conviene enviarla a aprobación apenas esté redactada, incluso antes de que el resto del spec esté implementado.
+**Ya no hay aprobación de Meta en camino crítico.** Al decidirse un número por operación, el mensaje de confirmación cae en sesión abierta y deja de ser plantilla. Era el único elemento del proyecto con espera externa que no controlábamos.
+
+**Prerequisito que sigue sin dueño:** la conexión a la API de administración de la tienda **está vacía**. Los pedidos entran por webhook con un secreto de entorno, pero crearlos necesita esa conexión configurada, y hace falta una por operación.
 
 La tasa de confirmación actual del flujo de Katherine es del 88,4% sobre 1.640 pedidos. Es la línea base contra la cual se puede comparar el comportamiento de los pedidos originados en ventas, si alguna vez se quiere medir si la plantilla nueva funciona mejor o peor.

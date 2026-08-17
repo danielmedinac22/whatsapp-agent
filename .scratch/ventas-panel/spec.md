@@ -12,13 +12,17 @@ Además, cuando Sebastián no puede resolver algo, alguien tiene que poder entra
 
 ## Solution
 
-Una sección **Panel de Ventas** con tres partes:
+Un **selector de operación** que define sobre qué país se está trabajando, visible en todo momento para que nadie edite el catálogo equivocado. Todo lo que sigue es por operación.
+
+Y una sección **Panel de Ventas** con tres partes:
 
 **Vendedor.** Configuración híbrida de la persona de Sebastián: estructurado el nombre visible, los mensajes base y el límite de descuento; libre el tono y las instrucciones de personalidad. Los cambios aplican en la siguiente conversación, sin desplegar.
 
 **Productos.** Catálogo de doble fuente: conectar un producto existente de Shopify —de donde se lee toda su información— o crear uno nativo con nombre, descripción, imágenes y adjuntos. Por cada producto, la lista de anuncios que le apuntan y qué archivos son enviables.
 
 **Conversaciones.** Vista de los chats de Sebastián, con la posibilidad de tomar un chat —que pausa al agente— y devolvérselo.
+
+> **La separación por equipos vive aparte.** Qué conversaciones caen en esta bandeja y quién puede verlas lo define el [spec de Módulos, roles y ruteo](../ventas-modulos-y-ruteo/spec.md). Acá solo se construye la vista del módulo de ventas.
 
 ## User Stories
 
@@ -34,7 +38,7 @@ Una sección **Panel de Ventas** con tres partes:
 10. Como admin, quiero escribir en texto libre el tono y la personalidad del vendedor, para ajustarlo sin pedir desarrollo.
 11. Como admin, quiero definir el límite de descuento en un campo, para cambiarlo cuando cambie mi margen.
 12. Como admin, quiero poner el límite de descuento en cero, para prohibirlos.
-13. Como admin, quiero conectar el número dedicado de ventas, para separar las conversaciones comerciales de las de confirmación.
+13. Como admin, quiero conectar el número de cada operación, para que los leads de sus anuncios lleguen a donde corresponde.
 14. Como admin, quiero que mis cambios apliquen en la siguiente conversación, para probar ajustes rápido.
 15. Como asesor, quiero ver la lista de conversaciones de ventas, para saber qué está pasando.
 16. Como asesor, quiero distinguir las conversaciones que necesitan atención humana, para priorizar.
@@ -44,6 +48,10 @@ Una sección **Panel de Ventas** con tres partes:
 20. Como dueño de Vorare, quiero configurar todo esto sin depender del equipo técnico, para moverme a la velocidad de mis campañas.
 
 ## Implementation Decisions
+
+**Selector de operación transversal.** No es un filtro de una pantalla: define el contexto de toda la sección. La operación activa tiene que ser **evidente sin buscarla**, porque el error que previene —editar el catálogo del país equivocado— es silencioso.
+
+**Todo cuelga de la operación.** Productos, anuncios, archivos, configuración del vendedor y conversaciones son por operación. No hay entidad compartida entre países.
 
 **Entidades nuevas.** Producto del panel —con su origen, Shopify o nativo—, mapeo anuncio→productos en relación de muchos a muchos, archivos del producto con su marca de enviable, y la configuración del vendedor como registro propio del agente de ventas.
 
@@ -77,7 +85,8 @@ Si en el futuro el repo adopta un arnés de pruebas de UI, esta es la sección a
 
 - Auto-registro de anuncios desde la API de Meta Ads.
 - Varias personas de vendedor. Una sola.
-- Configuración multi-tienda o multi-cliente. El modelo de datos se prepara, la UI no lo expone.
+- Multi-**cliente**. Varias operaciones de un mismo cliente sí entran; varios clientes no.
+- Crear una operación nueva desde el panel. Se crean por configuración; el panel las selecciona, no las da de alta.
 - Reportería y analítica de ventas.
 - Edición de productos de Shopify desde el panel. Se leen, no se escriben.
 
