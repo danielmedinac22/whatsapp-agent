@@ -6,7 +6,7 @@ Se corre con el skill `grilling-frontend-prototyping`: cinco prototipos radicalm
 
 **Blocked by:** None — can start immediately.
 
-**Status:** ready-for-agent
+**Status:** claimed — worktree `grill-nivel-1`, sesión con el usuario, 17-ago-2026
 
 - [ ] Cinco variantes vivas del encuadre general, comparables lado a lado.
 - [ ] Cada variante resuelve de forma distinta la manifestación de la operación activa — no cinco versiones del mismo selector en una esquina.
@@ -16,3 +16,11 @@ Se corre con el skill `grilling-frontend-prototyping`: cinco prototipos radicalm
 - [ ] Si una variante necesita explicación para entenderse, se descarta.
 
 **Se corre con el usuario presente.** Un agente que responde sus propias preguntas de diseño no está haciendo el ejercicio.
+
+## Por qué esto pasó a ser bloqueante (17-ago-2026)
+
+El contract de la migración multi-operación dejó el panel usando `panelOperation()`, un puente que **lanza con dos operaciones activas** en vez de resolver a `id = 1` —que *es* Guatemala— en silencio. Es deliberado: fallar ruidosamente antes que editar el país equivocado sin que nadie se entere.
+
+Consecuencia: **ocho pantallas del panel dejan de funcionar el día que Colombia se ponga `active`**, así que el selector de operación **bloquea la apertura de Colombia** (ticket 08 de Operaciones). Esta ronda de prototipos es lo que destraba ese camino.
+
+Crear Colombia en estado `inactive` sigue siendo seguro; activarla sin selector, no.
