@@ -19,7 +19,7 @@
 |---|---|
 | Selector de operación | **cerrado en el nivel 1** — el riel *es* el selector; lo que queda es nivel 3 |
 | Conversaciones | **cerrado** (ver abajo) |
-| Ficha de cliente y etapas del lead | en curso — grupo **agregado** el 17-ago-2026 |
+| Ficha de cliente y etapas del lead | **cerrado** — grupo agregado el 17-ago-2026 |
 | Catálogo | pendiente |
 | Configuración del vendedor | pendiente |
 | Tablero de pipeline | pendiente — **último grupo**, ver más abajo |
@@ -37,6 +37,33 @@ Daniel preguntó si hacía falta un visualizador de clientes tipo CRM, y si dar�
 2. **Etapas: sí, pero como barra lineal, no como tablero.** Salesforce pone una barra de etapas sobre el registro (New › Contacted › Nurturing › Converted): no es tablero ni analítica, dice dónde está *este* lead en un recorrido fijo. El de Vorare ya existe y está fijo: `anuncio → reconocido → conversando → pedido → confirmado → entregado`. Hoy ese recorrido **está partido en tres pantallas** —reconocimiento en la conversación, confirmación en Pedidos, entrega en Dropi— y nadie ve el viaje completo de un lead. El 11,6% que no confirma se pierde sin que se sepa en qué escalón.
 
 3. **Tablero de pipeline: entra como último grupo del nivel 2.** Se evaluó dejarlo fuera del spec —un tablero es para repartir trabajo entre personas, y acá el reparto lo hace el ruteo; además el spec excluye reportería—, pero Daniel decidió incluirlo. Va al final a propósito: es el grupo que más depende de que los otros estén resueltos.
+
+### Veredicto · la ficha con pestañas
+
+Daniel eligió la ficha con pestañas sobre las otras cuatro formas. Su razón, textual:
+
+> «Me gusta que todo vive en el panel de forma ordenada, si tenemos información organizada mostrémosla.»
+
+**Es un principio, no solo una preferencia, y conviene leerlo así:** cuando el sistema ya calculó algo, la interfaz lo enseña en vez de esconderlo por ahorrar espacio. Quien construya debería aplicarlo también donde no se lo dijimos.
+
+**El panel queda con el recorrido arriba y tres pestañas:**
+
+- **Cliente** — desde cuándo, pedidos, confirmados, sin confirmar, total comprado, último pedido.
+- **Pedidos** — el historial de esa persona con el estado de cada uno.
+- **Contexto** — **cómo** se reconoció: qué nivel de la cascada resolvió, y si quedó ambiguo, entre qué productos no pudo distinguir, con la acción de registrar el anuncio.
+
+**El recorrido va vertical dentro del panel**, no como cinta sobre el hilo: en horizontal y en columna angosta las etiquetas se truncan a «A… R… C…», que no es un recorrido sino ruido. Y no se repite en la fila de la lista: la fila ya está en su límite y la etapa no es lo que te hace entrar — eso lo resuelven las vistas.
+
+#### Una disyuntiva que estaba mal planteada
+
+Al llenar las pestañas apareció que «Contexto» decía exactamente lo mismo que el hilo ya narra como evento. Se planteó como «cuál de los dos se cae», y **el principio de Daniel mostró que la disyuntiva era falsa**: el problema no era que sobrara la pestaña, sino que estaba mostrando lo mismo en vez de mostrar más.
+
+Quedan los dos, con trabajos distintos:
+
+- **El evento del hilo dice CUÁNDO**, fechado y en orden respecto de los mensajes.
+- **La pestaña dice CÓMO**: el nivel de la cascada que resolvió, y en el caso ambiguo los nombres candidatos que el matcher no pudo separar. Eso el evento no lo puede contar, y hoy no se enseña en ninguna pantalla.
+
+Es el mejor lugar del panel para el problema real de Vorare: los cuatro SKUs REVITALHAIR casi homónimos aparecen ahí, listados, con el botón que los desambigua para siempre.
 
 ## Answer · Conversaciones
 

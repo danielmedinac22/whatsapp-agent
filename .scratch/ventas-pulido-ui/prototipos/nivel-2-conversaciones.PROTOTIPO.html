@@ -193,6 +193,12 @@
   .hist { display:flex; align-items:center; justify-content:space-between; gap:8px;
           padding:8px 0; border-top:1px solid var(--border); }
   .hist:first-of-type { border-top:none; }
+  .casc { padding:10px 11px; border-radius:9px; border:1px solid var(--op-line); background:var(--op-faint); }
+  .casc-n { font-size:9.5px; text-transform:uppercase; letter-spacing:.1em; color:var(--op); font-weight:600; }
+  .casc-t { font-size:13px; font-weight:600; margin-top:3px; }
+  .casc-d { font-size:11px; color:var(--text-soft); line-height:1.5; margin-top:5px; }
+  .cand { padding:6px 9px; margin-top:4px; border-radius:6px; font-size:11.5px;
+          border:1px solid rgba(244,193,109,.28); background:rgba(244,193,109,.06); color:var(--text-dim); }
 
   /* C · tercer panel de contexto (Intercom, Lemni, Gorgias) */
   .ctx { padding:13px 14px; display:flex; flex-direction:column; gap:14px; max-height:660px; overflow-y:auto; }
@@ -586,19 +592,35 @@ function custPanel(opts = {}) {
       return box;
     }
 
+    /* La pestaña no repite el evento del hilo: muestra CÓMO se reconoció.
+       El evento dice cuándo; la cascada dice por qué, y con qué alternativas
+       quedaron descartadas. Es información que el sistema ya calcula y que
+       hoy no se enseña en ninguna pantalla. */
     if (state.tab === "contexto") {
       const s = el("div", "ctx-sec");
-      s.innerHTML = `<div class="ctx-h">Contexto de venta</div>
-        <div class="ctx-f"><span class="ctx-k">Producto reconocido</span>
-          <span class="ctx-v strong">${c.prod ? esc(c.prod) : `<span class="soft">ninguno todavía</span>`}</span></div>
-        <div class="ctx-f"><span class="ctx-k">Vino del anuncio</span>
-          <span class="ctx-v num">${c.ad ? esc(c.ad) : `<span class="soft">sin referencia</span>`}</span></div>
-        <div class="ctx-f"><span class="ctx-k">Campaña</span><span class="ctx-v">${esc(c.camp)}</span></div>
-        <div class="ctx-f"><span class="ctx-k">Reconocimiento</span>
-          <span class="ctx-v"><span class="pill ${REC[c.rec].c}">${REC[c.rec].l}</span></span></div>
-        <p class="soft" style="font-size:11px;line-height:1.5;margin-top:8px;padding-top:9px;border-top:1px dashed var(--border)">
-          Ojo: esto es exactamente lo mismo que ya cuenta el hilo como evento.
-          Si la pestaña se queda, hay que decidir cuál de los dos sobra.</p>`;
+      const nivel = c.ad
+        ? { n: 1, t: "Por ID de anuncio", d: "El mensaje traía la referencia del anuncio. Es el nivel más confiable de la cascada." }
+        : { n: 2, t: "Match semántico", d: "El mensaje llegó sin referencia de anuncio, así que se comparó el texto contra el catálogo." };
+      s.innerHTML = `<div class="ctx-h">Cómo se reconoció</div>
+        <div class="casc">
+          <div class="casc-n">Nivel ${nivel.n} de 3</div>
+          <div class="casc-t">${esc(nivel.t)}</div>
+          <p class="casc-d">${esc(nivel.d)}</p>
+        </div>
+        ${c.ad ? `
+          <div class="ctx-f" style="margin-top:11px"><span class="ctx-k">Anuncio</span>
+            <span class="ctx-v num">${esc(c.ad)}</span></div>
+          <div class="ctx-f"><span class="ctx-k">Campaña</span><span class="ctx-v">${esc(c.camp)}</span></div>
+          <div class="ctx-f"><span class="ctx-k">Apunta a</span>
+            <span class="ctx-v strong">${esc(c.prod)}</span></div>`
+        : `
+          <div class="ctx-h" style="margin-top:13px">No se pudo distinguir entre</div>
+          ${["REVITALHAIR – DHT ANTICALVICIE","REVITALHAIR – DHT BLOCKER ANTICALVICIE","REVITALHAIR – COMBO DHT + SERUM 360"]
+            .slice(0, c.rec === "amb" ? 3 : 0)
+            .map(p => `<div class="cand">${esc(p)}</div>`).join("")}
+          <p class="casc-d" style="margin-top:9px">Los nombres son casi idénticos y el copy del anuncio no los separa.
+            Registrar el ID de este anuncio lo resolvería para siempre.</p>
+          <button class="btn" style="width:100%;margin-top:10px">Registrar el anuncio</button>`}`;
       box.appendChild(s);
       return box;
     }
