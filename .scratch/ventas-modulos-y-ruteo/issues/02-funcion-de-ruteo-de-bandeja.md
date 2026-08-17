@@ -6,7 +6,7 @@ Es una función pura y derivada. Como se deriva de hechos que ya existen, **no p
 
 **Blocked by:** ventas-multi-operacion 02 · La conexión de WhatsApp cuelga de la operación
 
-**Status:** ready-for-agent
+**Status:** claimed — worktree `ruteo-bandeja`, tanda del 17-ago-2026
 
 Reglas, de mayor a menor precedencia:
 

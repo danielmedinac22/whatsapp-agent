@@ -4,7 +4,7 @@
 
 **Blocked by:** None — can start immediately.
 
-**Status:** ready-for-agent
+**Status:** esquema en curso — worktree `esquema-0022` deja las columnas de atribución; el parser sigue abierto
 
 - [ ] El parser de mensajes entrantes expone la referencia del anuncio cuando el payload la trae.
 - [ ] Un payload sin referencia se sigue parseando igual que hoy, sin romper ni inventar campos.

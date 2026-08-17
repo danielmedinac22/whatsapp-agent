@@ -4,7 +4,7 @@
 
 **Blocked by:** None — can start immediately.
 
-**Status:** ready-for-agent
+**Status:** esquema en curso — worktree `esquema-0022` deja los roles; la funcionalidad sigue abierta
 
 Verificado: `user_role` tiene **solo dos referencias en el código**, así que el cambio es barato.
 

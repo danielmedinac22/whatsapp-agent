@@ -6,7 +6,7 @@ Es el mínimo de catálogo que el reconocimiento necesita para existir. La exper
 
 **Blocked by:** None — can start immediately.
 
-**Status:** ready-for-agent
+**Status:** esquema en curso — worktree `esquema-0022` deja las tablas; la funcionalidad sigue abierta
 
 - [ ] Existe la entidad producto del panel, con su origen declarado: conectado a la tienda o nativo.
 - [ ] La relación anuncio→productos es de muchos a muchos en ambos sentidos.

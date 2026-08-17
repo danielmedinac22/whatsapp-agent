@@ -6,7 +6,7 @@ Es el nivel primario de la cascada. Los fallbacks van en el ticket siguiente.
 
 **Blocked by:** 01 · 02 · 03
 
-**Status:** ready-for-agent
+**Status:** claimed (parte pura) — worktree `reconocimiento-cascada`, tanda del 17-ago-2026. La persistencia espera al esquema `0022`.
 
 - [ ] La cascada de reconocimiento es una función pura que recibe la referencia del anuncio, el catálogo y un matcher semántico inyectado.
 - [ ] Devuelve tres formas distinguibles: resuelto a un producto, ambiguo con la lista de candidatos, o desconocido.
