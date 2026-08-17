@@ -3,26 +3,22 @@
 <!--
   PROTOTIPO DESECHABLE — no es código de producción, no se integra.
 
-  RONDA 2 · Nivel 1. El encuadre ya está elegido: marco teñido por operación
-  + riel de operaciones (modelo Slack completo). Ver ## Answer del ticket.
+  RONDA 3 · Nivel 1. Ya está decidido: marco teñido en la BARRA (modelo
+  Slack, no el borde de AWS), riel de operaciones, el número de teléfono
+  junto al color, violeta Guatemala / cian Colombia.
 
-  Lo que esta ronda decide es lo que los referentes NO zanjan:
-    · hasta dónde llega el tinte dentro del cromo — Slack pinta la barra
-      lateral, AWS pinta el borde superior; hay que elegir.
-    · qué dos tonos, sabiendo que no pueden ser jerárquicos ni colisionar
-      con menta (correcto), ámbar (atención) ni rojo (peligro).
+  Lo que esta ronda decide: **qué sobrevive cuando las barras se colapsan.**
+  Daniel pidió que sean colapsables — 78px de riel + 216px de columna son
+  294px permanentes de cromo. Pero el tinte VIVE en las barras: colapsarlas
+  apaga el indicador, y justo en el modo donde más rato se trabaja.
 
-  Los cinco llevan riel y tinte. La paleta es un control ortogonal para
-  poder juzgar un eje sin que el otro contamine.
+  Las cinco variantes son cinco respuestas a esa pregunta. El estado
+  expandido es idéntico en todas — la comparación es el estado colapsado.
 
-  Ronda 1 (cinco encuadres distintos): commit 2080fe6.
+  Ronda 1 (cinco encuadres): 2080fe6 · Ronda 2 (alcance del tinte): d34ecbc
 -->
 
 <style>
-  /* ------------------------------------------------------------------
-     Tokens — de apps/web/src/app/globals.css. La menta queda LIBERADA:
-     ya no identifica a Guatemala, solo significa «correcto».
-     ------------------------------------------------------------------ */
   :root {
     --bg: #071119;
     --panel: rgba(10, 24, 34, 0.82);
@@ -33,56 +29,41 @@
     --text-dim: #99adbc;
     --text-soft: #6f8798;
     --accent: #6ee7b7;
-    --accent-strong: #34d399;
     --highlight: #f4c16d;
     --danger: #f87171;
     --shadow-panel: 0 14px 42px rgba(3, 10, 16, 0.32);
     --font: "Avenir Next", "Segoe UI", "Helvetica Neue", system-ui, sans-serif;
 
-    /* Identidad de la operación activa. Las inyecta render() desde la
-       paleta elegida — nunca se usan para nada semántico. */
+    /* La operación activa. Nunca se usa para nada semántico: la menta
+       sigue significando «correcto» y el ámbar «atención», en los dos países. */
     --op: #a78bfa;
-    --op-line: rgba(167, 139, 250, 0.45);
-    --op-soft: rgba(167, 139, 250, 0.13);
-    --op-faint: rgba(167, 139, 250, 0.07);
+    --op-line: rgba(167, 139, 250, .45);
+    --op-soft: rgba(167, 139, 250, .13);
+    --op-faint: rgba(167, 139, 250, .07);
   }
 
   * { box-sizing: border-box; }
 
   body {
-    margin: 0;
-    min-height: 100vh;
-    color: var(--text);
+    margin: 0; min-height: 100vh; color: var(--text);
     background:
-      linear-gradient(180deg, rgba(244, 193, 109, 0.03), transparent 28%),
+      linear-gradient(180deg, rgba(244,193,109,.03), transparent 28%),
       linear-gradient(180deg, #09131c 0%, #071119 45%, #050d14 100%);
     background-attachment: fixed;
-    font-family: var(--font);
-    font-size: 14px;
-    -webkit-font-smoothing: antialiased;
+    font-family: var(--font); font-size: 14px; -webkit-font-smoothing: antialiased;
   }
-
   h1, h2, h3, h4 { margin: 0; font-weight: 600; }
   p { margin: 0; }
   button { font-family: inherit; font-size: inherit; color: inherit; cursor: pointer; }
   table { border-collapse: collapse; width: 100%; }
   :focus-visible { outline: 2px solid var(--op); outline-offset: 2px; border-radius: 4px; }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; } }
 
-  @media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
-  }
-
-  /* Banderas en CSS: el emoji de bandera no renderiza en todos los
-     sistemas y aquí el país tiene que leerse siempre. */
-  .flag {
-    display: inline-block; flex: none;
-    width: 22px; height: 15px; border-radius: 2px;
-    border: 1px solid rgba(255, 255, 255, .18);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, .4);
-  }
+  .flag { display: inline-block; flex: none; width: 22px; height: 15px; border-radius: 2px; border: 1px solid rgba(255,255,255,.18); box-shadow: 0 1px 3px rgba(0,0,0,.4); }
   .flag-GT { background: linear-gradient(90deg, #4997d0 0 33.3%, #fff 33.3% 66.6%, #4997d0 66.6%); }
   .flag-CO { background: linear-gradient(180deg, #fcd116 0 50%, #003893 50% 75%, #ce1126 75%); }
   .flag-lg { width: 32px; height: 22px; border-radius: 3px; }
+  .flag-sm { width: 18px; height: 12px; }
 
   /* ================= piezas compartidas del mock ================= */
   .card { background: var(--panel); box-shadow: var(--shadow-panel); backdrop-filter: blur(18px); border: 1px solid var(--border); border-radius: 10px; }
@@ -90,49 +71,34 @@
   .eyebrow { color: var(--highlight); font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: .09em; }
   .muted { color: var(--text-dim); }
   .soft { color: var(--text-soft); }
-
   .pill { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; font-size: 11px; font-weight: 500; white-space: nowrap; }
   .pill-accent { color: var(--accent); border-color: rgba(110,231,183,.35); background: rgba(110,231,183,.08); }
-  .pill-warn   { color: var(--highlight); border-color: rgba(244,193,109,.35); background: rgba(244,193,109,.08); }
+  .pill-warn { color: var(--highlight); border-color: rgba(244,193,109,.35); background: rgba(244,193,109,.08); }
   .pill-danger { color: var(--danger); border-color: rgba(248,113,113,.35); background: rgba(248,113,113,.08); }
-  .pill-quiet  { color: var(--text-soft); }
+  .pill-quiet { color: var(--text-soft); }
   .dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
-
   .mocktable { font-size: 13px; }
   .mocktable thead th { text-align: left; font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: .08em; color: var(--text-soft); padding: 0 12px 8px; }
   .mocktable td { padding: 11px 12px; vertical-align: middle; border-top: 1px solid var(--border); }
   .num { font-variant-numeric: tabular-nums; }
   .prodname { font-weight: 500; letter-spacing: -.01em; }
-
   .empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 56px 24px; text-align: center; }
   .empty-mark { width: 44px; height: 44px; border-radius: 10px; border: 1px dashed var(--border-strong); display: grid; place-items: center; color: var(--text-soft); }
 
-  /* El estado activo del menú SÍ toma el color de la operación: es cromo.
-     El contenido de la derecha nunca lo toma. */
-  .navlink {
-    display: flex; align-items: center; gap: 9px;
-    height: 34px; padding: 0 10px;
-    border-radius: 8px; border: 1px solid transparent;
-    color: var(--text-dim); font-size: 13px; font-weight: 500;
-    background: none; width: 100%; text-align: left;
-    transition: background .14s, color .14s, border-color .14s;
-  }
+  .navlink { display: flex; align-items: center; gap: 9px; height: 34px; padding: 0 10px; border-radius: 8px; border: 1px solid transparent; color: var(--text-dim); font-size: 13px; font-weight: 500; background: none; width: 100%; text-align: left; transition: background .14s, color .14s, border-color .14s; }
   .navlink:hover { background: rgba(255,255,255,.045); color: var(--text); }
   .navlink[aria-current="page"] { background: var(--op-soft); border-color: var(--op-line); color: var(--text); }
   .navlink .ico { width: 15px; text-align: center; opacity: .7; font-size: 12px; }
-
   .grouplabel { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .1em; color: var(--text-soft); }
 
   .page { padding: 22px 26px 60px; max-width: 1180px; margin: 0 auto; width: 100%; }
   .page-head { display: flex; flex-direction: column; gap: 5px; margin-bottom: 20px; }
   .page-title { font-size: 21px; letter-spacing: -.015em; }
   .page-sub { color: var(--text-dim); font-size: 13px; max-width: 60ch; line-height: 1.5; }
-
   .statgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 18px; }
   .stat { padding: 12px 14px; }
   .stat-k { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-soft); }
   .stat-v { font-size: 19px; font-weight: 600; margin-top: 4px; letter-spacing: -.02em; }
-
   .convrow { display: grid; grid-template-columns: 1fr auto; gap: 4px 14px; padding: 13px 14px; border-top: 1px solid var(--border); align-items: start; }
   .convrow:first-of-type { border-top: none; }
   .convrow.is-open { background: rgba(110,231,183,.05); box-shadow: inset 2px 0 0 var(--accent); }
@@ -142,25 +108,20 @@
 
   @keyframes ctxin { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
   .ctx-anim { animation: ctxin .3s cubic-bezier(.22,1,.36,1); }
-  @keyframes railin { from { opacity: .25; transform: translateX(20px); } to { opacity: 1; transform: none; } }
+  @keyframes slidein { from { opacity: .25; transform: translateX(16px); } to { opacity: 1; transform: none; } }
 
-  /* ================= EL ARMAZÓN COMÚN A LOS CINCO =================
-     Riel de operaciones (78px) + columna de módulo (216px) + contenido.
-     El anidamiento es literal: el módulo vive dentro del país elegido.
-     ================================================================= */
-  .shell { display: grid; grid-template-columns: 78px 216px 1fr; min-height: 100vh; }
+  /* ================= ARMAZÓN =================
+     Expandido es idéntico en las cinco. Lo que se compara es el colapso.
+     ============================================ */
+  .shell { display: grid; min-height: 100vh; }
+  .shell .main, .shell .col { animation: slidein .3s cubic-bezier(.22,1,.36,1); }
 
   .rail {
-    background: linear-gradient(180deg, rgba(6,14,21,.98), rgba(4,11,17,.98));
+    background: linear-gradient(180deg, var(--op-faint), transparent 40%), linear-gradient(180deg, rgba(6,14,21,.98), rgba(4,11,17,.98));
     border-right: 1px solid var(--border-strong);
     padding: 14px 11px; display: flex; flex-direction: column; gap: 10px; align-items: center;
   }
-  .tile {
-    width: 56px; height: 56px; border-radius: 15px;
-    border: 1px solid var(--border); background: rgba(14,30,42,.7);
-    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
-    position: relative; transition: all .18s cubic-bezier(.22,1,.36,1);
-  }
+  .tile { width: 56px; height: 56px; border-radius: 15px; border: 1px solid var(--border); background: rgba(14,30,42,.7); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; position: relative; transition: all .18s cubic-bezier(.22,1,.36,1); }
   .tile .flag { filter: saturate(.2) brightness(.55); transition: filter .18s; }
   .tile-code { font-size: 10px; font-weight: 700; letter-spacing: .06em; color: var(--text-soft); transition: color .18s; }
   .tile:hover { border-color: var(--border-strong); transform: translateY(-1px); }
@@ -168,90 +129,87 @@
   .tile[aria-pressed="true"] .flag { filter: none; }
   .tile[aria-pressed="true"] .tile-code { color: var(--op); }
   .tile.dormant { border-style: dashed; opacity: .6; }
-  /* La pestaña que sale del tile hacia la columna de módulo. */
-  .tile[aria-pressed="true"]::after {
-    content: ""; position: absolute; right: -12px; top: 50%; transform: translateY(-50%);
-    width: 12px; height: 26px; background: var(--op-soft);
-    border: 1px solid var(--op); border-left: none; border-radius: 0 6px 6px 0;
-  }
+  .tile[aria-pressed="true"]::after { content: ""; position: absolute; right: -12px; top: 50%; transform: translateY(-50%); width: 12px; height: 26px; background: var(--op-soft); border: 1px solid var(--op); border-left: none; border-radius: 0 6px 6px 0; }
+  /* Riel comprimido (variante 5) */
+  .rail.tight { padding: 12px 7px; gap: 7px; }
+  .rail.tight .tile { width: 32px; height: 32px; border-radius: 10px; gap: 0; }
+  .rail.tight .tile .flag { width: 18px; height: 12px; }
+  .rail.tight .tile-code { display: none; }
+  .rail.tight .tile[aria-pressed="true"]::after { display: none; }
 
   .col {
     border-right: 1px solid var(--border);
+    background: linear-gradient(180deg, var(--op-soft), var(--op-faint) 38%, transparent 72%), rgba(9,20,28,.86);
     padding: 15px 12px; display: flex; flex-direction: column; overflow: hidden;
-    background: rgba(9,20,28,.72);
   }
-  .col-head { display: flex; align-items: center; gap: 10px; padding: 0 4px 13px; margin-bottom: 12px; border-bottom: 1px solid var(--border); }
+  .col-head { display: flex; align-items: flex-start; gap: 10px; padding: 0 2px 12px; margin-bottom: 12px; border-bottom: 1px solid var(--op-line); }
   .col-name { display: block; font-size: 14px; font-weight: 600; letter-spacing: -.01em; }
-  .col-sub  { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; margin-top: 3px; color: var(--text-soft); }
+  .col-sub { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; margin-top: 3px; color: var(--text-soft); }
+  /* El número junto al color: el dato que hace el error irreversible. */
+  .col-tel { display: block; font-size: 11.5px; font-weight: 600; color: var(--op); margin-top: 5px; font-variant-numeric: tabular-nums; }
+  .col-tel.off { color: var(--highlight); }
 
   .group { margin-bottom: 13px; }
   .group-head { display: flex; align-items: baseline; gap: 7px; padding: 0 10px 6px; }
   .group.on .group-head .grouplabel { color: var(--op); }
   .group-items { display: flex; flex-direction: column; gap: 2px; padding-left: 10px; margin-left: 9px; border-left: 1px solid var(--border); }
   .group.on .group-items { border-left-color: var(--op-line); }
-
+  .colfoot { margin-top: auto; padding-top: 14px; border-top: 1px solid var(--border); }
   .main { min-width: 0; }
-  .shell .main, .shell .col { animation: railin .32s cubic-bezier(.22,1,.36,1); }
 
-  /* ---- R1 · Barra teñida (el modelo Slack) ---- */
-  [data-r="r1"] .rail { background: linear-gradient(180deg, var(--op-faint), transparent 40%), linear-gradient(180deg, rgba(6,14,21,.98), rgba(4,11,17,.98)); }
-  [data-r="r1"] .col  { background: linear-gradient(180deg, var(--op-soft), var(--op-faint) 38%, transparent 72%), rgba(9,20,28,.86); }
-  [data-r="r1"] .col-head { border-bottom-color: var(--op-line); }
+  /* El control de plegado, común a las cinco. */
+  .fold {
+    flex: none; width: 24px; height: 24px; border-radius: 7px;
+    border: 1px solid var(--border); background: rgba(8,19,27,.7);
+    color: var(--text-soft); font-size: 12px; line-height: 1;
+    display: grid; place-items: center; margin-left: auto;
+  }
+  .fold:hover { color: var(--text); border-color: var(--op-line); }
 
-  /* ---- R2 · Borde superior (el modelo AWS) ---- */
-  [data-r="r2"] { padding-top: 4px; }
-  .aws-edge { position: fixed; top: 0; left: 0; right: 0; height: 4px; background: var(--op); z-index: 50; }
-  .aws-chip {
+  /* ---- C2 · Filo de color: todo colapsa, queda una línea ---- */
+  .edge-stripe { position: fixed; left: 0; top: 0; bottom: 0; width: 5px; background: var(--op); z-index: 45; }
+  .edge-open {
+    position: fixed; left: 13px; top: 14px; z-index: 46;
+    display: flex; align-items: center; gap: 7px;
+    padding: 6px 10px; border-radius: 9px;
+    border: 1px solid var(--op-line); background: rgba(10,22,31,.95);
+    font-size: 12px; font-weight: 600; color: var(--text);
+  }
+  .edge-open:hover { border-color: var(--op); }
+
+  /* ---- C3 · Tira de iconos teñida ---- */
+  .strip {
+    background: linear-gradient(180deg, var(--op-soft), var(--op-faint) 45%, transparent 80%), rgba(9,20,28,.9);
+    border-right: 1px solid var(--op-line);
+    padding: 13px 8px; display: flex; flex-direction: column; align-items: center; gap: 7px;
+  }
+  .strip-flag { width: 40px; height: 40px; border-radius: 12px; border: 1px solid var(--op); background: var(--op-soft); display: grid; place-items: center; margin-bottom: 6px; }
+  .strip-ico {
+    width: 38px; height: 36px; border-radius: 9px; border: 1px solid transparent;
+    background: none; color: var(--text-soft); font-size: 14px; display: grid; place-items: center;
+  }
+  .strip-ico:hover { background: rgba(255,255,255,.05); color: var(--text); }
+  .strip-ico[aria-current="page"] { background: var(--op-soft); border-color: var(--op-line); color: var(--op); }
+
+  /* ---- C4 · Migra arriba: el indicador se muda al borde ---- */
+  .top-edge { position: fixed; top: 0; left: 0; right: 0; height: 4px; background: var(--op); z-index: 50; }
+  .top-chip {
     position: fixed; top: 4px; left: 0; z-index: 50;
     display: flex; align-items: center; gap: 8px;
     padding: 5px 13px 6px; border-radius: 0 0 9px 0;
-    background: var(--op); color: #06121b;
-    font-size: 12px; font-weight: 700; letter-spacing: -.005em;
+    background: var(--op); color: #06121b; font-size: 12px; font-weight: 700;
   }
-  [data-r="r2"] .rail { padding-top: 42px; }
-  [data-r="r2"] .col  { padding-top: 42px; }
-
-  /* ---- R3 · Solo el riel ---- */
-  [data-r="r3"] .rail { border-right: 2px solid var(--op); }
-  [data-r="r3"] .col  { background: rgba(9,20,28,.72); }
-  [data-r="r3"] .tile[aria-pressed="true"] { background: var(--op); border-color: var(--op); }
-  [data-r="r3"] .tile[aria-pressed="true"] .tile-code { color: #06121b; }
-  [data-r="r3"] .tile[aria-pressed="true"]::after { background: var(--op); border-color: var(--op); }
-  .modtabs { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 14px; }
-  .modtab { padding: 8px 6px; border-radius: 8px; border: 1px solid var(--border); background: rgba(14,29,40,.6); color: var(--text-soft); font-size: 11.5px; font-weight: 600; transition: all .14s; }
-  .modtab:hover { color: var(--text-dim); border-color: var(--border-strong); }
-  .modtab[aria-pressed="true"] { background: var(--op-soft); border-color: var(--op); color: var(--op); }
-
-  /* ---- R4 · Envolvente ---- */
-  [data-r="r4"] .rail { background: linear-gradient(180deg, var(--op-faint), transparent 40%), linear-gradient(180deg, rgba(6,14,21,.98), rgba(4,11,17,.98)); }
-  [data-r="r4"] .col  { background: linear-gradient(180deg, var(--op-soft), var(--op-faint) 38%, transparent 72%), rgba(9,20,28,.86); border-right: 1px solid var(--op-line); }
-  [data-r="r4"] .col-head { border-bottom-color: var(--op-line); }
-  [data-r="r4"] .main { border-top: 1px solid var(--op-line); box-shadow: inset 0 14px 34px -22px var(--op); }
-
-  /* ---- R5 · Tinte + consecuencia ---- */
-  [data-r="r5"] .rail { background: linear-gradient(180deg, var(--op-faint), transparent 40%), linear-gradient(180deg, rgba(6,14,21,.98), rgba(4,11,17,.98)); }
-  [data-r="r5"] .col  { background: linear-gradient(180deg, var(--op-soft), var(--op-faint) 38%, transparent 72%), rgba(9,20,28,.86); }
-  [data-r="r5"] .col-head { border-bottom-color: var(--op-line); }
-  .conseq { padding: 10px 11px; margin-bottom: 14px; border-radius: 9px; border: 1px solid var(--op-line); background: var(--op-faint); display: flex; flex-direction: column; gap: 7px; }
-  .conseq-row { display: flex; flex-direction: column; gap: 1px; }
-  .conseq-k { font-size: 9px; text-transform: uppercase; letter-spacing: .1em; color: var(--text-soft); }
-  .conseq-v { font-size: 12px; font-weight: 600; color: var(--op); }
-  .conseq.off { border-color: rgba(244,193,109,.4); background: rgba(244,193,109,.07); }
-  .conseq.off .conseq-v { color: var(--highlight); }
-
-  .colfoot { margin-top: auto; padding-top: 14px; border-top: 1px solid var(--border); }
-
-  /* ================= EL INSTRUMENTO =================
-     Deliberadamente ajeno al sistema visual del panel, para que nadie lo
-     confunda con parte del diseño que se está juzgando. Arriba de todo
-     lo que las variantes ponen abajo.
-     ================================================= */
-  #picker {
-    position: fixed; right: 16px; bottom: 16px; z-index: 9999;
-    width: 288px; background: #16181c; border: 1px solid #33373f;
-    border-radius: 12px; box-shadow: 0 24px 60px rgba(0,0,0,.68);
-    font-size: 12px; color: #d6d9de; user-select: none; overflow: hidden;
+  .top-open {
+    position: fixed; top: 8px; left: 172px; z-index: 50;
+    padding: 5px 11px; border-radius: 8px;
+    border: 1px solid var(--border-strong); background: rgba(10,22,31,.92);
+    font-size: 12px; color: var(--text-dim);
   }
+  .top-open:hover { color: var(--text); border-color: var(--op-line); }
+  [data-c="c4"][data-bars="collapsed"] .page { padding-top: 52px; }
+
+  /* ================= EL INSTRUMENTO ================= */
+  #picker { position: fixed; right: 16px; bottom: 16px; z-index: 9999; width: 288px; background: #16181c; border: 1px solid #33373f; border-radius: 12px; box-shadow: 0 24px 60px rgba(0,0,0,.68); font-size: 12px; color: #d6d9de; user-select: none; overflow: hidden; }
   #picker.is-min .pk-body { display: none; }
   .pk-head { display: flex; align-items: center; gap: 9px; padding: 9px 11px; background: #1e2127; border-bottom: 1px solid #33373f; cursor: grab; }
   .pk-head:active { cursor: grabbing; }
@@ -267,13 +225,14 @@
   .pk-vname { flex: 1; min-width: 0; text-align: center; }
   .pk-vnum { font-size: 9px; color: #7c828d; letter-spacing: .12em; text-transform: uppercase; }
   .pk-vlabel { font-size: 12.5px; font-weight: 600; color: #f0f2f5; margin-top: 1px; }
-  .pk-vtag { font-size: 9.5px; color: #7c828d; margin-top: 2px; }
+  .pk-vtag { font-size: 9.5px; color: #7c828d; margin-top: 2px; line-height: 1.3; }
   .pk-set { display: flex; flex-direction: column; gap: 5px; }
   .pk-legend { font-size: 9px; text-transform: uppercase; letter-spacing: .11em; color: #7c828d; font-weight: 600; }
   .pk-opts { display: flex; gap: 4px; flex-wrap: wrap; }
   .pk-opt { flex: 1 1 0; min-width: 0; padding: 6px 8px; border-radius: 6px; border: 1px solid #3a3f47; background: #22252b; color: #9aa0aa; font-size: 11px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pk-opt:hover { background: #2c3037; color: #e3e6ea; }
   .pk-opt[aria-pressed="true"] { background: #2f5d4f; border-color: #4b9c81; color: #b8f5dc; }
+  .pk-opt.hot[aria-pressed="true"] { background: #5b3f7a; border-color: #8b62b8; color: #e3d0f5; }
   .pk-swatch { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
   .pk-hint { font-size: 10px; color: #6b7280; line-height: 1.45; border-top: 1px solid #2b2f36; padding-top: 9px; }
   .pk-hint kbd { background: #2b2f36; border: 1px solid #3f444c; border-radius: 3px; padding: 0 4px; font-family: inherit; font-size: 9.5px; color: #b8bdc6; }
@@ -284,7 +243,7 @@
 <div id="picker">
   <div class="pk-head" id="pk-head">
     <span class="pk-grip">⠿</span>
-    <span class="pk-title">Nivel 1 · ronda 2</span>
+    <span class="pk-title">Nivel 1 · ronda 3</span>
     <button class="pk-min" id="pk-min" title="Plegar">—</button>
   </div>
   <div class="pk-body">
@@ -299,8 +258,11 @@
     </div>
 
     <div class="pk-set">
-      <span class="pk-legend">Paleta · Guatemala / Colombia</span>
-      <div class="pk-opts" data-key="palette" id="pk-palette"></div>
+      <span class="pk-legend">Barras ← la pregunta de esta ronda</span>
+      <div class="pk-opts" data-key="bars">
+        <button class="pk-opt hot" data-val="open">Expandidas</button>
+        <button class="pk-opt hot" data-val="collapsed">Colapsadas</button>
+      </div>
     </div>
 
     <div class="pk-set">
@@ -350,24 +312,28 @@
       </div>
     </div>
 
+    <div class="pk-set">
+      <span class="pk-legend">Paleta (ya decidida)</span>
+      <div class="pk-opts" data-key="palette" id="pk-palette"></div>
+    </div>
+
     <p class="pk-hint">
-      <kbd>←</kbd> <kbd>→</kbd> cambian de variante. La prueba válida es
-      <strong>Colombia con catálogo lleno</strong>: con Colombia vacía cualquiera
-      parece buena, porque cambia el contenido y no el marco.
+      <kbd>←</kbd> <kbd>→</kbd> cambian de variante. Expandidas las cinco son
+      idénticas — <strong>la comparación es en «Colapsadas»</strong>. Y probala
+      en Colombia: es donde el indicador tiene que seguir hablando.
     </p>
   </div>
 </div>
 
 <script>
 /* ====================================================================
-   DATOS — reales, de la operación de Vorare. Los cuatro nombres casi
-   homónimos de REVITALHAIR son el problema que el diseño debe dejar ver.
+   DATOS — reales, de la operación de Vorare.
    ==================================================================== */
 
 const PALETTES = [
-  { key: "vc", label: "Violeta / Cian",  GT: "#a78bfa", CO: "#38bdf8" },
-  { key: "cr", label: "Cian / Rosa",     GT: "#38bdf8", CO: "#f472b6" },
-  { key: "vr", label: "Violeta / Rosa",  GT: "#a78bfa", CO: "#f472b6" },
+  { key: "vc", label: "Violeta / Cian", GT: "#a78bfa", CO: "#38bdf8" },
+  { key: "cr", label: "Cian / Rosa",    GT: "#38bdf8", CO: "#f472b6" },
+  { key: "vr", label: "Violeta / Rosa", GT: "#a78bfa", CO: "#f472b6" },
 ];
 
 const OPS = {
@@ -405,7 +371,7 @@ const PRODUCTS_CO = [
 
 const CONVS = {
   GT: [
-    { who: "María José Chun", tel: "+502 5512 8840", when: "hace 4 min",  state: "ok",
+    { who: "María José Chun", tel: "+502 5512 8840", when: "hace 4 min", state: "ok",
       line: "«¿Sirve para entradas? tengo 34 años»", det: "REVITALHAIR – DHT ANTICALVICIE · anuncio 23851094782" },
     { who: "Luis Ovalle", tel: "+502 4471 2093", when: "hace 12 min", state: "amb",
       line: "«Vi el anuncio del tratamiento para la calvicie»", det: "3 productos posibles · sin ID de anuncio" },
@@ -431,19 +397,20 @@ const ORDERS = {
        { id: "#00002", who: "Camila Restrepo", amount: "$ 199.900", state: "sin-confirmar" }],
 };
 
+/* Las cinco respuestas a «qué sobrevive al colapso». */
 const VARIANTS = [
-  { id: "r1", label: "Barra teñida",     tag: "el modelo Slack: se pinta la barra" },
-  { id: "r2", label: "Borde superior",   tag: "el modelo AWS: se pinta el borde" },
-  { id: "r3", label: "Solo el riel",     tag: "el color no sale del riel" },
-  { id: "r4", label: "Envolvente",       tag: "el contenido vive dentro del país" },
-  { id: "r5", label: "Tinte + consecuencia", tag: "el color no va solo: dice qué pasa" },
+  { id: "c1", label: "El riel se queda",  tag: "colapsa la columna; el riel de 78px no se toca" },
+  { id: "c2", label: "Filo de color",     tag: "colapsa todo; queda una línea de 5px a la izquierda" },
+  { id: "c3", label: "Tira de iconos",    tag: "colapsa a 56px teñidos; se pierde ver el otro país" },
+  { id: "c4", label: "Migra arriba",      tag: "colapsa todo; el indicador se muda al borde superior" },
+  { id: "c5", label: "Riel comprimido",   tag: "el riel se encoge a 46px; los dos países siguen a la vista" },
 ];
 
 /* ==================================================================== */
 
 const state = {
-  variant: 0, palette: "vc", country: "GT", module: "ventas",
-  screen: "catalogo", catalog: "loaded", ads: "some", conv: "ok",
+  variant: 0, bars: "collapsed", palette: "vc", country: "GT",
+  module: "ventas", screen: "catalogo", catalog: "loaded", ads: "some", conv: "ok",
 };
 
 const el = (t, cls, html) => { const n = document.createElement(t); if (cls) n.className = cls; if (html != null) n.innerHTML = html; return n; };
@@ -452,12 +419,7 @@ const flag = (code, sz) => `<span class="flag flag-${code}${sz ? " flag-" + sz :
 const op = () => OPS[state.country];
 const mod = () => MODULES[state.module];
 const pal = () => PALETTES.find((p) => p.key === state.palette);
-
-/* hex → rgba, para derivar los lavados del color de la operación. */
-function rgba(hex, a) {
-  const n = parseInt(hex.slice(1), 16);
-  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
-}
+function rgba(hex, a) { const n = parseInt(hex.slice(1), 16); return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`; }
 
 /* ---------------- CONTENIDO — idéntico en las cinco ---------------- */
 
@@ -469,8 +431,7 @@ function products() {
 const srcPill = (s) => s === "shopify"
   ? `<span class="pill pill-quiet"><span class="dot" style="background:#95bf47"></span>Shopify</span>`
   : `<span class="pill pill-quiet"><span class="dot" style="background:var(--accent)"></span>Panel</span>`;
-const adsPill = (n) => n === 0
-  ? `<span class="pill pill-warn">sin anuncios</span>`
+const adsPill = (n) => n === 0 ? `<span class="pill pill-warn">sin anuncios</span>`
   : `<span class="pill pill-quiet num">${n} anuncio${n > 1 ? "s" : ""}</span>`;
 
 function screenCatalogo() {
@@ -480,18 +441,15 @@ function screenCatalogo() {
     <h2 class="page-title">Productos</h2>
     <p class="page-sub">Los productos conectados se leen de la tienda; los nativos se editan aquí.
       Cada uno lleva la lista de anuncios que le apuntan.</p>`));
-
   if (!list.length) {
     const c = el("div", "card");
-    c.appendChild(el("div", "empty", `
-      <div class="empty-mark">▤</div>
+    c.appendChild(el("div", "empty", `<div class="empty-mark">▤</div>
       <h3 style="font-size:15px">Todavía no hay productos en ${esc(o.name)}</h3>
       <p class="soft" style="max-width:42ch;font-size:12.5px;line-height:1.55">${o.live
         ? "Conecta un producto de la tienda o crea uno nativo para que el vendedor tenga qué ofrecer."
         : "Esta operación aún no vende. Su catálogo empieza vacío y no comparte nada con Guatemala."}</p>`));
     wrap.appendChild(c); return wrap;
   }
-
   const grid = el("div", "statgrid");
   grid.innerHTML = `
     <div class="card-muted stat"><div class="stat-k">Productos</div><div class="stat-v num">${state.country === "GT" ? esc(o.products) : list.length}</div></div>
@@ -499,18 +457,15 @@ function screenCatalogo() {
     <div class="card-muted stat"><div class="stat-k">Moneda</div><div class="stat-v">${esc(o.currency)}</div></div>
     <div class="card-muted stat"><div class="stat-k">Tienda</div><div class="stat-v" style="font-size:13px;font-weight:500">${esc(o.store)}</div></div>`;
   wrap.appendChild(grid);
-
   const card = el("div", "card");
   card.style.padding = "14px 4px 4px";
-  card.innerHTML = `
-    <table class="mocktable">
-      <thead><tr><th>Producto</th><th>Origen</th><th>Precio</th><th>Anuncios</th><th>Pedidos</th></tr></thead>
-      <tbody>${list.map((p) => `<tr>
-        <td><div class="prodname">${esc(p.name)}</div>
-            <div class="soft" style="font-size:11px;margin-top:2px">${p.share !== "—" ? esc(p.share) + " del volumen" : "volumen bajo"}</div></td>
-        <td>${srcPill(p.src)}</td><td class="num" style="font-weight:500">${esc(p.price)}</td>
-        <td>${adsPill(p.ads)}</td><td class="num muted">${esc(p.orders)}</td></tr>`).join("")}</tbody>
-    </table>
+  card.innerHTML = `<table class="mocktable">
+    <thead><tr><th>Producto</th><th>Origen</th><th>Precio</th><th>Anuncios</th><th>Pedidos</th></tr></thead>
+    <tbody>${list.map((p) => `<tr>
+      <td><div class="prodname">${esc(p.name)}</div>
+          <div class="soft" style="font-size:11px;margin-top:2px">${p.share !== "—" ? esc(p.share) + " del volumen" : "volumen bajo"}</div></td>
+      <td>${srcPill(p.src)}</td><td class="num" style="font-weight:500">${esc(p.price)}</td>
+      <td>${adsPill(p.ads)}</td><td class="num muted">${esc(p.orders)}</td></tr>`).join("")}</tbody></table>
     ${state.country === "GT" ? `<div style="padding:11px 12px;border-top:1px solid var(--border)" class="soft">12 productos más · entre 1 y 18 pedidos cada uno</div>` : ""}`;
   wrap.appendChild(card);
   return wrap;
@@ -522,15 +477,13 @@ function screenConversaciones() {
     <span class="eyebrow">${esc(o.name)} · conversaciones</span>
     <h2 class="page-title">Chats de ${esc(mod().agent)}</h2>
     <p class="page-sub">Toma un chat para pausar al vendedor y escribir tú; devuélveselo cuando termines.</p>`));
-
   if (!o.live && state.catalog === "empty") {
     const c = el("div", "card");
-    c.appendChild(el("div", "empty", `
-      <div class="empty-mark">◇</div><h3 style="font-size:15px">Sin conversaciones en ${esc(o.name)}</h3>
+    c.appendChild(el("div", "empty", `<div class="empty-mark">◇</div>
+      <h3 style="font-size:15px">Sin conversaciones en ${esc(o.name)}</h3>
       <p class="soft" style="max-width:40ch;font-size:12.5px;line-height:1.55">El número ${esc(o.phone)} todavía no recibe leads.</p>`));
     wrap.appendChild(c); return wrap;
   }
-
   const card = el("div", "card");
   card.style.overflow = "hidden";
   CONVS[state.country].forEach((c) => {
@@ -593,9 +546,9 @@ function screenPedidos() {
   const card = el("div", "card");
   card.style.padding = "14px 4px 4px";
   card.innerHTML = `<table class="mocktable">
-      <thead><tr><th>Pedido</th><th>Cliente</th><th>Total</th><th>Estado</th></tr></thead>
-      <tbody>${list.map((r) => `<tr><td class="num" style="font-weight:500">${esc(r.id)}</td>
-        <td>${esc(r.who)}</td><td class="num">${esc(r.amount)}</td><td>${chip(r.state)}</td></tr>`).join("")}</tbody></table>`;
+    <thead><tr><th>Pedido</th><th>Cliente</th><th>Total</th><th>Estado</th></tr></thead>
+    <tbody>${list.map((r) => `<tr><td class="num" style="font-weight:500">${esc(r.id)}</td>
+      <td>${esc(r.who)}</td><td class="num">${esc(r.amount)}</td><td>${chip(r.state)}</td></tr>`).join("")}</tbody></table>`;
   wrap.appendChild(card);
   return wrap;
 }
@@ -623,7 +576,9 @@ function content() {
   return screenSimple("Inbox", "Todas las conversaciones del número, incluidas las que no son de ventas.", "✉");
 }
 
-/* ---------------- ARMAZÓN COMÚN ---------------- */
+/* ---------------- PIEZAS DEL ARMAZÓN ---------------- */
+
+const toggleBars = () => { state.bars = state.bars === "open" ? "collapsed" : "open"; render(); };
 
 function navFor(m) {
   const box = el("div");
@@ -637,25 +592,57 @@ function navFor(m) {
   return box;
 }
 
-function buildRail() {
-  const rail = el("div", "rail");
+function buildRail(tight) {
+  const rail = el("div", "rail" + (tight ? " tight" : ""));
   Object.values(OPS).forEach((x) => {
-    const t = el("button", "tile" + (x.live ? "" : " dormant"), `${flag(x.code)}<span class="tile-code">${esc(x.code)}</span>`);
+    const t = el("button", "tile" + (x.live ? "" : " dormant"),
+      `${flag(x.code)}${tight ? "" : `<span class="tile-code">${esc(x.code)}</span>`}`);
     t.setAttribute("aria-pressed", String(state.country === x.code));
     t.title = `${x.name} · ${x.status}`;
     t.onclick = () => { state.country = x.code; render(); };
     rail.appendChild(t);
   });
-  const add = el("button", "tile", `<span style="color:var(--text-soft);font-size:19px;line-height:1">+</span>`);
-  add.style.opacity = ".4";
-  add.title = "Las operaciones se dan de alta por configuración, no desde el panel";
-  rail.appendChild(add);
+  if (!tight) {
+    const add = el("button", "tile", `<span style="color:var(--text-soft);font-size:19px;line-height:1">+</span>`);
+    add.style.opacity = ".4";
+    add.title = "Las operaciones se dan de alta por configuración, no desde el panel";
+    rail.appendChild(add);
+  } else {
+    // Comprimido tiene que seguir navegando, o no es un colapso: es una mutilación.
+    const sep = el("div");
+    sep.style.cssText = "width:20px;height:1px;background:var(--border);margin:3px 0";
+    rail.appendChild(sep);
+    mod().screens.forEach((s) => {
+      const b = el("button", "strip-ico", s.icon);
+      b.style.cssText = "width:32px;height:30px;font-size:12px";
+      b.title = `${mod().label} · ${s.label}`;
+      if (state.screen === s.key) b.setAttribute("aria-current", "page");
+      b.onclick = () => { state.screen = s.key; render(); };
+      rail.appendChild(b);
+    });
+  }
+  const f = el("button", "fold", state.bars === "open" ? "«" : "»");
+  f.title = state.bars === "open" ? "Colapsar barras" : "Expandir barras";
+  f.style.marginTop = "auto";
+  f.onclick = toggleBars;
+  rail.appendChild(f);
   return rail;
 }
 
-/* Los grupos de módulo — el anidamiento dentro del país. */
-function buildGroups() {
-  const box = el("div");
+function buildCol() {
+  const o = op();
+  const col = el("div", "col");
+  const head = el("div", "col-head ctx-anim");
+  head.innerHTML = `${flag(o.code, "lg")}
+    <span style="min-width:0"><span class="col-name">${esc(o.name)}</span>
+      <span class="col-sub">${esc(o.status)} · ${esc(o.currency)}</span>
+      <span class="col-tel${o.live ? "" : " off"}">${esc(o.phone)}</span></span>`;
+  const f = el("button", "fold", "«");
+  f.title = "Colapsar barras";
+  f.onclick = toggleBars;
+  head.appendChild(f);
+  col.appendChild(head);
+
   ["ventas", "confirmacion"].forEach((k) => {
     const m = MODULES[k];
     const g = el("div", "group" + (state.module === k ? " on" : ""));
@@ -664,64 +651,78 @@ function buildGroups() {
     const items = el("div", "group-items");
     items.appendChild(navFor(k));
     g.appendChild(items);
-    box.appendChild(g);
+    col.appendChild(g);
   });
-  return box;
+
+  col.appendChild(el("div", "colfoot", `<div class="soft" style="font-size:11px;line-height:1.5">${esc(o.store)}</div>`));
+  return col;
 }
 
-function colHead() {
+/* C3 · la tira de iconos teñida: conserva la navegación del módulo,
+   pierde la vista de que existe otra operación. */
+function buildStrip() {
   const o = op();
-  return el("div", "col-head ctx-anim", `${flag(o.code, "lg")}
-    <span><span class="col-name">${esc(o.name)}</span>
-    <span class="col-sub">${esc(o.status)} · ${esc(o.currency)}</span></span>`);
-}
-
-function colFoot() {
-  const o = op();
-  return el("div", "colfoot", `<div class="soft" style="font-size:11px;line-height:1.5">${esc(o.phone)}<br>${esc(o.store)}</div>`);
-}
-
-/* R3 pone el módulo como pestañas en vez de grupos: es la variante que
-   mantiene el color dentro del riel, y necesita otra señal de anidamiento. */
-function buildModTabs() {
-  const tabs = el("div", "modtabs");
-  ["ventas", "confirmacion"].forEach((k) => {
-    const m = MODULES[k];
-    const b = el("button", "modtab", esc(m.agent));
-    b.setAttribute("aria-pressed", String(state.module === k));
-    b.title = `${m.label} · ${m.role}`;
-    b.onclick = () => { state.module = k; state.screen = m.screens[0].key; render(); };
-    tabs.appendChild(b);
+  const strip = el("div", "strip");
+  const fb = el("button", "strip-flag", flag(o.code, "sm"));
+  fb.title = `${o.name} · cambiar de operación`;
+  fb.onclick = () => { state.country = state.country === "GT" ? "CO" : "GT"; render(); };
+  strip.appendChild(fb);
+  ["ventas", "confirmacion"].forEach((k, i) => {
+    if (i > 0) {
+      const sep = el("div");
+      sep.style.cssText = "width:22px;height:1px;background:var(--border);margin:4px 0";
+      strip.appendChild(sep);
+    }
+    MODULES[k].screens.forEach((s) => {
+      const b = el("button", "strip-ico", s.icon);
+      b.title = `${MODULES[k].label} · ${s.label}`;
+      if (state.screen === s.key && state.module === k) b.setAttribute("aria-current", "page");
+      b.onclick = () => { state.module = k; state.screen = s.key; render(); };
+      strip.appendChild(b);
+    });
   });
-  return tabs;
+  const f = el("button", "fold", "»");
+  f.title = "Expandir barras";
+  f.style.marginTop = "auto";
+  f.onclick = toggleBars;
+  strip.appendChild(f);
+  return strip;
 }
 
-function buildShell(variantId) {
+function reopenButton(cls, label) {
+  const o = op();
+  const b = el("button", cls, `${flag(o.code, "sm")}${label ? esc(o.name) : ""} <span style="opacity:.55">»</span>`);
+  b.title = "Expandir barras";
+  b.onclick = toggleBars;
+  return b;
+}
+
+/* ==================================================================== */
+
+function buildShell(id) {
   const frag = document.createDocumentFragment();
   const shell = el("div", "shell");
-  shell.setAttribute("data-r", variantId);
+  shell.setAttribute("data-c", id);
+  shell.setAttribute("data-bars", state.bars);
+  const openBars = state.bars === "open";
 
-  shell.appendChild(buildRail());
-
-  const col = el("div", "col");
-  col.appendChild(colHead());
-
-  // R5 mete la consecuencia junto al color: el tinte no va solo.
-  if (variantId === "r5") {
-    const o = op();
-    const c = el("div", "conseq" + (o.live ? "" : " off"));
-    c.innerHTML = o.live
-      ? `<div class="conseq-row"><span class="conseq-k">Vas a escribir desde</span><span class="conseq-v num">${esc(o.phone)}</span></div>
-         <div class="conseq-row"><span class="conseq-k">Vas a cobrar en</span><span class="conseq-v">${esc(o.currencyLong)}</span></div>`
-      : `<div class="conseq-row"><span class="conseq-k">Nada sale de aquí</span><span class="conseq-v">la operación no está activa</span></div>
-         <div class="conseq-row"><span class="conseq-k">Número</span><span class="conseq-v num">${esc(o.phone)}</span></div>`;
-    col.appendChild(c);
+  if (openBars) {
+    shell.style.gridTemplateColumns = "78px 216px 1fr";
+    shell.appendChild(buildRail(false));
+    shell.appendChild(buildCol());
+  } else if (id === "c1") {
+    shell.style.gridTemplateColumns = "78px 1fr";
+    shell.appendChild(buildRail(false));
+  } else if (id === "c5") {
+    shell.style.gridTemplateColumns = "46px 1fr";
+    shell.appendChild(buildRail(true));
+  } else if (id === "c3") {
+    shell.style.gridTemplateColumns = "56px 1fr";
+    shell.appendChild(buildStrip());
+  } else {
+    // c2 y c4 colapsan del todo: el contenido ocupa el ancho completo.
+    shell.style.gridTemplateColumns = "1fr";
   }
-
-  col.appendChild(variantId === "r3" ? buildModTabs() : buildGroups());
-  if (variantId === "r3") col.appendChild(navFor(state.module));
-  col.appendChild(colFoot());
-  shell.appendChild(col);
 
   const main = el("div", "main");
   const page = el("div", "page ctx-anim");
@@ -729,29 +730,30 @@ function buildShell(variantId) {
   main.appendChild(page);
   shell.appendChild(main);
 
-  // R2 pinta el borde superior sobre todo, como la consola de AWS.
-  if (variantId === "r2") {
+  if (!openBars && id === "c2") {
+    frag.appendChild(el("div", "edge-stripe"));
+    frag.appendChild(reopenButton("edge-open", true));
+    page.style.paddingTop = "58px";
+  }
+  if (!openBars && id === "c4") {
     const o = op();
-    frag.appendChild(el("div", "aws-edge"));
-    frag.appendChild(el("div", "aws-chip ctx-anim", `${flag(o.code)}${esc(o.name)}`));
+    frag.appendChild(el("div", "top-edge"));
+    frag.appendChild(el("div", "top-chip ctx-anim", `${flag(o.code)}${esc(o.name)}`));
+    frag.appendChild(reopenButton("top-open", false));
   }
 
   frag.appendChild(shell);
   return frag;
 }
 
-/* ==================================================================== */
-
 function render() {
   const v = VARIANTS[state.variant];
-  const p = pal();
-  const hex = p[state.country];
-
+  const hex = pal()[state.country];
   const root = document.documentElement.style;
   root.setProperty("--op", hex);
-  root.setProperty("--op-line", rgba(hex, 0.45));
-  root.setProperty("--op-soft", rgba(hex, 0.13));
-  root.setProperty("--op-faint", rgba(hex, 0.07));
+  root.setProperty("--op-line", rgba(hex, .45));
+  root.setProperty("--op-soft", rgba(hex, .13));
+  root.setProperty("--op-faint", rgba(hex, .07));
 
   if (!mod().screens.some((s) => s.key === state.screen)) state.screen = mod().screens[0].key;
 
@@ -821,7 +823,6 @@ addEventListener("keydown", (e) => {
   if (e.key === "ArrowRight") { step(1); e.preventDefault(); }
 });
 
-/* Arrastrable: el instrumento no puede tapar la esquina que se juzga. */
 (function drag() {
   const box = document.getElementById("picker"), head = document.getElementById("pk-head");
   let dx = 0, dy = 0, on = false;

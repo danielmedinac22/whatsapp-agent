@@ -54,10 +54,17 @@ Las cuatro variantes descartadas resolvían la manifestación con una banda supe
 3. **Ni Guatemala ni Colombia toman menta, ámbar ni rojo.** Se descartó la escala verde/amarillo/rojo que AWS recomienda: esa codifica **severidad** (dev < test < prod) y los países no están ordenados por peligro, son pares. La asimetría de hoy —Guatemala factura, Colombia está inerte— desaparece el día que Colombia opere, que es exactamente para lo que existe este trabajo. Un color que hay que resignificar después está mal elegido. La menta queda liberada para seguir significando solo «correcto».
 4. **El módulo va anidado dentro de la operación**, nunca al lado: primero país, módulo dentro.
 
+### Decisiones de la ronda 2
+
+5. **El tinte se pinta en la barra, no en el borde superior** — el modelo Slack sobre el de AWS. La franja superior de AWS existe porque su consola no tiene barra lateral persistente; el panel sí la tiene, y el color en la barra convive con el acto de navegar, que es cuando uno se equivoca de país. La franja del borde se deja de ver a los diez minutos.
+6. **El color no va solo.** Junto al tinte, el **número de teléfono de la operación** en la cabecera de la columna. Es el dato que hace el error irreversible —es lo que le sale al cliente— y protege de que el tinte se vuelva papel tapiz con el uso diario. Se descartó llevar también la moneda y el recuadro: costaba ~70px permanentes.
+7. **Violeta para Guatemala, cian para Colombia.** El criterio no fue cuál se ve mejor sino cuál es más difícil de confundir de reojo, y eso lo compra la distancia cromática. El par violeta/rosa se ve más armónico y es el peor para este trabajo. Ninguno de los dos tonos toca menta, ámbar ni rojo.
+
 ### Abierto, y va a la ronda siguiente
 
-- **Qué dos tonos concretos.** Deben ser pares, no jerárquicos, y no colisionar con la paleta semántica.
-- **Hasta dónde llega el tinte dentro del cromo.** Los referentes no coinciden: Slack pinta la barra lateral, AWS el borde superior. Hay que elegir.
+- **Las barras tienen que poder colapsarse** — requisito de Daniel (17-ago-2026): riel de 78px + columna de 216px son 294px permanentes de cromo, y le quitan espacio de trabajo a la herramienta.
+
+  **Esto ataca directo al mecanismo elegido: el tinte vive en las barras, así que colapsarlas apaga el indicador** — y justo en el modo en que se pasa más tiempo. La ronda 3 decide qué sobrevive al colapso; sin esa respuesta la decisión de arriba queda incompleta.
 
 ### Deuda anotada, fuera de alcance
 
