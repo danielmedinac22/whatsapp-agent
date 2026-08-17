@@ -14,7 +14,10 @@ import {
   sanitizeParam,
 } from "../kapso/templates";
 import { enqueueOutbound } from "./outbound";
-import { getDropiConnection } from "../dropi/config";
+import {
+  resolveDropiConnection,
+  resolveOperationForContact,
+} from "../dropi/config";
 import { DROPI_NOVEDAD_REMINDER_QUEUE, getBoss } from "./queue";
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -52,7 +55,8 @@ async function sendReminder(order: DropiOrder): Promise<boolean> {
     body: REMINDER_BODY,
     source: "dropi_status",
     sourceRef: order.id,
-    dedupKey: `dropi-novedad:${order.dropiOrderId}:reminder`,
+    // uuid de la fila: el id de Dropi no es único entre operaciones.
+    dedupKey: `dropi-novedad:${order.id}:reminder`,
     conversationId: conv?.id ?? null,
     // Sin respuesta del cliente en horas → ventana probablemente cerrada.
     fallbackTemplate: {
@@ -87,7 +91,10 @@ async function escalateOrder(order: DropiOrder): Promise<boolean> {
       .where(eq(contacts.id, contact.id));
   }
 
-  const conn = await getDropiConnection().catch(() => null);
+  // El admin de la operación del cliente, no «el» admin.
+  const conn = await resolveOperationForContact(order.contactId)
+    .then((op) => resolveDropiConnection(op))
+    .catch(() => null);
   const adminPhone = conn?.adminPhone;
   if (adminPhone) {
     const customerLabel = contact.name ?? `+${contact.phone ?? "?"}`;
@@ -101,7 +108,8 @@ async function escalateOrder(order: DropiOrder): Promise<boolean> {
       to: adminPhone.replace(/\D/g, ""),
       body,
       source: "escalation",
-      dedupKey: `dropi-novedad:${order.dropiOrderId}:escalation`,
+      // uuid de la fila: el id de Dropi no es único entre operaciones.
+      dedupKey: `dropi-novedad:${order.id}:escalation`,
       fallbackTemplate: {
         name: ADMIN_AVISO_TEMPLATE,
         params: [

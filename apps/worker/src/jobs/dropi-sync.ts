@@ -5,22 +5,29 @@ import {
   dropiOrders,
   shopifyOrders,
   type DropiOrder,
+  type Operation,
 } from "@wa/db";
 import { db } from "../db";
 import { logger } from "../lib/logger";
 import { listAllOrders, type DropiOrderRow } from "../dropi/orders";
 import { deriveDropiState } from "../dropi/normalize";
 import { maybeNotifyDropiStatus } from "../dropi/notify";
-import { nameSimilarity, normalizePhone } from "../lib/match";
+import { listActiveOperations } from "../dropi/config";
+import {
+  belongsToOperation,
+  pickShopifyMatch,
+  type ShopifyMatch,
+} from "../dropi/match-shopify";
+import { normalizePhone } from "../lib/match";
 import { DROPI_SYNC_QUEUE, getBoss } from "./queue";
-
-const NAME_SIM_THRESHOLD = 0.8;
 
 function fmtDate(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
 interface MatchInput {
+  /** La operación cuya logística trajo este pedido. Sin ella no hay cruce. */
+  operation: Operation;
   customerPhone: string | null;
   customerName: string | null;
   shopOrderNumber: string | null;
@@ -29,25 +36,39 @@ interface MatchInput {
 }
 
 async function findShopifyByOrderNumber(
+  op: Operation,
   shopOrderNumber: string,
 ): Promise<{ shopifyOrderRowId: string; contactId: string | null } | null> {
   const [row] = await db
-    .select({ id: shopifyOrders.id, contactId: shopifyOrders.contactId })
+    .select({
+      id: shopifyOrders.id,
+      contactId: shopifyOrders.contactId,
+      currency: shopifyOrders.currency,
+    })
     .from(shopifyOrders)
     .where(eq(shopifyOrders.orderId, shopOrderNumber))
     .limit(1);
   if (!row) return null;
+  // El número de pedido es único por tienda, no entre tiendas: aunque sea
+  // exacto, el pedido tiene que ser de esta operación.
+  if (!belongsToOperation(row, op)) {
+    logger.warn(
+      { shopOrderNumber, operation: op.countryCode },
+      "dropi sync: pedido de tienda con número exacto pero de otra operación, descartado",
+    );
+    return null;
+  }
   return { shopifyOrderRowId: row.id, contactId: row.contactId ?? null };
 }
 
-async function findShopifyMatch(input: MatchInput): Promise<{
-  shopifyOrderRowId: string;
-  contactId: string | null;
-  confidence: "high" | "low";
-} | null> {
+async function findShopifyMatch(
+  input: MatchInput,
+): Promise<ShopifyMatch | null> {
+  const op = input.operation;
+
   // 1. Prefer exact match by Shopify order number when Dropi exposes it.
   if (input.shopOrderNumber) {
-    const direct = await findShopifyByOrderNumber(input.shopOrderNumber);
+    const direct = await findShopifyByOrderNumber(op, input.shopOrderNumber);
     if (direct) {
       return { ...direct, confidence: "high" };
     }
@@ -76,41 +97,25 @@ async function findShopifyMatch(input: MatchInput): Promise<{
       ),
     );
 
-  if (candidates.length === 0) return null;
-
-  if (candidates.length === 1) {
-    const c = candidates[0]!;
-    const sim = nameSimilarity(input.customerName, c.customerName);
-    return {
-      shopifyOrderRowId: c.id,
-      contactId: c.contactId ?? null,
-      confidence: sim >= NAME_SIM_THRESHOLD || !input.customerName ? "high" : "low",
-    };
+  // 2. El sufijo de teléfono no distingue países: dos clientes de operaciones
+  //    distintas pueden compartir los últimos ocho dígitos. Quién gana lo
+  //    decide `pickShopifyMatch`, que recibe la operación y descarta lo ajeno.
+  const outcome = pickShopifyMatch({
+    operation: op,
+    customerName: input.customerName,
+    candidates,
+  });
+  if (outcome.rejected > 0) {
+    logger.info(
+      {
+        operation: op.countryCode,
+        rejected: outcome.rejected,
+        phoneSuffix: suffix,
+      },
+      "dropi sync: candidatos de tienda descartados por no ser de esta operación",
+    );
   }
-
-  // Multiple candidates: pick best by name similarity.
-  const scored = candidates
-    .map((c) => ({
-      c,
-      sim: nameSimilarity(input.customerName, c.customerName),
-    }))
-    .sort((a, b) => b.sim - a.sim);
-  const best = scored[0]!;
-  const second = scored[1];
-  const distinct =
-    !second || best.sim - second.sim >= 0.15;
-  if (best.sim >= NAME_SIM_THRESHOLD && distinct) {
-    return {
-      shopifyOrderRowId: best.c.id,
-      contactId: best.c.contactId ?? null,
-      confidence: "high",
-    };
-  }
-  return {
-    shopifyOrderRowId: best.c.id,
-    contactId: best.c.contactId ?? null,
-    confidence: "low",
-  };
+  return outcome.match;
 }
 
 function parseCreatedAt(s: string | null): Date | null {
@@ -119,7 +124,11 @@ function parseCreatedAt(s: string | null): Date | null {
   return Number.isNaN(t) ? null : new Date(t);
 }
 
-async function upsertDropiOrder(row: DropiOrderRow, windowDays: number) {
+async function upsertDropiOrder(
+  op: Operation,
+  row: DropiOrderRow,
+  windowDays: number,
+) {
   const state = deriveDropiState(row.status, row.raw);
   const phone = normalizePhone(row.customer_phone);
   const createdAt = parseCreatedAt(row.created_at);
@@ -130,12 +139,13 @@ async function upsertDropiOrder(row: DropiOrderRow, windowDays: number) {
     .where(eq(dropiOrders.dropiOrderId, row.id))
     .limit(1);
 
-  let match: Awaited<ReturnType<typeof findShopifyMatch>> = null;
+  let match: ShopifyMatch | null = null;
   const needsMatch =
     !existing ||
     (!existing.shopifyOrderRowId && existing.matchConfidence !== "manual");
   if (needsMatch) {
     match = await findShopifyMatch({
+      operation: op,
       customerPhone: phone,
       customerName: row.customer_name,
       shopOrderNumber: row.shop_order_number,
@@ -198,6 +208,11 @@ export interface DropiSyncResult {
   errors: number;
 }
 
+/**
+ * Corre la sincronización de cada operación activa, una por una. Un fallo en
+ * una no puede llevarse por delante a las demás: el total que devuelve es la
+ * suma de las que corrieron.
+ */
 export async function runDropiSync(opts?: {
   windowDays?: number;
   pageSize?: number;
@@ -207,6 +222,55 @@ export async function runDropiSync(opts?: {
     logger.info("dropi sync: disabled in agent_settings, skipping");
     return { fetched: 0, upserted: 0, matched: 0, errors: 0 };
   }
+
+  const ops = await listActiveOperations();
+  if (ops.length === 0) {
+    logger.warn("dropi sync: no hay operaciones activas, nada que sincronizar");
+    return { fetched: 0, upserted: 0, matched: 0, errors: 0 };
+  }
+
+  const total: DropiSyncResult = {
+    fetched: 0,
+    upserted: 0,
+    matched: 0,
+    errors: 0,
+  };
+  const failures: unknown[] = [];
+  for (const op of ops) {
+    try {
+      const r = await runDropiSyncForOperation(op, s, opts);
+      total.fetched += r.fetched;
+      total.upserted += r.upserted;
+      total.matched += r.matched;
+      total.errors += r.errors;
+    } catch (err) {
+      logger.error(
+        { err, operation: op.countryCode },
+        "dropi sync: la operación falló completa",
+      );
+      failures.push(err);
+      total.errors++;
+    }
+  }
+  // Si ninguna operación pudo correr, esto es un fallo del sync y no un
+  // resultado vacío: lo propaga igual que cuando había una sola conexión, para
+  // que el job se reintente y el panel muestre el error.
+  if (failures.length === ops.length) {
+    throw failures[0];
+  }
+  return total;
+}
+
+/**
+ * Sincroniza los pedidos de la logística de UNA operación: los trae de su
+ * cuenta Dropi, los cruza contra los pedidos de tienda de esa misma operación
+ * y notifica lo que corresponda.
+ */
+export async function runDropiSyncForOperation(
+  op: Operation,
+  s: typeof agentSettings.$inferSelect,
+  opts?: { windowDays?: number; pageSize?: number },
+): Promise<DropiSyncResult> {
   const windowDays = opts?.windowDays ?? s.dropiMatchWindowDays ?? 5;
 
   const until = new Date();
@@ -215,11 +279,15 @@ export async function runDropiSync(opts?: {
   let rows: DropiOrderRow[] = [];
   try {
     rows = await listAllOrders(
+      op,
       { from: fmtDate(from), until: fmtDate(until) },
       opts?.pageSize ?? 50,
     );
   } catch (err) {
-    logger.error({ err }, "dropi sync: listAllOrders failed");
+    logger.error(
+      { err, operation: op.countryCode },
+      "dropi sync: listAllOrders failed",
+    );
     throw err;
   }
 
@@ -229,7 +297,7 @@ export async function runDropiSync(opts?: {
   let errors = 0;
   for (const row of rows) {
     try {
-      const id = await upsertDropiOrder(row, windowDays);
+      const id = await upsertDropiOrder(op, row, windowDays);
       upserted++;
       const [r] = await db
         .select()
@@ -238,15 +306,26 @@ export async function runDropiSync(opts?: {
         .limit(1);
       if (!r) continue;
       if (r.shopifyOrderRowId) matched++;
-      const n = await maybeNotifyDropiStatus(r, s);
+      const n = await maybeNotifyDropiStatus(op, r, s);
       if (n.notified) notified++;
     } catch (err) {
-      logger.error({ err, dropiOrderId: row.id }, "dropi sync: upsert failed");
+      logger.error(
+        { err, dropiOrderId: row.id, operation: op.countryCode },
+        "dropi sync: upsert failed",
+      );
       errors++;
     }
   }
   logger.info(
-    { fetched: rows.length, upserted, matched, notified, errors, windowDays },
+    {
+      operation: op.countryCode,
+      fetched: rows.length,
+      upserted,
+      matched,
+      notified,
+      errors,
+      windowDays,
+    },
     "dropi sync complete",
   );
   return { fetched: rows.length, upserted, matched, errors };

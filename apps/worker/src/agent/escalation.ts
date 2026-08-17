@@ -5,7 +5,10 @@ import { logger } from "../lib/logger";
 import { contactWaId } from "../lib/phone";
 import { ADMIN_ALERTA_TEMPLATE, sanitizeParam } from "../kapso/templates";
 import { enqueueOutbound } from "../jobs/outbound";
-import { getDropiConnection } from "../dropi/config";
+import {
+  resolveDropiConnection,
+  resolveOperationForContact,
+} from "../dropi/config";
 
 export type EscalationReason =
   | "audio_message"
@@ -72,7 +75,12 @@ export async function escalateToHuman({
 
   // Admin notification (only meaningful on the transition agent→manual).
   if (wasAgent) {
-    const conn = await getDropiConnection().catch(() => null);
+    // El admin a avisar es el de la operación de la conversación, no «el»
+    // admin: escalar un chat colombiano no puede sonar el teléfono del
+    // administrador guatemalteco.
+    const conn = await resolveOperationForContact(contact.id)
+      .then((op) => resolveDropiConnection(op))
+      .catch(() => null);
     const adminPhone = conn?.adminPhone;
     if (adminPhone) {
       const customerLabel = contact.name ?? `+${customerTo ?? "?"}`;

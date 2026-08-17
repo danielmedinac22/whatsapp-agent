@@ -1,12 +1,19 @@
 import { Hono } from "hono";
 import { and, eq, inArray } from "@wa/db";
-import { conversations, contacts, dropiOrders, shopifyOrders } from "@wa/db";
+import {
+  conversations,
+  contacts,
+  dropiOrders,
+  shopifyOrders,
+  type Operation,
+} from "@wa/db";
 import { dropiConnectionInput } from "@wa/shared";
 import { db } from "../db";
 import { logger } from "../lib/logger";
 import {
   getDropiConnection,
   invalidateDropiConnectionCache,
+  requireSoleActiveOperation,
   upsertDropiConnection,
 } from "../dropi/config";
 import { enqueueDropiSyncNow, runDropiSync } from "../jobs/dropi-sync";
@@ -19,8 +26,20 @@ import { DropiHttpError } from "../dropi/client";
 
 export const dropi = new Hono();
 
+/**
+ * De qué operación habla el panel. Hasta que exista el selector (ticket 07) el
+ * panel no manda ninguna, así que se resuelve la única activa — y con dos
+ * activas falla en vez de adivinar. Cuando llegue el selector, se cambia aquí
+ * y todas las rutas de este archivo quedan migradas de una vez.
+ */
+async function panelOperation(): Promise<Operation> {
+  return requireSoleActiveOperation();
+}
+
 dropi.get("/connection", async (c) => {
-  const row = await getDropiConnection();
+  const op = await panelOperation().catch(() => null);
+  if (!op) return c.json(null);
+  const row = await getDropiConnection(op);
   if (!row) return c.json(null);
   return c.json({
     apiBaseUrl: row.apiBaseUrl,
@@ -50,7 +69,7 @@ dropi.post("/connection/refresh", async (c) => {
     "../dropi/auth"
   );
   try {
-    const auth = await refreshDropiAuth();
+    const auth = await refreshDropiAuth(await panelOperation());
     return c.json({ ok: true, userId: auth.userId });
   } catch (err) {
     if (err instanceof Dropi2FAPendingError) {
@@ -79,7 +98,7 @@ dropi.post("/connection/2fa/submit", async (c) => {
     );
   }
   const { submitDropi2FACode } = await import("../dropi/auth");
-  const result = await submitDropi2FACode(code);
+  const result = await submitDropi2FACode(await panelOperation(), code);
   if (!result.ok) {
     return c.json({ ok: false, error: result.error }, 400);
   }
@@ -90,7 +109,7 @@ dropi.put("/connection", async (c) => {
   const parsed = dropiConnectionInput.safeParse(await c.req.json());
   if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
   const v = parsed.data;
-  const patch: Parameters<typeof upsertDropiConnection>[0] = {};
+  const patch: Parameters<typeof upsertDropiConnection>[1] = {};
   if (v.apiBaseUrl !== undefined) patch.apiBaseUrl = v.apiBaseUrl;
   if (v.email !== undefined) patch.email = v.email ?? null;
   if (v.password !== undefined) patch.password = v.password ?? null;
@@ -107,12 +126,13 @@ dropi.put("/connection", async (c) => {
     patch.adminPhone = v.adminPhone ?? null;
   }
   patch.connectedAt = new Date();
-  await upsertDropiConnection(patch);
+  await upsertDropiConnection(await panelOperation(), patch);
   return c.json({ ok: true });
 });
 
 dropi.delete("/connection", async (c) => {
-  await upsertDropiConnection({
+  const op = await panelOperation();
+  await upsertDropiConnection(op, {
     email: null,
     password: null,
     bearerToken: null,
@@ -120,7 +140,7 @@ dropi.delete("/connection", async (c) => {
     tokenExpiresAt: null,
     connectedAt: null,
   });
-  invalidateDropiConnectionCache();
+  invalidateDropiConnectionCache(op);
   return c.json({ ok: true });
 });
 

@@ -1,3 +1,4 @@
+import type { Operation } from "@wa/db";
 import { dropiFetch } from "./client";
 import { getValidDropiAuth } from "./auth";
 import { normalizeDropiStatus } from "./normalize";
@@ -126,9 +127,14 @@ export interface ListOrdersInput {
   status?: string | null;
 }
 
-export async function listOrders(input: ListOrdersInput): Promise<DropiOrderRow[]> {
-  const auth = await getValidDropiAuth();
+/** Los pedidos de logística de una operación: los de la cuenta Dropi de esa operación. */
+export async function listOrders(
+  op: Operation,
+  input: ListOrdersInput,
+): Promise<DropiOrderRow[]> {
+  const auth = await getValidDropiAuth(op);
   const resp = await dropiFetch<ListOrdersResponse>(
+    op,
     "/orders/myorders/v2",
     {
       query: {
@@ -157,13 +163,14 @@ export async function listOrders(input: ListOrdersInput): Promise<DropiOrderRow[
 }
 
 export async function listAllOrders(
+  op: Operation,
   input: Omit<ListOrdersInput, "start" | "resultNumber">,
   pageSize = 50,
   maxPages = 20,
 ): Promise<DropiOrderRow[]> {
   const all: DropiOrderRow[] = [];
   for (let page = 0; page < maxPages; page++) {
-    const rows = await listOrders({
+    const rows = await listOrders(op, {
       ...input,
       start: page * pageSize,
       resultNumber: pageSize,
@@ -174,8 +181,16 @@ export async function listAllOrders(
   return all;
 }
 
-export async function confirmOrder(dropiOrderId: number): Promise<void> {
-  await dropiFetch(`/orders/myorders/${dropiOrderId}`, {
+/**
+ * Confirma un pedido contra la logística de su operación. El id es el de Dropi,
+ * que es único dentro de una cuenta y no entre cuentas: sin la operación, esta
+ * llamada podría confirmar el pedido de otro país con el mismo número.
+ */
+export async function confirmOrder(
+  op: Operation,
+  dropiOrderId: number,
+): Promise<void> {
+  await dropiFetch(op, `/orders/myorders/${dropiOrderId}`, {
     method: "PUT",
     body: { status: "PENDIENTE" },
   });

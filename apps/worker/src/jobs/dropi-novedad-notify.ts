@@ -185,7 +185,8 @@ async function handleNovedadNotify({ dropiRowId }: NovedadNotifyPayload) {
     body: text,
     source: "dropi_status",
     sourceRef: order.id,
-    dedupKey: `dropi-novedad:${order.dropiOrderId}:first`,
+    // uuid de la fila: el id de Dropi no es único entre operaciones.
+    dedupKey: `dropi-novedad:${order.id}:first`,
     conversationId: conv?.id ?? null,
     fallbackTemplate: {
       name: NOVEDAD_TEMPLATE,

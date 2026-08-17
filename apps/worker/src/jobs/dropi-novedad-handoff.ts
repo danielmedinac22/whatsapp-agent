@@ -10,7 +10,10 @@ import { logger } from "../lib/logger";
 import { contactWaId } from "../lib/phone";
 import { ADMIN_AVISO_TEMPLATE, sanitizeParam } from "../kapso/templates";
 import { enqueueOutbound } from "./outbound";
-import { getDropiConnection } from "../dropi/config";
+import {
+  resolveDropiConnection,
+  resolveOperationForContact,
+} from "../dropi/config";
 import { DROPI_NOVEDAD_HANDOFF_QUEUE, getBoss } from "./queue";
 
 interface NovedadHandoffPayload {
@@ -86,7 +89,10 @@ async function handleNovedadHandoff({ dropiRowId }: NovedadHandoffPayload) {
     clientReplies = rows.map((r) => quoteBody(r.body));
   }
 
-  const conn = await getDropiConnection().catch(() => null);
+  // El pedido es de la operación de su cliente: a ese admin hay que avisarle.
+  const conn = await resolveOperationForContact(order.contactId)
+    .then((op) => resolveDropiConnection(op))
+    .catch(() => null);
   const adminPhone = conn?.adminPhone;
   if (!adminPhone) {
     logger.warn(
@@ -117,7 +123,8 @@ async function handleNovedadHandoff({ dropiRowId }: NovedadHandoffPayload) {
       to: adminPhone.replace(/\D/g, ""),
       body,
       source: "escalation",
-      dedupKey: `dropi-novedad:${order.dropiOrderId}:handoff`,
+      // uuid de la fila: el id de Dropi no es único entre operaciones.
+      dedupKey: `dropi-novedad:${order.id}:handoff`,
       fallbackTemplate: {
         name: ADMIN_AVISO_TEMPLATE,
         params: [
