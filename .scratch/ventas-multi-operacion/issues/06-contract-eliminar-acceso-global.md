@@ -6,7 +6,7 @@ Paso **contract**: se borra la forma vieja ahora que nadie la usa.
 
 **Blocked by:** 02 · 03 · 04 · 05
 
-**Status:** ready-for-agent
+**Status:** claimed — worktree `op-06-contract`, tanda del 16-ago-2026
 
 - [ ] Ningún accesor devuelve una conexión o configuración sin recibir la operación.
 - [ ] La referencia a operación pasa a ser obligatoria en las cuatro tablas.
