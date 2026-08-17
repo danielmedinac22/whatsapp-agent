@@ -41,7 +41,15 @@ Cada operación reporta a su propio píxel: Guatemala al suyo, Colombia al que s
 
 **Deduplicación por identificador de evento.** Se deriva del pedido, no del momento, de modo que un reintento no cuente dos veces. Es el mismo criterio que la idempotencia de la orden, por la misma razón.
 
-**Un píxel por operación.** Guatemala ya tiene el suyo, verificado como disponible y con uso publicitario habilitado. Colombia necesitará el propio. El píxel se resuelve desde la operación, nunca desde una constante.
+**Un destino de conversiones por operación.** Se resuelve desde la operación, nunca desde una constante.
+
+**Corregido el 17-ago-2026, al construirlo:** este spec decía «un píxel por operación» y era incorrecto. Verificado contra la documentación vigente de Meta (*Conversions API for Business Messaging*), el destino de una conversión de anuncio de clic a WhatsApp **no es el píxel del sitio web**: es un **dataset** que se crea desde la cuenta de WhatsApp —`POST /{whatsapp_business_account_id}/dataset`, y el `GET` devuelve el que ya exista— y al que se postea en `/{dataset_id}/events`.
+
+La distinción no es de nomenclatura. Configurar el píxel publicitario de Guatemala como destino habría enviado los eventos a un destino **real pero equivocado**: sin error, sin alarma, y sin que nadie lo notara hasta preguntarse por qué la pauta no aprende. Por eso la columna es `operations.capi_dataset_id` y no `pixel_id`.
+
+La otra mitad que el evento necesita —el identificador de la cuenta de WhatsApp— **ya existe y no necesitó columna**: es `kapso_connection.business_account_id`, que desde la migración del contract es una fila por operación.
+
+Guatemala todavía **no tiene dataset creado**; el campo nace vacío y lo configura el panel. Una operación sin destino simplemente no reporta conversiones, que es lo que pasa hoy.
 
 **El evento lleva el valor y la moneda de la operación** — quetzales en Guatemala, pesos en Colombia. Sin esto Meta optimiza hacia cantidad de ventas en vez de hacia ingreso, que no es lo mismo cuando el catálogo tiene combos.
 
