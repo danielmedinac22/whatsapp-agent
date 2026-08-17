@@ -160,6 +160,37 @@
   .chip[aria-pressed="true"] { background:var(--op-soft); border-color:var(--op); color:var(--op); }
   .chip .c { font-variant-numeric:tabular-nums; opacity:.75; margin-left:4px; }
 
+  /* La barra de recorrido (Salesforce). Lineal, derivada, no arrastrable. */
+  .stage-strip { padding:9px 14px; border-bottom:1px solid var(--border); background:rgba(255,255,255,.018); }
+  .stages { display:flex; gap:3px; }
+  .stg { flex:1; min-width:0; padding:5px 8px; font-size:10.5px; font-weight:600; text-align:center;
+         border-radius:5px; background:rgba(255,255,255,.035); color:var(--text-soft);
+         white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .stg.done { background:rgba(110,231,183,.12); color:rgba(110,231,183,.75); }
+  .stg.now  { background:var(--op); color:#06121b; }
+  .stages.vert { flex-direction:column; gap:2px; }
+  .stages.vert .stg { flex:none; text-align:left; padding:5px 9px; display:flex; align-items:center; gap:7px; }
+  .stages.vert .stg::before { content:""; width:5px; height:5px; border-radius:99px; flex:none; background:currentColor; opacity:.5; }
+  .stages.vert .stg.now::before { opacity:1; }
+
+  /* R · el recorrido dentro de la fila de la lista */
+  .rowstage { display:inline-flex; align-items:center; gap:4px; }
+  .rowstage i { width:9px; height:3px; border-radius:99px; background:rgba(255,255,255,.14); display:block; }
+  .rowstage i.done { background:rgba(110,231,183,.5); }
+  .rowstage i.now { background:var(--op); }
+  .rowstage em { font-style:normal; font-size:10px; color:var(--text-soft); margin-left:3px; }
+
+  /* La ficha del cliente */
+  .cust-hero { padding-bottom:10px; border-bottom:1px solid var(--border); }
+  .cust-name { font-size:14.5px; font-weight:600; letter-spacing:-.01em; }
+  .cust-grid { display:grid; grid-template-columns:1fr 1fr; gap:9px 10px; margin-top:10px; }
+  .cust-grid > div { display:flex; flex-direction:column; gap:1px; }
+  .tabs { display:flex; gap:3px; padding-bottom:10px; border-bottom:1px solid var(--border); }
+  .tab { flex:1; padding:5px 4px; border-radius:6px; border:1px solid transparent; background:none;
+         color:var(--text-soft); font-size:11px; font-weight:600; }
+  .tab[aria-selected="true"] { background:var(--op-soft); border-color:var(--op-line); color:var(--op); }
+  .tab:hover { color:var(--text-dim); }
+
   /* C · tercer panel de contexto (Intercom, Lemni, Gorgias) */
   .ctx { padding:13px 14px; display:flex; flex-direction:column; gap:14px; max-height:660px; overflow-y:auto; }
   .ctx-sec { display:flex; flex-direction:column; gap:7px; }
@@ -256,10 +287,11 @@
     </div>
 
     <p class="pk-hint">
-      <strong>Grupo cerrado</strong> — la variante 1 es la decidida; A–E quedan
-      como registro. El control sigue siendo «Agente: ON/OFF», no un concepto
-      nuevo. Mirá en Katherine: nada de lo que agrega ventas la estorba.
-      <kbd>←</kbd> <kbd>→</kbd> alternan.
+      La bandeja ya está decidida y va fija en las cinco. Lo que se compara es
+      <strong>dónde entran la ficha de cliente y el recorrido del lead</strong>.
+      Probá con <strong>María</strong> (recompradora), <strong>Byron</strong>
+      (el pedido anterior no confirmó) y <strong>Ana</strong> (primer contacto):
+      si la ficha no cambia lo que harías, sobra. <kbd>←</kbd> <kbd>→</kbd> alternan.
     </p>
   </div>
 </div>
@@ -280,44 +312,61 @@ const MODULES = {
     screens:[{key:"inbox",label:"Inbox",icon:"✉"},{key:"pedidos",label:"Pedidos",icon:"▦"},{key:"plantillas",label:"Plantillas",icon:"▥"}]},
 };
 
+/* El recorrido del lead. Está FIJO y es derivado: nadie arrastra nada, igual
+   que el Salesbot de Kommo. Hoy vive partido en tres pantallas —el
+   reconocimiento en la conversación, la confirmación en Pedidos, la entrega
+   en Dropi— y nadie ve el viaje completo. */
+const STAGES = ["Anuncio","Reconocido","Conversando","Pedido","Confirmado","Entregado"];
+
 /* `agent` = agentMode de producción. true → «Automatización activa».
-   `unread` + !agent → needsAttention, que ya está calculado en el panel. */
+   `unread` + !agent → needsAttention, que ya está calculado en el panel.
+   `cust` = lo que el hilo NO puede contar: lo que pasó antes de este chat. */
 const CHATS = {
   GT:[
-    {id:"c1",who:"Ana Sicán",tel:"+502 3390 5518",when:"26 min",rec:"esc",agent:false,unread:3,
+    {id:"c1",who:"Ana Sicán",tel:"+502 3390 5518",when:"26 min",rec:"esc",agent:false,unread:3,stage:2,
      prev:"Quiero hablar con una persona por favor",prod:"REVITALHAIR – DHT ANTICALVICIE",ad:"23851094782",camp:"DHT · antes y después",
-     by:"Sebastián escaló tras dos intentos"},
-    {id:"c2",who:"Luis Ovalle",tel:"+502 4471 2093",when:"12 min",rec:"amb",agent:true,unread:1,
+     by:"Sebastián escaló tras dos intentos",
+     cust:{since:"hoy",orders:0,ok:0,no:0,total:"Q 0",last:null,note:"Primer contacto"}},
+    {id:"c2",who:"Luis Ovalle",tel:"+502 4471 2093",when:"12 min",rec:"amb",agent:true,unread:1,stage:2,
      prev:"Vi el anuncio del tratamiento para la calvicie",prod:null,ad:null,camp:"sin referencia de anuncio",
-     by:"3 productos posibles · el copy no los distingue"},
-    {id:"c3",who:"María José Chun",tel:"+502 5512 8840",when:"4 min",rec:"ok",agent:true,unread:2,
-     prev:"¿Sirve para entradas? tengo 34 años",prod:"REVITALHAIR – DHT ANTICALVICIE",ad:"23851094782",camp:"DHT · antes y después",by:null},
-    {id:"c4",who:"Byron Tzoc",tel:"+502 4419 3302",when:"41 min",rec:"ok",agent:false,unread:0,
+     by:"3 productos posibles · el copy no los distingue",
+     cust:{since:"hoy",orders:0,ok:0,no:0,total:"Q 0",last:null,note:"Primer contacto"}},
+    {id:"c3",who:"María José Chun",tel:"+502 5512 8840",when:"4 min",rec:"ok",agent:true,unread:2,stage:2,
+     prev:"¿Sirve para entradas? tengo 34 años",prod:"REVITALHAIR – DHT ANTICALVICIE",ad:"23851094782",camp:"DHT · antes y después",by:null,
+     cust:{since:"12 may 2026",orders:3,ok:2,no:1,total:"Q 1.087",last:"#10318 · 2 jun · confirmado",note:"Recompradora"}},
+    {id:"c4",who:"Byron Tzoc",tel:"+502 4419 3302",when:"41 min",rec:"ok",agent:false,unread:0,stage:3,
      prev:"Dale, mándame los datos para el pago",prod:"REVITALHAIR – COMBO DHT + SERUM 360",ad:"23990117845",camp:"COMBO 360 · testimonio",
-     by:"Daniel puso el agente en OFF"},
-    {id:"c5",who:"Silvia Xicará",tel:"+502 3312 7790",when:"1 h",rec:"ok",agent:true,unread:0,
-     prev:"Perfecto, gracias!",prod:"REVITALHAIR – DHT BLOCKER ANTICALVICIE",ad:"23851094999",camp:"BLOCKER · dermatólogo",by:null},
-    {id:"c6",who:"Wendy Morales",tel:"+502 5580 1174",when:"2 h",rec:"amb",agent:true,unread:0,
-     prev:"Cuánto sale el combo?",prod:null,ad:null,camp:"sin referencia de anuncio",by:"2 productos posibles"},
+     by:"Daniel puso el agente en OFF",
+     cust:{since:"3 ago 2026",orders:1,ok:0,no:1,total:"Q 549",last:"#10402 · 9 ago · no confirmado",note:"El pedido anterior no confirmó"}},
+    {id:"c5",who:"Silvia Xicará",tel:"+502 3312 7790",when:"1 h",rec:"ok",agent:true,unread:0,stage:5,
+     prev:"Perfecto, gracias!",prod:"REVITALHAIR – DHT BLOCKER ANTICALVICIE",ad:"23851094999",camp:"BLOCKER · dermatólogo",by:null,
+     cust:{since:"8 feb 2026",orders:4,ok:4,no:0,total:"Q 1.516",last:"#10425 · hoy · entregado",note:"Cuatro de cuatro confirmados"}},
+    {id:"c6",who:"Wendy Morales",tel:"+502 5580 1174",when:"2 h",rec:"amb",agent:true,unread:0,stage:2,
+     prev:"Cuánto sale el combo?",prod:null,ad:null,camp:"sin referencia de anuncio",by:"2 productos posibles",
+     cust:{since:"21 jul 2026",orders:1,ok:0,no:1,total:"Q 389",last:"#10377 · 24 jul · no confirmado",note:"El pedido anterior no confirmó"}},
   ],
   CO:[
-    {id:"k1",who:"Andrés Peña",tel:"+57 315 9920 774",when:"21 min",rec:"esc",agent:false,unread:2,
+    {id:"k1",who:"Andrés Peña",tel:"+57 315 9920 774",when:"21 min",rec:"esc",agent:false,unread:2,stage:2,
      prev:"Necesito hablar con alguien real",prod:"REVITALHAIR – DHT ANTICALVICIE",ad:"24019338451",camp:"DHT CO · lanzamiento",
-     by:"Sebastián escaló tras dos intentos"},
-    {id:"k2",who:"Camila Restrepo",tel:"+57 320 4471 002",when:"9 min",rec:"amb",agent:true,unread:1,
-     prev:"El del video de la caída de pelo",prod:null,ad:null,camp:"sin referencia de anuncio",by:"2 productos posibles"},
-    {id:"k3",who:"Jhon Rodríguez",tel:"+57 310 8842 190",when:"2 min",rec:"ok",agent:true,unread:1,
-     prev:"Buenas, precio del tratamiento?",prod:"REVITALHAIR – DHT ANTICALVICIE",ad:"24019338451",camp:"DHT CO · lanzamiento",by:null},
+     by:"Sebastián escaló tras dos intentos",
+     cust:{since:"hoy",orders:0,ok:0,no:0,total:"$ 0",last:null,note:"Primer contacto"}},
+    {id:"k2",who:"Camila Restrepo",tel:"+57 320 4471 002",when:"9 min",rec:"amb",agent:true,unread:1,stage:2,
+     prev:"El del video de la caída de pelo",prod:null,ad:null,camp:"sin referencia de anuncio",by:"2 productos posibles",
+     cust:{since:"hoy",orders:0,ok:0,no:0,total:"$ 0",last:null,note:"Primer contacto"}},
+    {id:"k3",who:"Jhon Rodríguez",tel:"+57 310 8842 190",when:"2 min",rec:"ok",agent:true,unread:1,stage:1,
+     prev:"Buenas, precio del tratamiento?",prod:"REVITALHAIR – DHT ANTICALVICIE",ad:"24019338451",camp:"DHT CO · lanzamiento",by:null,
+     cust:{since:"hoy",orders:0,ok:0,no:0,total:"$ 0",last:null,note:"Primer contacto"}},
   ],
 };
 
+/* RONDA 3 — cómo entran la ficha de cliente y el recorrido del lead en la
+   conversación ya decidida. El encuadre y la bandeja no se discuten. */
 const VARIANTS = [
-  {id:"X",label:"Elegida ✓",           tag:"vistas en la barra + eventos en el hilo, fila casi intacta", ref:"A + D, sin el panel de la C"},
-  {id:"A",label:"Vistas en la barra",   tag:"Sebastián es un grupo de vistas con contador",   ref:"Intercom · Gorgias · Featurebase"},
-  {id:"B",label:"Cintas sobre la lista",tag:"los mismos cortes, como filtros encima",          ref:"Zillow · GoDaddy"},
-  {id:"C",label:"Panel de contexto",    tag:"tercer panel: producto, anuncio, campaña",        ref:"Intercom · Lemni · Gorgias"},
-  {id:"D",label:"Todo en el hilo",      tag:"reconocimiento y traspaso narrados como eventos", ref:"ManyChat · Pipedrive"},
-  {id:"E",label:"Las tres juntas",      tag:"vistas + panel + eventos, para ver si sobra",     ref:"la composición"},
+  {id:"P",label:"Barra arriba + ficha",  tag:"recorrido sobre el hilo, historial a la derecha", ref:"Salesforce"},
+  {id:"Q",label:"Todo en la ficha",      tag:"el hilo queda limpio; el recorrido va en el panel", ref:"Copilot"},
+  {id:"R",label:"Recorrido en la fila",  tag:"la etapa se ve sin abrir la conversación",         ref:"Attio · Twenty"},
+  {id:"S",label:"Ficha con pestañas",    tag:"Contexto · Pedidos · Historial en el panel",       ref:"Copilot"},
+  {id:"T",label:"Sin barra, solo eventos",tag:"las etapas ya las narra el hilo — ¿sobra la barra?", ref:"la decisión anterior"},
 ];
 
 const REC = { ok:{l:"reconocido",c:"pill-ok"}, amb:{l:"ambiguo",c:"pill-amb"}, esc:{l:"escalado",c:"pill-esc"} };
@@ -370,7 +419,11 @@ function row(c, opts = {}) {
       ${c.unread ? `<span class="unread">${c.unread}</span>` : ""}
       <span class="when">${esc(c.when)}</span>
     </div>
-    <div class="rowfoot">${agentMark}${salesMark}</div>`;
+    <div class="rowfoot">${agentMark}${salesMark}${
+      // R · el recorrido en la fila: la etapa se ve sin abrir (Attio, Twenty)
+      opts.stageDot ? `<span class="rowstage" title="${esc(STAGES[c.stage])}">${
+        STAGES.map((_, i) => `<i class="${i < c.stage ? "done" : i === c.stage ? "now" : ""}"></i>`).join("")
+      }<em>${esc(STAGES[c.stage])}</em></span>` : ""}</div>`;
   b.onclick = () => { state.sel = c.id; render(); };
   return b;
 }
@@ -416,6 +469,13 @@ function threadPanel(opts = {}) {
       : `<span class="pill pill-amb">Respuesta manual</span>`}`;
   box.appendChild(head);
 
+  // P · el recorrido como cinta sobre el hilo (Salesforce)
+  if (opts.stageTop) {
+    const s = el("div", "stage-strip");
+    s.appendChild(stageBar(false));
+    box.appendChild(s);
+  }
+
   const body = el("div", "th-body");
   const ev = (txt, cls) => `<div class="ev ${cls || ""}"><span>${esc(txt)}</span></div>`;
 
@@ -441,6 +501,74 @@ function threadPanel(opts = {}) {
   btn.title = c.agent ? "Apagarlo deja la conversación en respuesta manual" : "Encenderlo devuelve la conversación a Sebastián";
   btn.onclick = () => { c.agent = !c.agent; render(); };
   foot.appendChild(comp); foot.appendChild(btn);
+  box.appendChild(foot);
+  return box;
+}
+
+/* La barra de recorrido (Salesforce). Lineal y derivada: no se arrastra.
+   Los seis escalones ya existen en el sistema, repartidos en tres pantallas. */
+function stageBar(vertical) {
+  const c = sel();
+  // En la columna angosta el recorrido va vertical: en horizontal las
+  // etiquetas se truncan a «A… R… C…», que no es un recorrido, es ruido.
+  const bar = el("div", "stages" + (vertical ? " vert" : ""));
+  STAGES.forEach((s, i) => {
+    const st = i < c.stage ? "done" : i === c.stage ? "now" : "todo";
+    bar.appendChild(el("div", "stg " + st, `<span>${esc(s)}</span>`));
+  });
+  return bar;
+}
+
+/* La ficha del cliente: lo que el hilo no puede contar porque pasó antes.
+   Es un REGISTRO, no un evento — por eso panel y no línea en el hilo. */
+function custPanel(opts = {}) {
+  const c = sel();
+  const box = el("div", "card ctx");
+  if (!c) return box;
+  const k = c.cust;
+  const warn = k.no > 0;
+
+  if (opts.stage) {
+    const s = el("div", "ctx-sec");
+    s.appendChild(el("div", "ctx-h", "Recorrido"));
+    s.appendChild(stageBar(true));
+    s.appendChild(el("div", "soft", `<span style="font-size:11px">escalón ${c.stage + 1} de ${STAGES.length}</span>`));
+    box.appendChild(s);
+  }
+
+  if (opts.tabs) {
+    const t = el("div", "tabs");
+    ["Cliente", "Pedidos", "Contexto"].forEach((l, i) => {
+      const b = el("button", "tab", l);
+      b.setAttribute("aria-selected", String(i === 0));
+      t.appendChild(b);
+    });
+    box.appendChild(t);
+  }
+
+  const head = el("div", "ctx-sec");
+  head.innerHTML = `
+    <div class="ctx-h">Cliente</div>
+    <div class="cust-hero">
+      <div class="cust-name">${esc(c.who)}</div>
+      <div class="soft num" style="font-size:11.5px;margin-top:2px">${esc(c.tel)}</div>
+      <span class="pill ${warn ? "pill-amb" : k.orders > 1 ? "pill-ok" : "pill-quiet"}" style="margin-top:7px">${esc(k.note)}</span>
+    </div>
+    <div class="cust-grid">
+      <div><span class="ctx-k">Cliente desde</span><span class="ctx-v">${esc(k.since)}</span></div>
+      <div><span class="ctx-k">Pedidos</span><span class="ctx-v num">${k.orders}</span></div>
+      <div><span class="ctx-k">Confirmados</span><span class="ctx-v num" style="color:${k.ok ? "var(--accent)" : "var(--text-soft)"}">${k.ok}</span></div>
+      <div><span class="ctx-k">Sin confirmar</span><span class="ctx-v num" style="color:${k.no ? "var(--highlight)" : "var(--text-soft)"}">${k.no}</span></div>
+      <div style="grid-column:1/-1"><span class="ctx-k">Total comprado</span><span class="ctx-v num strong">${esc(k.total)}</span></div>
+    </div>
+    ${k.last ? `<div class="ctx-f" style="margin-top:9px"><span class="ctx-k">Último pedido</span>
+      <span class="ctx-v" style="font-size:12px">${esc(k.last)}</span></div>` : ""}`;
+  box.appendChild(head);
+
+  const foot = el("div", "ctx-sec");
+  foot.style.cssText = "border-top:1px solid var(--border);padding-top:12px";
+  foot.innerHTML = `<div class="ctx-h">Operación</div>
+    <div class="ctx-f"><span class="ctx-k">Trabajando en</span><span class="ctx-v">${esc(op().name)} · ${esc(op().currency)}</span></div>`;
   box.appendChild(foot);
   return box;
 }
@@ -483,20 +611,21 @@ function inboxScreen() {
       ? "La misma bandeja del número, en la vista de Sebastián. El control del agente es el que ya conocés."
       : "La bandeja de Katherine, sin cambios. Lo que agrega ventas no debería aparecer acá."}</p>`));
 
+  // La bandeja ya está decidida: vistas en la barra, eventos en el hilo, y
+  // la fila solo marca el reconocimiento cuando no es limpio. Lo que varía
+  // acá es cómo entran la ficha de cliente y el recorrido del lead.
   const grid = el("div", "inbox");
-  const withCtx = (v === "C" || v === "E");
-  const events  = (v === "D" || v === "E" || v === "X");
-  grid.style.gridTemplateColumns = withCtx ? "330px 1fr 268px" : "360px 1fr";
+  grid.style.gridTemplateColumns = "330px 1fr 272px";
 
-  grid.appendChild(listPanel({
-    chips: v === "B",
-    noSales: v === "D",          // D no toca la fila: el hilo lo cuenta
-    // X y las de panel no repiten el producto en la fila. En X queda solo la
-    // insignia de reconocimiento cuando NO es limpio: marcar todo es no marcar.
-    thin: v === "C" || v === "E" || v === "X"
+  grid.appendChild(listPanel({ thin: true, stageDot: v === "R" }));
+
+  const th = threadPanel({ events: true, stageTop: v === "P" });
+  grid.appendChild(th);
+
+  grid.appendChild(custPanel({
+    stage: v === "Q" || v === "S",   // el recorrido dentro del panel
+    tabs:  v === "S",
   }));
-  grid.appendChild(threadPanel({ events }));
-  if (withCtx) grid.appendChild(ctxPanel());
   wrap.appendChild(grid);
   return wrap;
 }
@@ -539,7 +668,8 @@ function navFor(m) {
     if (state.screen === s.key && state.module === m) b.setAttribute("aria-current","page");
     b.onclick = () => { state.module = m; state.screen = s.key; render(); };
     box.appendChild(b);
-    if (isConv && ["A","E","X"].includes(V().id) && state.module === "ventas") {
+    // Las vistas en la barra ya están decididas: van en las cinco.
+    if (isConv && state.module === "ventas") {
       const sub = el("div");
       sub.style.cssText = "display:flex;flex-direction:column;gap:1px;padding-left:22px;margin:2px 0 4px";
       [["attn","Necesitan atención",K.attn],["auto","Las lleva Sebastián",K.auto],["all","Todas",K.all]].forEach(([k,l,n]) => {

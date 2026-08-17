@@ -19,8 +19,24 @@
 |---|---|
 | Selector de operación | **cerrado en el nivel 1** — el riel *es* el selector; lo que queda es nivel 3 |
 | Conversaciones | **cerrado** (ver abajo) |
+| Ficha de cliente y etapas del lead | en curso — grupo **agregado** el 17-ago-2026 |
 | Catálogo | pendiente |
 | Configuración del vendedor | pendiente |
+| Tablero de pipeline | pendiente — **último grupo**, ver más abajo |
+
+### Grupo agregado: la ficha de cliente y las etapas
+
+Daniel preguntó si hacía falta un visualizador de clientes tipo CRM, y si daría más claridad sobre etapas y estados. La investigación —Mobbin más la documentación de Kommo— separó la pregunta en tres, con tres respuestas distintas:
+
+**Kommo es el análogo comercial más cercano** a lo que Vorare construye: *«cuando alguien hace clic en tu anuncio va a WhatsApp, donde el bot responde y califica»*. Y **su Salesbot mueve el lead por el pipeline solo**, sin que nadie arrastre tarjetas — eso descarta la objeción de «nadie lo va a mantener».
+
+1. **Ficha de cliente: sí, en el panel derecho.** Hoy no hay ningún lugar donde ver a una persona. Hay una conversación por contacto para siempre, así que la conversación *es* el registro del cliente, pero solo muestra mensajes: no hay dónde ver «compró 3 veces, una no confirmó, lleva Q1.087». Con contraentrega al 88,4%, distinguir al recomprador del que nunca confirma es dinero.
+
+   **Esto matiza la decisión 2 de arriba, no la contradice.** Lo que se descartó del panel derecho fueron el producto y el anuncio, que son *eventos* y por eso van al hilo. El historial del cliente es un *registro*, y para eso sirve un panel — es lo que hacen Copilot, Pipedrive y Zillow. Los 268px que no ganaban cuatro campos, sí los gana el historial.
+
+2. **Etapas: sí, pero como barra lineal, no como tablero.** Salesforce pone una barra de etapas sobre el registro (New › Contacted › Nurturing › Converted): no es tablero ni analítica, dice dónde está *este* lead en un recorrido fijo. El de Vorare ya existe y está fijo: `anuncio → reconocido → conversando → pedido → confirmado → entregado`. Hoy ese recorrido **está partido en tres pantallas** —reconocimiento en la conversación, confirmación en Pedidos, entrega en Dropi— y nadie ve el viaje completo de un lead. El 11,6% que no confirma se pierde sin que se sepa en qué escalón.
+
+3. **Tablero de pipeline: entra como último grupo del nivel 2.** Se evaluó dejarlo fuera del spec —un tablero es para repartir trabajo entre personas, y acá el reparto lo hace el ruteo; además el spec excluye reportería—, pero Daniel decidió incluirlo. Va al final a propósito: es el grupo que más depende de que los otros estén resueltos.
 
 ## Answer · Conversaciones
 
