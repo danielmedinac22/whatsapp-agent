@@ -101,3 +101,13 @@ El *debounce* sigue saliendo de `agent_settings` para los dos, y se deja documen
 - `operations`: una sola, Guatemala `GT`/`GTQ`/`active`. `products` 0 filas, `product_ads` 0 filas.
 
 Con 0 filas, **dos puertas independientes** dejan a Katherine atendiendo todo: `owner` ausente → nunca se entra a la rama de ventas; y aunque se entrara, `isSalesAgentConfigured(null)` es `false` y el turno vuelve al camino de siempre sin haber leído nada más.
+
+## Hallazgo que hay que saber antes de tocar el esfuerzo de razonamiento
+
+**`reasoning_effort` viaja por la vía canónica del SDK pero hoy no llega al proveedor.** Verificado el 17-ago-2026 leyendo el `doGenerate` de `@openrouter/ai-sdk-provider@6.0.0-alpha.1`: arma el body con una lista fija de campos y **descarta `providerOptions` y las opciones de modelo**.
+
+Consecuencia práctica: el campo existe en `sales_agent_settings`, se guarda, se lee y se pasa — y no tiene efecto. Quien vaya a subir el esfuerzo buscando mejor calidad de venta va a creer que cambió algo y no va a cambiar nada.
+
+**No se arregló aquí a propósito**: es un problema del proveedor, no del ticket, y la salida (fijar la versión, parchear el body o cambiar de cliente) es una decisión con dueño. Queda documentado en `apps/worker/src/sales/model.ts`.
+
+Relacionado: el spec dice que si Sebastián cierra mal, **el primer sospechoso es el modelo, no el prompt**. Subir el modelo sí funciona —es un campo—; subir el esfuerzo, hoy no.
