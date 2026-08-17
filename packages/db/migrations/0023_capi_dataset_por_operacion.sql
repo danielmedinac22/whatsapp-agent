@@ -1,0 +1,30 @@
+-- ────────────────────────────────────────────────────────────────────────────
+-- 0023 · El destino CAPI de cada operación
+--
+-- Una sola columna nullable sobre `operations`. Aditiva y sin backfill: la
+-- única fila de producción (Guatemala, GT/GTQ/active) queda exactamente como
+-- estaba, con la columna nueva en NULL. Nada se renombra, se mueve ni se borra,
+-- y ningún comportamiento observable cambia — una operación sin destino
+-- simplemente no reporta conversiones, que es lo que pasa hoy.
+--
+-- `NOT NULL` habría fallado sobre la tabla con filas y un `DEFAULT` habría
+-- sembrado un identificador a mano, que es justo lo que el criterio del ticket
+-- prohíbe: el destino se resuelve desde la operación, nunca desde una
+-- constante. Nace vacío y lo configura el panel.
+--
+-- **Por qué `capi_dataset_id` y no `pixel_id`.** El ticket pedía «el píxel por
+-- operación». Medido el 17-ago-2026 contra la documentación vigente de Meta
+-- (Conversions API for Business Messaging), el destino de una conversión de
+-- anuncio de clic a WhatsApp NO es el píxel del sitio web: es un *dataset* que
+-- se crea desde la cuenta de WhatsApp —`POST /{whatsapp_business_account_id}/
+-- dataset`, y el `GET` devuelve el que ya exista— y al que se postea en
+-- `/{dataset_id}/events`. Guardar aquí el id del píxel publicitario mandaría
+-- los eventos a otro lado, así que la columna se llama como lo que guarda.
+--
+-- La otra mitad de lo que el evento necesita —`user_data.whatsapp_business_
+-- account_id`— ya existe y no necesita columna: es
+-- `kapso_connection.business_account_id`, que desde la `0021` es una fila por
+-- operación.
+-- ────────────────────────────────────────────────────────────────────────────
+
+ALTER TABLE "operations" ADD COLUMN "capi_dataset_id" text;
