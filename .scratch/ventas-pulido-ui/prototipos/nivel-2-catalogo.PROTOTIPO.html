@@ -137,6 +137,45 @@
   .tbl tbody tr:hover td { background:rgba(255,255,255,.028); }
   .tbl tbody tr.sel td { background:var(--op-faint); }
   .pname { font-weight:500; letter-spacing:-.01em; }
+
+  /* ===== controles estándar de tabla (Dovetail, Twenty, Navattic, Neon) ===== */
+  .tbar { display:flex; align-items:center; gap:7px; padding:11px 13px; border-bottom:1px solid var(--border); }
+  .tsearch { flex:1; min-width:120px; padding:7px 11px; border-radius:8px; border:1px solid var(--border);
+             background:rgba(14,29,40,.9); color:var(--text); font-size:12.5px; font-family:inherit; }
+  .tsearch::placeholder { color:var(--text-soft); }
+  .tmenu { position:relative; }
+  .tbtn { padding:7px 11px; border-radius:8px; border:1px solid var(--border); background:rgba(15,31,43,.8);
+          color:var(--text-dim); font-size:12px; font-weight:500; white-space:nowrap; display:flex; align-items:center; gap:6px; }
+  .tbtn:hover, .tbtn.on { color:var(--text); border-color:var(--border-strong); }
+  .tcount { background:var(--op); color:#06121b; border-radius:99px; padding:0 5px; font-size:10px; font-weight:700; }
+  .menu { position:absolute; right:0; top:calc(100% + 5px); z-index:60; min-width:190px; padding:5px;
+          background:rgba(13,27,38,.99); border:1px solid var(--border-strong); border-radius:10px;
+          box-shadow:0 18px 44px rgba(2,8,13,.7); display:flex; flex-direction:column; gap:1px; }
+  .menu-i { display:flex; align-items:center; gap:8px; padding:7px 9px; border-radius:7px; border:none;
+            background:none; color:var(--text-dim); font-size:12.5px; text-align:left; width:100%; }
+  .menu-i::before { content:"○"; font-size:9px; opacity:.4; }
+  .menu-i.on::before { content:"●"; color:var(--op); opacity:1; }
+  .menu-i:hover { background:rgba(255,255,255,.05); color:var(--text); }
+  .menu-sep { padding:8px 9px 4px; font-size:9.5px; text-transform:uppercase; letter-spacing:.1em; color:var(--text-soft); font-weight:600; }
+
+  .chiprow { display:flex; align-items:center; gap:6px; flex-wrap:wrap; padding:9px 13px; border-bottom:1px solid var(--border); background:rgba(255,255,255,.018); }
+  .fchip { display:inline-flex; align-items:center; gap:7px; padding:4px 9px; border-radius:7px; font-size:11.5px;
+           border:1px solid var(--op-line); background:var(--op-faint); color:var(--text-dim); }
+  .fchip b { cursor:pointer; color:var(--text-soft); font-weight:400; }
+  .fchip b:hover { color:var(--text); }
+  .fclear { padding:4px 8px; border:none; background:none; color:var(--text-soft); font-size:11.5px; }
+  .fclear:hover { color:var(--text); }
+
+  .bulk { display:flex; align-items:center; gap:9px; padding:9px 13px; border-bottom:1px solid var(--op-line); background:var(--op-soft); font-size:12.5px; }
+  .bulk strong { margin-right:auto; }
+
+  .tcheck { width:34px; padding-right:0 !important; }
+  .cbox { width:15px; height:15px; border-radius:4px; border:1px solid var(--border-strong); display:block; }
+  .cbox.on { background:var(--op); border-color:var(--op); position:relative; }
+  .cbox.on::after { content:"✓"; position:absolute; inset:0; display:grid; place-items:center; font-size:10px; color:#06121b; font-weight:700; }
+  tr:hover .cbox { border-color:var(--op-line); }
+
+  .tfoot { display:flex; align-items:center; padding:10px 13px; border-top:1px solid var(--border); font-size:11.5px; }
   .pname small { display:block; color:var(--text-soft); font-size:10.5px; margin-top:2px; font-weight:400; }
 
   /* pila de anuncios (Whop) */
@@ -379,7 +418,31 @@ const VARIANTS = [
   {id:"E",label:"Maestro-detalle",   tag:"lista y ficha, la misma anatomía que conversaciones",   ref:"lo ya decidido"},
 ];
 
-const state = { variant:0, load:"full", country:"GT", module:"ventas", screen:"catalogo", bars:"open", sel:"p1" };
+const state = {
+  variant:0, load:"full", country:"GT", module:"ventas", screen:"catalogo", bars:"open", sel:"p1",
+  /* Comportamientos estándar de tabla, pedidos por Daniel. El conjunto sale
+     de los referentes: Dovetail y Twenty (chips de filtro removibles),
+     Navattic (buscar + filtro + orden + paginado), Neon (columnas). */
+  q:"", filters:[], sort:{k:"orders",dir:"desc"}, menu:null,
+  cols:{ origen:true, precio:true, ads:true, files:true, orders:true },
+  picked:[],
+};
+
+const FILTERS = [
+  {k:"src:shopify", label:"Origen: Tienda",     test:p => p.src === "shopify"},
+  {k:"src:panel",   label:"Origen: Panel",      test:p => p.src === "panel"},
+  {k:"ads:none",    label:"Sin anuncios",       test:p => p.ads.length === 0},
+  {k:"ads:some",    label:"Con anuncios",       test:p => p.ads.length > 0},
+  {k:"files:none",  label:"Sin archivos enviables", test:p => !p.files.some(f => f.send)},
+];
+const SORTS = [
+  {k:"orders", label:"Volumen"}, {k:"price", label:"Precio"},
+  {k:"name", label:"Nombre"},    {k:"ads", label:"Anuncios"},
+];
+const COLS = [
+  {k:"origen", label:"Origen"}, {k:"precio", label:"Precio"}, {k:"ads", label:"Anuncios"},
+  {k:"files", label:"Archivos"}, {k:"orders", label:"Pedidos"},
+];
 
 const el=(t,c,h)=>{const n=document.createElement(t);if(c)n.className=c;if(h!=null)n.innerHTML=h;return n;};
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -389,7 +452,29 @@ const mod=()=>MODULES[state.module];
 const V=()=>VARIANTS[state.variant];
 function rgba(h,a){const n=parseInt(h.slice(1),16);return `rgba(${(n>>16)&255}, ${(n>>8)&255}, ${n&255}, ${a})`;}
 
-const prods = () => state.load === "empty" ? [] : PRODUCTS[state.country];
+const prodsRaw = () => state.load === "empty" ? [] : PRODUCTS[state.country];
+
+/* La lista después de buscar, filtrar y ordenar. Sin esto los controles
+   serían decorativos, que es peor que no tenerlos. */
+function prods() {
+  let list = prodsRaw();
+  const q = state.q.trim().toLowerCase();
+  if (q) list = list.filter(p => p.name.toLowerCase().includes(q) || p.ads.some(a => a.includes(q)));
+  state.filters.forEach(k => {
+    const f = FILTERS.find(x => x.k === k);
+    if (f) list = list.filter(f.test);
+  });
+  const { k, dir } = state.sort, s = dir === "asc" ? 1 : -1;
+  const val = p => k === "orders" ? parseFloat(String(p.orders).replace(/\./g,"")) || 0
+              : k === "price" ? p.price
+              : k === "ads" ? p.ads.length
+              : p.name;
+  list = [...list].sort((a,b) => {
+    const A = val(a), B = val(b);
+    return (typeof A === "string" ? A.localeCompare(B) : A - B) * s;
+  });
+  return list;
+}
 const sel = () => prods().find(p => p.id === state.sel) || prods()[0] || null;
 const money = p => `${op().cur} ${p.price.toLocaleString("es")}`;
 const initials = n => n.replace("REVITALHAIR – ","").replace("REVITALHAIR ","").trim().slice(0,2).toUpperCase();
@@ -533,31 +618,163 @@ function head(extra) {
 
 /* ================= LAS CINCO ================= */
 
-function catA() {
-  const list = prods(), w = el("div");
-  w.appendChild(head("El origen es una columna, no una insignia: se lee en la misma posición en todas las filas."));
-  if (!list.length) { w.appendChild(emptyCat()); return w; }
-  const grid = el("div"); grid.style.cssText = "display:grid;grid-template-columns:1fr 340px;gap:12px;align-items:start";
-  const card = el("div","card"); card.style.padding = "13px 4px 4px";
-  const t = el("table","tbl");
-  t.innerHTML = `<thead><tr><th>Producto</th><th>Origen</th><th>Precio</th><th>Anuncios</th><th>Archivos</th><th>Pedidos</th></tr></thead>`;
-  const tb = el("tbody");
-  list.forEach(p => {
-    const tr = el("tr", sel() && sel().id === p.id ? "sel" : "");
-    tr.innerHTML = `
-      <td><div style="display:flex;align-items:center;gap:10px">${thumb(p)}
-        <div class="pname">${esc(p.name)}<small>${p.share !== "—" ? esc(p.share)+" del volumen" : "volumen bajo"}</small></div></div></td>
-      <td>${srcMark(p)}</td>
-      <td class="num" style="font-weight:500">${esc(money(p))}</td>
-      <td>${adsMark(p)}</td>
-      <td class="num soft">${p.files.filter(f=>f.send).length}/${p.files.length}</td>
-      <td class="num muted">${esc(p.orders)}</td>`;
-    tr.onclick = () => { state.sel = p.id; render(); };
-    tb.appendChild(tr);
+/* Menú desplegable genérico para Filtrar / Ordenar / Columnas. */
+function menu(items) {
+  const m = el("div","menu");
+  items.forEach(it => {
+    if (it.sep) { m.appendChild(el("div","menu-sep", it.sep)); return; }
+    const b = el("button","menu-i" + (it.on ? " on" : ""), it.label);
+    b.onclick = e => { e.stopPropagation(); it.act(); };
+    m.appendChild(b);
   });
-  t.appendChild(tb);
-  card.appendChild(t);
-  if (state.country === "GT") card.appendChild(el("div","soft",`<div style="padding:10px 12px;border-top:1px solid var(--border);font-size:12px">11 productos más · entre 1 y 18 pedidos cada uno</div>`));
+  return m;
+}
+
+function toolbar() {
+  const bar = el("div","tbar");
+
+  const search = el("input","tsearch");
+  search.placeholder = "Buscar producto o ID de anuncio";
+  search.value = state.q;
+  search.oninput = e => { state.q = e.target.value; render(); };
+  bar.appendChild(search);
+
+  const mk = (key, label, count) => {
+    const wrap = el("div","tmenu");
+    const b = el("button","tbtn" + (state.menu === key ? " on" : ""),
+      `${esc(label)}${count ? ` <span class="tcount">${count}</span>` : ""}`);
+    b.onclick = e => { e.stopPropagation(); state.menu = state.menu === key ? null : key; render(); };
+    wrap.appendChild(b);
+    return wrap;
+  };
+
+  const fWrap = mk("filter","Filtrar", state.filters.length);
+  if (state.menu === "filter") {
+    fWrap.appendChild(menu(FILTERS.map(f => ({
+      label: f.label, on: state.filters.includes(f.k),
+      act: () => {
+        state.filters = state.filters.includes(f.k)
+          ? state.filters.filter(x => x !== f.k) : [...state.filters, f.k];
+        render();
+      }
+    }))));
+  }
+  bar.appendChild(fWrap);
+
+  const sWrap = mk("sort", `Ordenar: ${SORTS.find(s => s.k === state.sort.k).label}`);
+  if (state.menu === "sort") {
+    sWrap.appendChild(menu([
+      ...SORTS.map(s => ({ label: s.label, on: state.sort.k === s.k,
+        act: () => { state.sort = { ...state.sort, k: s.k }; state.menu = null; render(); } })),
+      { sep: "Dirección" },
+      { label: "Descendente", on: state.sort.dir === "desc", act: () => { state.sort = {...state.sort, dir:"desc"}; render(); } },
+      { label: "Ascendente",  on: state.sort.dir === "asc",  act: () => { state.sort = {...state.sort, dir:"asc"};  render(); } },
+    ]));
+  }
+  bar.appendChild(sWrap);
+
+  const cWrap = mk("cols","Columnas");
+  if (state.menu === "cols") {
+    cWrap.appendChild(menu(COLS.map(c => ({
+      label: c.label, on: state.cols[c.k],
+      act: () => { state.cols[c.k] = !state.cols[c.k]; render(); }
+    }))));
+  }
+  bar.appendChild(cWrap);
+
+  return bar;
+}
+
+/* Los filtros aplicados como chips removibles (Twenty, Aboard, Navattic).
+   Un filtro activo que no se ve es cómo se pierde media lista sin notarlo. */
+function chips() {
+  if (!state.filters.length && !state.q) return null;
+  const row = el("div","chiprow");
+  if (state.q) {
+    const c = el("span","fchip",`Busca «${esc(state.q)}» <b>×</b>`);
+    c.querySelector("b").onclick = () => { state.q = ""; render(); };
+    row.appendChild(c);
+  }
+  state.filters.forEach(k => {
+    const f = FILTERS.find(x => x.k === k);
+    const c = el("span","fchip",`${esc(f.label)} <b>×</b>`);
+    c.querySelector("b").onclick = () => { state.filters = state.filters.filter(x => x !== k); render(); };
+    row.appendChild(c);
+  });
+  const clr = el("button","fclear","Limpiar");
+  clr.onclick = () => { state.filters = []; state.q = ""; render(); };
+  row.appendChild(clr);
+  return row;
+}
+
+/* Selección múltiple. Acá no es genérica: asociar UN anuncio a VARIOS
+   productos es literalmente el N:M del ticket 03, y es su camino más corto. */
+function bulkBar() {
+  if (!state.picked.length) return null;
+  const b = el("div","bulk");
+  b.innerHTML = `<strong>${state.picked.length} seleccionados</strong>`;
+  const a = el("button","btn btn-p","Asociar un anuncio a los " + state.picked.length);
+  const q = el("button","btn","Quitar selección");
+  q.onclick = () => { state.picked = []; render(); };
+  b.appendChild(a); b.appendChild(q);
+  return b;
+}
+
+function catA() {
+  const list = prods(), total = prodsRaw().length, w = el("div");
+  w.appendChild(head("El origen es una columna, no una insignia: se lee en la misma posición en todas las filas."));
+  if (!total) { w.appendChild(emptyCat()); return w; }
+
+  const grid = el("div"); grid.style.cssText = "display:grid;grid-template-columns:1fr 340px;gap:12px;align-items:start";
+  const card = el("div","card"); card.style.overflow = "hidden";
+  card.appendChild(toolbar());
+  const ch = chips(); if (ch) card.appendChild(ch);
+  const bb = bulkBar(); if (bb) card.appendChild(bb);
+
+  if (!list.length) {
+    card.appendChild(el("div","empty",`<div class="empty-mark">⌕</div>
+      <h3 style="font-size:14px">Ningún producto coincide</h3>
+      <p class="soft" style="font-size:12px">Quitá algún filtro para ver el resto del catálogo.</p>`));
+  } else {
+    const t = el("table","tbl");
+    const th = ["<th class='tcheck'></th>","<th>Producto</th>"];
+    if (state.cols.origen) th.push("<th>Origen</th>");
+    if (state.cols.precio) th.push("<th>Precio</th>");
+    if (state.cols.ads)    th.push("<th>Anuncios</th>");
+    if (state.cols.files)  th.push("<th>Archivos</th>");
+    if (state.cols.orders) th.push(`<th>Pedidos</th>`);
+    t.innerHTML = `<thead><tr>${th.join("")}</tr></thead>`;
+    const tb = el("tbody");
+    list.forEach(p => {
+      const tr = el("tr", sel() && sel().id === p.id ? "sel" : "");
+      const td = [`<td class="tcheck"><span class="cbox${state.picked.includes(p.id)?" on":""}"></span></td>`,
+        `<td><div style="display:flex;align-items:center;gap:10px">${thumb(p)}
+          <div class="pname">${esc(p.name)}<small>${p.share !== "—" ? esc(p.share)+" del volumen" : "volumen bajo"}</small></div></div></td>`];
+      if (state.cols.origen) td.push(`<td>${srcMark(p)}</td>`);
+      if (state.cols.precio) td.push(`<td class="num" style="font-weight:500">${esc(money(p))}</td>`);
+      if (state.cols.ads)    td.push(`<td>${adsMark(p)}</td>`);
+      if (state.cols.files)  td.push(`<td class="num soft">${p.files.filter(f=>f.send).length}/${p.files.length}</td>`);
+      if (state.cols.orders) td.push(`<td class="num muted">${esc(p.orders)}</td>`);
+      tr.innerHTML = td.join("");
+      tr.onclick = e => {
+        if (e.target.closest(".tcheck")) {
+          state.picked = state.picked.includes(p.id)
+            ? state.picked.filter(x => x !== p.id) : [...state.picked, p.id];
+        } else state.sel = p.id;
+        render();
+      };
+      tb.appendChild(tr);
+    });
+    t.appendChild(tb);
+    card.appendChild(t);
+  }
+
+  const foot = el("div","tfoot");
+  foot.innerHTML = `<span class="soft">${list.length} de ${total + (state.country==="GT"?11:0)} productos${
+    list.length !== total ? " · filtrado" : ""}</span>
+    <span class="soft" style="margin-left:auto">25 por página</span>`;
+  card.appendChild(foot);
+
   grid.appendChild(card); grid.appendChild(detail());
   w.appendChild(grid);
   return w;
@@ -831,7 +1048,12 @@ document.querySelectorAll('.pk-opts[data-key]').forEach(g => {
   });
 });
 
-function step(d){ state.variant=(state.variant+d+VARIANTS.length)%VARIANTS.length; render(); }
+// Cerrar los menús al hacer clic afuera.
+document.addEventListener("click", e => {
+  if (state.menu && !e.target.closest(".tmenu")) { state.menu = null; render(); }
+});
+
+function step(d){ state.variant=(state.variant+d+VARIANTS.length)%VARIANTS.length; state.menu=null; render(); }
 document.getElementById("pk-prev").onclick = () => step(-1);
 document.getElementById("pk-next").onclick = () => step(1);
 document.getElementById("pk-min").onclick = () => document.getElementById("picker").classList.toggle("is-min");

@@ -7,7 +7,7 @@
 **Status:** in-progress — worktree `grill-nivel-1`, sesión con el usuario, 17-ago-2026
 
 - [ ] Cinco variantes por grupo, en el archivo vivo que se actualiza en sitio.
-- [ ] El catálogo se muestra vacío y cargado, y con productos de ambos orígenes.
+- [x] El catálogo se muestra vacío y cargado, y con productos de ambos orígenes.
 - [ ] La configuración del vendedor separa visualmente lo que tiene consecuencia —el límite de descuento— de lo que es tono.
 - [x] Las conversaciones se muestran con casos normales, ambiguos y escalados.
 - [x] La vista de ventas se siente hermana de la de confirmaciones, no una aplicación distinta.
@@ -20,7 +20,7 @@
 | Selector de operación | **cerrado en el nivel 1** — el riel *es* el selector; lo que queda es nivel 3 |
 | Conversaciones | **cerrado** (ver abajo) |
 | Ficha de cliente y etapas del lead | **cerrado** — grupo agregado el 17-ago-2026 |
-| Catálogo | pendiente |
+| Catálogo | **cerrado** (ver abajo) |
 | Configuración del vendedor | pendiente |
 | Tablero de pipeline | pendiente — **último grupo**, ver más abajo |
 
@@ -64,6 +64,47 @@ Quedan los dos, con trabajos distintos:
 - **La pestaña dice CÓMO**: el nivel de la cascada que resolvió, y en el caso ambiguo los nombres candidatos que el matcher no pudo separar. Eso el evento no lo puede contar, y hoy no se enseña en ninguna pantalla.
 
 Es el mejor lugar del panel para el problema real de Vorare: los cuatro SKUs REVITALHAIR casi homónimos aparecen ahí, listados, con el botón que los desambigua para siempre.
+
+## Answer · Catálogo
+
+**Tabla densa, con el origen como columna.** Se descartaron las dos secciones separadas, las tarjetas, la pantalla centrada en anuncios y el maestro-detalle.
+
+### El veredicto y su razón
+
+> «Puede presentar más información de forma más clara y en el momento en que se tengan muchos productos, es más fácil de navegar. Añadiría filtros y tipo de comportamientos estándares de la industria para este tipo de componentes.»
+
+La razón **no fue el catálogo de hoy sino el de mañana**: 17 productos caben en cualquier forma; la tabla es la que sigue funcionando cuando sean 60. Quien construya no debería cambiarla por algo más vistoso mirando el catálogo actual.
+
+### Qué distingue lo conectado de lo nativo
+
+El origen es **una columna**, en la misma posición en todas las filas — como lo hacen Dovetail y TheyDo, no como insignia suelta. Se evaluó separar el catálogo en dos secciones (tienda arriba, panel abajo), que vuelve la confusión imposible, y se descartó: **el error no se comete mirando la lista sino al abrir e intentar editar**, y ahí lo ataja el aviso de solo lectura de la ficha. Partir la lista rompería el orden por volumen —que es como Vorare piensa su catálogo, con un producto que es el 77%— y cobraría un precio permanente por un error que se comete una vez.
+
+En la ficha: si el producto vive en Shopify, la descripción es texto plano y encima va **«el panel no escribe sobre la tienda»**; si es nativo, la misma descripción es un campo editable.
+
+### Los comportamientos estándar, pedidos explícitamente
+
+El conjunto sale de los referentes, no de la imaginación: **Dovetail** (buscar · ordenar · campos · filtrar), **Twenty** y **Aboard** (filtros aplicados como chips removibles con «+ añadir filtro»), **Navattic** (buscar + filtro con contador + orden + paginado con total), **Neon** (columnas conmutables).
+
+- **Buscar** por nombre de producto o por ID de anuncio.
+- **Filtrar** con contador en el botón, y los filtros activos **como chips removibles bajo la barra**. Un filtro activo que no se ve es cómo se pierde media lista sin notarlo. Filtros: origen, con/sin anuncios, sin archivos enviables.
+- **Ordenar** por volumen, precio, nombre o anuncios, con dirección.
+- **Columnas** conmutables.
+- **Total y estado del filtro al pie**: «4 de 17 productos · filtrado».
+- **Selección múltiple con casillas.** Acá no es genérica: **asociar un anuncio a varios productos a la vez es literalmente el N:M del ticket 03 y su camino más corto.**
+
+### Dos correcciones que la elección destapó
+
+1. **El anuncio compartido parecía exclusivo.** El ticket 03 pide que «un mismo anuncio pueda quedar asociado a varios productos y se vea claramente a cuáles», y desde la ficha de un producto no se veía. Ahora cada anuncio compartido dice a qué otros apunta: `23851094999 · también apunta a REVITALHAIR Serum Capilar`.
+
+2. **Un producto sin anuncios no es un producto incompleto: es una fuga de reconocimiento.** Se cambió la insignia neutra «sin anuncios» por su consecuencia: *«Los leads de este producto no se van a reconocer. Sin un anuncio registrado, el matcher tiene que adivinar entre los cuatro nombres REVITALHAIR — y ahí está el 77% del volumen.»* Es la única parte del panel que explica **por qué existe** el registro de anuncios; sin eso, cargar IDs parece burocracia.
+
+### Archivos enviables
+
+Interruptor por archivo (Frame.io, Proton), con el conteo en la cabecera: «2 de 4 enviables». **El `testimonio.mp4` de 27 MB tiene el interruptor deshabilitado y dice por qué** — excede el límite de 16 MB de la API de WhatsApp. Se rechaza al subir, no al enviar, que es el criterio del ticket 02.
+
+### Referencia visual
+
+`prototipos/nivel-2-catalogo.PROTOTIPO.html`. La variante 1 es la decidida; B–E quedan como registro.
 
 ## Answer · Conversaciones
 
