@@ -200,6 +200,28 @@ export const operations = pgTable(
     /** ISO 4217: "GTQ", "COP". Mismo vocabulario que `shopify_orders.currency`. */
     currency: text("currency").notNull(),
     status: operationStatus("status").notNull().default("active"),
+    /**
+     * A qué **dataset** de Meta reporta esta operación sus conversiones (CAPI).
+     * Migración `0023`. Nullable: nace vacío y lo configura el panel; una
+     * operación sin dataset simplemente no reporta (`buildPurchaseEvent`
+     * devuelve `no-event`), nunca reporta al de otra.
+     *
+     * **No es el píxel del sitio web, aunque el ticket lo llamara así.** Medido
+     * contra la documentación de Meta el 17-ago-2026: las conversiones de
+     * anuncios de clic a WhatsApp van por *Conversions API for Business
+     * Messaging*, cuyo destino es un dataset que se crea **desde la cuenta de
+     * WhatsApp** (`POST /{whatsapp_business_account_id}/dataset`, y el `GET`
+     * devuelve el que ya exista) y al que se postea en `/{dataset_id}/events`.
+     * El identificador del píxel publicitario de la cuenta no es ese valor y
+     * ponerlo aquí manda los eventos a otro lado.
+     *
+     * Se queda en `operations` —y no junto a `business_account_id` en
+     * `kapso_connection`, de donde sale la otra mitad del `user_data`— porque es
+     * configuración de negocio de la operación, hermana de `currency`: las dos
+     * cosas que el evento necesita saber del país viven en la misma fila y las
+     * edita la misma pantalla.
+     */
+    capiDatasetId: text("capi_dataset_id"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

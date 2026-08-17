@@ -162,6 +162,13 @@
       "when": 1786976643143,
       "tag": "0022_expand_ventas",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1786977902352,
+      "tag": "0023_capi_dataset_por_operacion",
+      "breakpoints": true
     }
   ]
 }

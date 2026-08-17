@@ -13,6 +13,9 @@ function operacion(id: string, countryCode: string, currency: string): Operation
     countryCode,
     currency,
     status: "active",
+    // Columna de la `0023`. Nada de este archivo la mira: está porque una fila
+    // de `operations` ahora la tiene, y el tipado estricto no deja fingir que no.
+    capiDatasetId: null,
     createdAt: new Date(0),
     updatedAt: new Date(0),
   };
