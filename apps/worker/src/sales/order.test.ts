@@ -326,6 +326,15 @@ describe("buildSalesOrder · teléfono y lugar contra el país de la operación"
     ]);
   });
 
+  it("una operación cuyo país no tiene listas no valida contra las del vecino", () => {
+    // El día que se abra un tercer país antes de que existan sus listas: el
+    // constructor lo dice en vez de medir la dirección con la regla equivocada.
+    const mexico = tienda({ id: "op-mx", countryCode: "MX", currency: "MXN" });
+    expect(erroresDe(construir(cierre(), HASTA_20, mexico))).toEqual([
+      { code: "country_unsupported", countryCode: "MX" },
+    ]);
+  });
+
   it("una dirección colombiana válida falla contra la lista de Guatemala", () => {
     // El test que exige el ticket. El mismo cierre que construye un pedido en
     // la operación colombiana no construye nada en la guatemalteca: teléfono,

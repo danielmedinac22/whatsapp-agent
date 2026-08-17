@@ -94,7 +94,7 @@ resolveFollowupPlan(input: {
 
 ### Verificación
 
-`pnpm -r typecheck` limpio en los 4 paquetes. `pnpm --filter @wa/worker test`: **201 tests en 12 archivos** — los **135 existentes sin tocar** y **66 nuevos**: 33 del constructor, 21 de las reglas por país y 12 del plan de seguimiento.
+`pnpm -r typecheck` limpio en los 4 paquetes. `pnpm --filter @wa/worker test`: **202 tests en 12 archivos** — los **135 existentes sin tocar** y **67 nuevos**: 34 del constructor, 21 de las reglas por país y 12 del plan de seguimiento.
 
 Cubren los doce casos que pide el ticket —completo con dirección · completo con reclamo en oficina · **los dos coexistiendo, que falla** · teléfono inválido para el país · ciudad y departamento fuera de lista · **la dirección colombiana válida que falla contra Guatemala, y la guatemalteca que falla contra Colombia** · moneda de la operación · requerido faltante · descuento dentro del límite · **por encima, clampeado y señalado** · límite en cero · **dos construcciones del mismo cierre con la misma llave**— más los del plan: **etiqueta de ventas → contenido de venta y diez minutos**, **sin etiqueta → comportamiento de hoy idéntico**, y **ventas con ventana cerrada → plantilla**.
 
