@@ -6,7 +6,7 @@ Cuarto y mayor lote: sesenta y cinco referencias en quince archivos. Es el de ma
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** claimed — worktree `op-05-agent-settings`, tanda del 16-ago-2026
 
 - [ ] La configuración de agente declara a qué operación pertenece.
 - [ ] Cada lectura de configuración indica de qué operación la quiere.

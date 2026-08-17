@@ -6,7 +6,7 @@ Tercer lote: diecinueve referencias.
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** claimed — worktree `op-04-dropi`, tanda del 16-ago-2026
 
 - [ ] La conexión de logística declara a qué operación pertenece.
 - [ ] El sondeo, la sincronización y las notificaciones se ejecutan por operación.

@@ -6,7 +6,7 @@ Primer lote de la migración: es el de menor radio, diez referencias.
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** claimed — worktree `op-02-03-kapso-shopify`, tanda del 16-ago-2026
 
 - [ ] La conexión de WhatsApp declara a qué operación pertenece.
 - [ ] Un mensaje entrante resuelve su operación por la conexión que lo recibió.

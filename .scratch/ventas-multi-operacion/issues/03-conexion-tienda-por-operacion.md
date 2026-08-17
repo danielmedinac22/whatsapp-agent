@@ -6,7 +6,7 @@ Segundo lote: dieciséis referencias.
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** claimed — worktree `op-02-03-kapso-shopify`, tanda del 16-ago-2026
 
 - [ ] La conexión de la tienda declara a qué operación pertenece.
 - [ ] Las lecturas de productos se hacen contra la tienda de la operación indicada.
