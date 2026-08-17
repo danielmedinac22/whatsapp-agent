@@ -14,3 +14,53 @@ Es el mínimo de catálogo que el reconocimiento necesita para existir. La exper
 - [ ] Asociar el mismo anuncio a varios productos funciona y queda consultable como conjunto.
 - [ ] No se introduce ningún concepto de familia o agrupación de productos: la agrupación la expresa el mapeo.
 - [ ] Los productos quedan uno a uno con los de la tienda; no se reestructura el catálogo del cliente.
+
+## Answer — esquema puesto por la `0022` (17-ago-2026), la funcionalidad sigue abierta
+
+El worktree `esquema-0022` dejó las dos tablas aplicadas en producción y vacías. **Este ticket no genera migración**: construye encima de esto.
+
+### `products` — el catálogo, por operación
+
+| columna | tipo | notas |
+| -- | -- | -- |
+| `id` | uuid pk | |
+| `operation_id` | uuid **NOT NULL** → `operations` (`restrict`) | un producto guatemalteco no aparece en el catálogo colombiano |
+| `source` | enum `product_source`: `shopify` \| `native` | el origen declarado |
+| `shopify_product_id` | text, nullable | GID de Shopify (`gid://shopify/Product/NNN`, lo que devuelve `ShopifyProduct.id`; `getProductsByIds` acepta también el numérico). **Obligatorio si `source = 'shopify'`, nulo si `native`** |
+| `name` | text, nullable | **obligatorio si `native`**; para los conectados va nulo: el nombre se lee de la tienda en tiempo de uso, no se copia |
+| `description` | text, nullable | idem: solo los nativos la guardan aquí |
+| `created_at`, `updated_at` | timestamptz | |
+
+Restricciones: `products_source_check` hace cumplir en la base que cada origen traiga lo suyo (`native` → `name` no nulo y sin id de tienda; `shopify` → id de tienda no nulo). Único parcial `products_operation_shopify_idx (operation_id, shopify_product_id) where shopify_product_id is not null`: **uno a uno con la tienda**, el mismo producto no se conecta dos veces en la misma operación. Restricción única `products_operation_id_unique (operation_id, id)`: destino de la FK compuesta de abajo, y de paso el índice para listar el catálogo por operación.
+
+**Por qué `name` es nullable y no `NOT NULL`:** el ticket del panel (`ventas-panel/02`) exige que un producto conectado *no copie* su información — «editarlo allá se refleja acá, sin desincronización silenciosa». Un `name NOT NULL` habría obligado a copiar el título. Nullable deja la puerta abierta a cumplirlo; quien construya puede igual decidir cachear en memoria (`getProductsByIds` ya cachea 10 minutos por operación).
+
+### `product_ads` — anuncio→productos, N:M en ambos sentidos
+
+| columna | tipo | notas |
+| -- | -- | -- |
+| `operation_id` | uuid **NOT NULL** → `operations` (`restrict`) | |
+| `product_id` | uuid **NOT NULL** | |
+| `ad_id` | text **NOT NULL** | el identificador del anuncio de Meta, tal como llega en `referral.source_id`; es lo que el admin pega |
+| `created_at` | timestamptz | |
+
+PK `(product_id, ad_id)`. Índice `product_ads_operation_ad_idx (operation_id, ad_id)` — la consulta del nivel 1 de la cascada es `where operation_id = ? and ad_id = ?` y devuelve el **conjunto** de productos. **FK compuesta `(operation_id, product_id) → products (operation_id, id)` con `cascade`**: un mapeo no puede apuntar a un producto de otra operación aunque el código se equivoque, y borrar el producto se lleva sus mapeos.
+
+**El anuncio no tiene entidad propia**: es su id. No hay tabla `ads`, no hay concepto de familia ni de agrupación — la agrupación la expresa este mapeo, como pide el ticket. Si algún día hace falta un rótulo por anuncio, es una columna más aquí o una tabla nueva, con dueño.
+
+### También quedó, y lo usa el ticket 04 de este mismo lote
+
+`conversations.product_id` (uuid nullable → `products`, `set null`): el producto que la cascada resolvió para la conversación —por id de anuncio, por match semántico o preguntando— para que una respuesta de botón, que no trae referencia, siga sabiendo de qué producto se habla. La sesión de `reconocimiento-cascada` (ticket 04, «la persistencia espera al esquema `0022`») escribe ahí.
+
+### En `@wa/db`
+
+Exporta `products`, `productAds`, `productSource` y los tipos `Product`, `NewProduct`, `ProductAd`, `NewProductAd`. **No hay accesor escrito**: eso es de este ticket. Sugerencia: el patrón de `packages/db/src/agent-settings.ts` — traer filas y resolver por operación en memoria con una función pura probable.
+
+### Deliberadamente fuera de la `0022`
+
+- **Assets enviables** (imágenes, videos, «marcado como enviable»): los piden `ventas-panel/02-03` y `ventas-conversacion/03`, que no son de esta ola, y su forma depende de dónde vivan los binarios (`message_media` guarda bytes en Postgres con una nota de «si deja de ser aceptable, esto se muda a S3/R2» — un video de 16 MB por producto es exactamente ese caso). Decisión con dueño, no un default mío.
+- **Precio de producto nativo** y **archivado/estado** del producto: ningún ticket de la ola los pide. Cuando hagan falta son una columna nullable más.
+
+### Verificado en producción tras aplicar
+
+`products` 0 filas · `product_ads` 0 filas · `product_source` = `[shopify, native]` · las restricciones y los índices de arriba existen con esos nombres. Nada de lo existente cambió (ver el `## Answer` del ticket 01 de multi-operación para el patrón de verificación; los números están en el commit de la `0022`).
