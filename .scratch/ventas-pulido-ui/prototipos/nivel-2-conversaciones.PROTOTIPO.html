@@ -190,6 +190,9 @@
          color:var(--text-soft); font-size:11px; font-weight:600; }
   .tab[aria-selected="true"] { background:var(--op-soft); border-color:var(--op-line); color:var(--op); }
   .tab:hover { color:var(--text-dim); }
+  .hist { display:flex; align-items:center; justify-content:space-between; gap:8px;
+          padding:8px 0; border-top:1px solid var(--border); }
+  .hist:first-of-type { border-top:none; }
 
   /* C · tercer panel de contexto (Intercom, Lemni, Gorgias) */
   .ctx { padding:13px 14px; display:flex; flex-direction:column; gap:14px; max-height:660px; overflow-y:auto; }
@@ -259,6 +262,15 @@
     <div class="pk-set">
       <span class="pk-legend">Conversación abierta</span>
       <div class="pk-opts" data-key="sel"></div>
+    </div>
+
+    <div class="pk-set">
+      <span class="pk-legend">Pestaña de la ficha (solo en la S)</span>
+      <div class="pk-opts" data-key="tab">
+        <button class="pk-opt" data-val="cliente">Cliente</button>
+        <button class="pk-opt" data-val="pedidos">Pedidos</button>
+        <button class="pk-opt" data-val="contexto">Contexto</button>
+      </div>
     </div>
 
     <div class="pk-pair">
@@ -362,16 +374,29 @@ const CHATS = {
 /* RONDA 3 — cómo entran la ficha de cliente y el recorrido del lead en la
    conversación ya decidida. El encuadre y la bandeja no se discuten. */
 const VARIANTS = [
+  {id:"S",label:"Ficha con pestañas ✓",  tag:"ELEGIDA · recorrido + Cliente · Pedidos · Contexto", ref:"Copilot"},
   {id:"P",label:"Barra arriba + ficha",  tag:"recorrido sobre el hilo, historial a la derecha", ref:"Salesforce"},
   {id:"Q",label:"Todo en la ficha",      tag:"el hilo queda limpio; el recorrido va en el panel", ref:"Copilot"},
   {id:"R",label:"Recorrido en la fila",  tag:"la etapa se ve sin abrir la conversación",         ref:"Attio · Twenty"},
-  {id:"S",label:"Ficha con pestañas",    tag:"Contexto · Pedidos · Historial en el panel",       ref:"Copilot"},
   {id:"T",label:"Sin barra, solo eventos",tag:"las etapas ya las narra el hilo — ¿sobra la barra?", ref:"la decisión anterior"},
 ];
 
 const REC = { ok:{l:"reconocido",c:"pill-ok"}, amb:{l:"ambiguo",c:"pill-amb"}, esc:{l:"escalado",c:"pill-esc"} };
 
-const state = { variant:0, view:"all", country:"GT", module:"ventas", screen:"inbox", bars:"open", sel:"c1" };
+const state = { variant:0, view:"all", country:"GT", module:"ventas", screen:"inbox", bars:"open", sel:"c1", tab:"cliente" };
+
+/* Los pedidos de cada cliente — lo que llena la pestaña «Pedidos». */
+const HIST = {
+  c3:[{id:"#10318",when:"2 jun",amt:"Q 349",st:"confirmado"},
+      {id:"#10276",when:"18 may",amt:"Q 389",st:"confirmado"},
+      {id:"#10241",when:"12 may",amt:"Q 349",st:"no confirmado"}],
+  c4:[{id:"#10402",when:"9 ago",amt:"Q 549",st:"no confirmado"}],
+  c5:[{id:"#10425",when:"hoy",amt:"Q 389",st:"entregado"},
+      {id:"#10344",when:"21 jun",amt:"Q 349",st:"entregado"},
+      {id:"#10298",when:"3 may",amt:"Q 429",st:"entregado"},
+      {id:"#10188",when:"8 feb",amt:"Q 349",st:"entregado"}],
+  c6:[{id:"#10377",when:"24 jul",amt:"Q 389",st:"no confirmado"}],
+};
 
 const el=(t,c,h)=>{const n=document.createElement(t);if(c)n.className=c;if(h!=null)n.innerHTML=h;return n;};
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -538,12 +563,45 @@ function custPanel(opts = {}) {
 
   if (opts.tabs) {
     const t = el("div", "tabs");
-    ["Cliente", "Pedidos", "Contexto"].forEach((l, i) => {
+    [["cliente","Cliente"],["pedidos","Pedidos"],["contexto","Contexto"]].forEach(([k, l]) => {
       const b = el("button", "tab", l);
-      b.setAttribute("aria-selected", String(i === 0));
+      b.setAttribute("aria-selected", String(state.tab === k));
+      b.onclick = () => { state.tab = k; render(); };
       t.appendChild(b);
     });
     box.appendChild(t);
+
+    if (state.tab === "pedidos") {
+      const s = el("div", "ctx-sec");
+      const rows = HIST[c.id] || [];
+      s.innerHTML = `<div class="ctx-h">Pedidos de ${esc(c.who.split(" ")[0])}</div>` +
+        (rows.length
+          ? rows.map(r => `<div class="hist">
+              <div><span class="ctx-v num" style="font-weight:600">${esc(r.id)}</span>
+                   <span class="soft" style="font-size:11px;display:block;margin-top:1px">${esc(r.when)} · ${esc(r.amt)}</span></div>
+              <span class="pill ${r.st === "no confirmado" ? "pill-amb" : "pill-ok"}">${esc(r.st)}</span>
+            </div>`).join("")
+          : `<p class="soft" style="font-size:12px;line-height:1.5">Todavía no compró. Este sería su primer pedido.</p>`);
+      box.appendChild(s);
+      return box;
+    }
+
+    if (state.tab === "contexto") {
+      const s = el("div", "ctx-sec");
+      s.innerHTML = `<div class="ctx-h">Contexto de venta</div>
+        <div class="ctx-f"><span class="ctx-k">Producto reconocido</span>
+          <span class="ctx-v strong">${c.prod ? esc(c.prod) : `<span class="soft">ninguno todavía</span>`}</span></div>
+        <div class="ctx-f"><span class="ctx-k">Vino del anuncio</span>
+          <span class="ctx-v num">${c.ad ? esc(c.ad) : `<span class="soft">sin referencia</span>`}</span></div>
+        <div class="ctx-f"><span class="ctx-k">Campaña</span><span class="ctx-v">${esc(c.camp)}</span></div>
+        <div class="ctx-f"><span class="ctx-k">Reconocimiento</span>
+          <span class="ctx-v"><span class="pill ${REC[c.rec].c}">${REC[c.rec].l}</span></span></div>
+        <p class="soft" style="font-size:11px;line-height:1.5;margin-top:8px;padding-top:9px;border-top:1px dashed var(--border)">
+          Ojo: esto es exactamente lo mismo que ya cuenta el hilo como evento.
+          Si la pestaña se queda, hay que decidir cuál de los dos sobra.</p>`;
+      box.appendChild(s);
+      return box;
+    }
   }
 
   const head = el("div", "ctx-sec");
