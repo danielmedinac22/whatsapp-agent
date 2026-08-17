@@ -1,219 +1,191 @@
-<title>Bandeja de ventas</title>
+<title>Ventas dentro del Inbox</title>
 
 <!--
   PROTOTIPO DESECHABLE — no es código de producción, no se integra.
 
-  NIVEL 2 · grupo «conversaciones». El encuadre del nivel 1 está CERRADO y
-  aquí va fijo: riel de operaciones que tiñe la barra, módulo anidado dentro,
-  colapsable a 46px. Lo único que varía entre las cinco variantes es la
-  pantalla de conversaciones de ventas.
+  NIVEL 2 · grupo «conversaciones» · RONDA 2, con la pregunta REPLANTEADA.
 
-  La pregunta: qué forma tiene la bandeja de ventas y qué relación tiene con
-  el Inbox que ya existe. El spec de Panel dice que es la pieza con más rango
-  de esfuerzo del proyecto entero.
+  La ronda 1 falló entera («ninguna me convence») y la razón no era el layout:
+  las cinco variantes le pusieron vocabulario nuevo a actos que el panel YA
+  nombra en producción. En apps/web/src/app/(app)/inbox/inbox-client.tsx:
+    · `agentMode` por contacto — el botón dice «Agente: ON / OFF»
+    · las etiquetas dicen «Automatización activa» / «Respuesta manual»
+    · needsAttention = !agentMode && unread > 0, CON filtro ya construido
+  Inventar «tomar el chat» y «vendedor pausado» encima de eso es lo que hace
+  que algo se sienta otra aplicación. Historias 12 y 13 del spec.
 
-  Hechos del código que enmarcan la pregunta:
-  · conversations.operation_id YA existe (schema.ts:414) — se puede filtrar
-    por país sin construir nada.
-  · listConversations (queries.ts:104) hoy NO filtra por nada: el Inbox
-    mezclaría los dos países el día que Colombia reciba un mensaje.
-  · No hay columna de dueño (sales/owner.ts): Katherine/Sebastián se DERIVA.
-  · conversations.assigned_user_id sí existe.
+  La pregunta nueva: ¿qué le falta al Inbox que ya existe para servir también
+  a ventas, sin romper lo que Katherine usa todos los días?
 
-  Y una distinción del ticket que no se puede aplastar:
-    TOMAR EL CHAT  = pausar al vendedor en esa conversación
-    ASIGNARSE      = «la estoy trabajando yo» (assigned_user_id)
-  Son independientes: se puede estar asignado sin haber pausado a Sebastián.
+  Referencias (Mobbin), una por variante:
+    A · Intercom / Gorgias / Featurebase — el agente como VISTAS en la barra
+    B · Zillow / GoDaddy                 — cintas de filtro sobre la lista
+    C · Intercom / Lemni / Gorgias       — tercer panel de contexto
+    D · ManyChat / Pipedrive             — el traspaso narrado en el hilo
+    E · la composición de las tres
 
-  Nivel 1 cerrado en eee80a0.
+  El encuadre del nivel 1 va fijo. Nivel 1 cerrado en eee80a0.
 -->
 
 <style>
   :root {
-    --bg: #071119; --panel: rgba(10,24,34,.82); --panel-2: rgba(18,35,48,.9);
-    --border: rgba(157,187,210,.16); --border-strong: rgba(157,187,210,.28);
-    --text: #eff7fb; --text-dim: #99adbc; --text-soft: #6f8798;
-    --accent: #6ee7b7; --highlight: #f4c16d; --danger: #f87171;
-    --shadow-panel: 0 14px 42px rgba(3,10,16,.32);
-    --font: "Avenir Next", "Segoe UI", "Helvetica Neue", system-ui, sans-serif;
-    --op: #a78bfa; --op-line: rgba(167,139,250,.45);
-    --op-soft: rgba(167,139,250,.13); --op-faint: rgba(167,139,250,.07);
+    --bg:#071119; --panel:rgba(10,24,34,.82); --panel-2:rgba(18,35,48,.9);
+    --border:rgba(157,187,210,.16); --border-strong:rgba(157,187,210,.28);
+    --text:#eff7fb; --text-dim:#99adbc; --text-soft:#6f8798;
+    --accent:#6ee7b7; --highlight:#f4c16d; --danger:#f87171;
+    --shadow-panel:0 14px 42px rgba(3,10,16,.32);
+    --font:"Avenir Next","Segoe UI","Helvetica Neue",system-ui,sans-serif;
+    --op:#a78bfa; --op-line:rgba(167,139,250,.45);
+    --op-soft:rgba(167,139,250,.13); --op-faint:rgba(167,139,250,.07);
   }
-  * { box-sizing: border-box; }
+  * { box-sizing:border-box; }
   body {
-    margin: 0; min-height: 100vh; color: var(--text);
-    background: linear-gradient(180deg, rgba(244,193,109,.03), transparent 28%),
-                linear-gradient(180deg, #09131c 0%, #071119 45%, #050d14 100%);
-    background-attachment: fixed;
-    font-family: var(--font); font-size: 14px; -webkit-font-smoothing: antialiased;
+    margin:0; min-height:100vh; color:var(--text);
+    background:linear-gradient(180deg,rgba(244,193,109,.03),transparent 28%),
+               linear-gradient(180deg,#09131c 0%,#071119 45%,#050d14 100%);
+    background-attachment:fixed;
+    font-family:var(--font); font-size:14px; -webkit-font-smoothing:antialiased;
   }
-  h1,h2,h3,h4 { margin: 0; font-weight: 600; }
-  p { margin: 0; }
-  button { font-family: inherit; font-size: inherit; color: inherit; cursor: pointer; }
-  :focus-visible { outline: 2px solid var(--op); outline-offset: 2px; border-radius: 4px; }
-  @media (prefers-reduced-motion: reduce) { *,*::before,*::after { animation-duration:.001ms !important; transition-duration:.001ms !important; } }
+  h1,h2,h3,h4 { margin:0; font-weight:600; }
+  p { margin:0; }
+  button { font-family:inherit; font-size:inherit; color:inherit; cursor:pointer; }
+  :focus-visible { outline:2px solid var(--op); outline-offset:2px; border-radius:4px; }
+  @media (prefers-reduced-motion:reduce){ *,*::before,*::after{ animation-duration:.001ms !important; transition-duration:.001ms !important; } }
 
-  .flag { display:inline-block; flex:none; width:22px; height:15px; border-radius:2px; border:1px solid rgba(255,255,255,.18); box-shadow:0 1px 3px rgba(0,0,0,.4); }
-  .flag-GT { background: linear-gradient(90deg,#4997d0 0 33.3%,#fff 33.3% 66.6%,#4997d0 66.6%); }
-  .flag-CO { background: linear-gradient(180deg,#fcd116 0 50%,#003893 50% 75%,#ce1126 75%); }
+  .flag { display:inline-block; flex:none; width:22px; height:15px; border-radius:2px; border:1px solid rgba(255,255,255,.18); }
+  .flag-GT { background:linear-gradient(90deg,#4997d0 0 33.3%,#fff 33.3% 66.6%,#4997d0 66.6%); }
+  .flag-CO { background:linear-gradient(180deg,#fcd116 0 50%,#003893 50% 75%,#ce1126 75%); }
   .flag-lg { width:32px; height:22px; border-radius:3px; }
-  .flag-sm { width:18px; height:12px; }
 
-  .card { background: var(--panel); box-shadow: var(--shadow-panel); backdrop-filter: blur(18px); border: 1px solid var(--border); border-radius: 10px; }
-  .card-muted { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; }
-  .eyebrow { color: var(--highlight); font-size:11px; font-weight:500; text-transform:uppercase; letter-spacing:.09em; }
-  .muted { color: var(--text-dim); } .soft { color: var(--text-soft); }
-  .num { font-variant-numeric: tabular-nums; }
-
-  .pill { display:inline-flex; align-items:center; gap:6px; border:1px solid var(--border); border-radius:6px; padding:3px 8px; font-size:11px; font-weight:500; white-space:nowrap; }
-  .pill-ok   { color: var(--accent); border-color: rgba(110,231,183,.35); background: rgba(110,231,183,.08); }
-  .pill-amb  { color: var(--highlight); border-color: rgba(244,193,109,.35); background: rgba(244,193,109,.08); }
-  .pill-esc  { color: var(--danger); border-color: rgba(248,113,113,.35); background: rgba(248,113,113,.08); }
-  .pill-quiet{ color: var(--text-soft); }
-  .pill-op   { color: var(--op); border-color: var(--op-line); background: var(--op-soft); }
+  .card { background:var(--panel); box-shadow:var(--shadow-panel); border:1px solid var(--border); border-radius:10px; }
+  .eyebrow { color:var(--highlight); font-size:11px; font-weight:500; text-transform:uppercase; letter-spacing:.09em; }
+  .muted { color:var(--text-dim); } .soft { color:var(--text-soft); }
+  .num { font-variant-numeric:tabular-nums; }
+  .pill { display:inline-flex; align-items:center; gap:5px; border:1px solid var(--border); border-radius:6px; padding:2px 7px; font-size:10.5px; font-weight:500; white-space:nowrap; }
+  .pill-ok { color:var(--accent); border-color:rgba(110,231,183,.35); background:rgba(110,231,183,.08); }
+  .pill-amb { color:var(--highlight); border-color:rgba(244,193,109,.35); background:rgba(244,193,109,.08); }
+  .pill-esc { color:var(--danger); border-color:rgba(248,113,113,.35); background:rgba(248,113,113,.08); }
+  .pill-quiet { color:var(--text-soft); }
   .dot { width:6px; height:6px; border-radius:50%; flex:none; }
 
-  .page { padding: 22px 26px 60px; max-width: 1240px; margin: 0 auto; width: 100%; }
-  .page-head { display:flex; flex-direction:column; gap:5px; margin-bottom:18px; }
+  .page { padding:20px 24px 50px; max-width:1500px; margin:0 auto; width:100%; }
+  .page-head { display:flex; flex-direction:column; gap:5px; margin-bottom:16px; }
   .page-title { font-size:21px; letter-spacing:-.015em; }
-  .page-sub { color: var(--text-dim); font-size:13px; max-width:62ch; line-height:1.5; }
+  .page-sub { color:var(--text-dim); font-size:13px; max-width:64ch; line-height:1.5; }
 
-  /* ===== ARMAZÓN — decidido en el nivel 1, aquí no se discute ===== */
+  /* ===== armazón del nivel 1 — cerrado, no se discute ===== */
   .shell { display:grid; min-height:100vh; }
-  .rail { background: linear-gradient(180deg, var(--op-faint), transparent 40%), linear-gradient(180deg, rgba(6,14,21,.98), rgba(4,11,17,.98)); border-right:1px solid var(--border-strong); padding:14px 11px; display:flex; flex-direction:column; gap:10px; align-items:center; }
+  .rail { background:linear-gradient(180deg,var(--op-faint),transparent 40%),linear-gradient(180deg,rgba(6,14,21,.98),rgba(4,11,17,.98)); border-right:1px solid var(--border-strong); padding:14px 11px; display:flex; flex-direction:column; gap:10px; align-items:center; }
   .rail.tight { padding:12px 7px; gap:7px; }
   .tile { width:56px; height:56px; border-radius:15px; border:1px solid var(--border); background:rgba(14,30,42,.7); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; position:relative; transition:all .18s cubic-bezier(.22,1,.36,1); }
   .tile .flag { filter:saturate(.2) brightness(.55); transition:filter .18s; }
   .tile-code { font-size:10px; font-weight:700; letter-spacing:.06em; color:var(--text-soft); }
-  .tile:hover { border-color: var(--border-strong); }
-  .tile[aria-pressed="true"] { border-color: var(--op); background: var(--op-soft); box-shadow: 0 0 0 1px var(--op-line); }
+  .tile[aria-pressed="true"] { border-color:var(--op); background:var(--op-soft); box-shadow:0 0 0 1px var(--op-line); }
   .tile[aria-pressed="true"] .flag { filter:none; }
-  .tile[aria-pressed="true"] .tile-code { color: var(--op); }
+  .tile[aria-pressed="true"] .tile-code { color:var(--op); }
   .tile.dormant { border-style:dashed; opacity:.6; }
   .rail.tight .tile { width:32px; height:32px; border-radius:10px; gap:0; }
   .rail.tight .tile .flag { width:18px; height:12px; }
   .rail.tight .tile-code { display:none; }
-
-  .col { border-right:1px solid var(--border); background: linear-gradient(180deg, var(--op-soft), var(--op-faint) 38%, transparent 72%), rgba(9,20,28,.86); padding:15px 12px; display:flex; flex-direction:column; overflow:hidden; }
+  .col { border-right:1px solid var(--border); background:linear-gradient(180deg,var(--op-soft),var(--op-faint) 38%,transparent 72%),rgba(9,20,28,.86); padding:15px 12px; display:flex; flex-direction:column; overflow:hidden; }
   .col-head { display:flex; align-items:flex-start; gap:10px; padding:0 2px 12px; margin-bottom:12px; border-bottom:1px solid var(--op-line); }
-  .col-name { display:block; font-size:14px; font-weight:600; letter-spacing:-.01em; }
-  .col-sub { display:block; font-size:10px; text-transform:uppercase; letter-spacing:.08em; margin-top:3px; color: var(--text-soft); }
-  .col-tel { display:block; font-size:11.5px; font-weight:600; color: var(--op); margin-top:5px; font-variant-numeric: tabular-nums; }
-  .col-tel.off { color: var(--highlight); }
-  .group { margin-bottom:13px; }
+  .col-name { display:block; font-size:14px; font-weight:600; }
+  .col-sub { display:block; font-size:10px; text-transform:uppercase; letter-spacing:.08em; margin-top:3px; color:var(--text-soft); }
+  .col-tel { display:block; font-size:11.5px; font-weight:600; color:var(--op); margin-top:5px; font-variant-numeric:tabular-nums; }
+  .col-tel.off { color:var(--highlight); }
+  .group { margin-bottom:12px; }
   .group-head { display:flex; align-items:baseline; gap:7px; padding:0 10px 6px; }
-  .group.on .group-head .grouplabel { color: var(--op); }
-  .grouplabel { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.1em; color: var(--text-soft); }
+  .group.on .group-head .grouplabel { color:var(--op); }
+  .grouplabel { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.1em; color:var(--text-soft); }
   .group-items { display:flex; flex-direction:column; gap:2px; padding-left:10px; margin-left:9px; border-left:1px solid var(--border); }
-  .group.on .group-items { border-left-color: var(--op-line); }
-  .navlink { display:flex; align-items:center; gap:9px; height:34px; padding:0 10px; border-radius:8px; border:1px solid transparent; color:var(--text-dim); font-size:13px; font-weight:500; background:none; width:100%; text-align:left; transition:background .14s,color .14s; }
-  .navlink:hover { background: rgba(255,255,255,.045); color: var(--text); }
-  .navlink[aria-current="page"] { background: var(--op-soft); border-color: var(--op-line); color: var(--text); }
+  .group.on .group-items { border-left-color:var(--op-line); }
+  .navlink { display:flex; align-items:center; gap:9px; height:32px; padding:0 10px; border-radius:8px; border:1px solid transparent; color:var(--text-dim); font-size:13px; font-weight:500; background:none; width:100%; text-align:left; }
+  .navlink:hover { background:rgba(255,255,255,.045); color:var(--text); }
+  .navlink[aria-current="page"] { background:var(--op-soft); border-color:var(--op-line); color:var(--text); }
   .navlink .ico { width:15px; text-align:center; opacity:.7; font-size:12px; }
-  .colfoot { margin-top:auto; padding-top:14px; border-top:1px solid var(--border); }
+  .navlink .cnt { margin-left:auto; font-size:10.5px; color:var(--text-soft); font-variant-numeric:tabular-nums; }
+  .colfoot { margin-top:auto; padding-top:12px; border-top:1px solid var(--border); }
   .main { min-width:0; }
   .fold { flex:none; width:24px; height:24px; border-radius:7px; border:1px solid var(--border); background:rgba(8,19,27,.7); color:var(--text-soft); font-size:12px; display:grid; place-items:center; margin-left:auto; }
-  .fold:hover { color: var(--text); border-color: var(--op-line); }
+  .fold:hover { color:var(--text); border-color:var(--op-line); }
   .strip-ico { width:32px; height:30px; border-radius:9px; border:1px solid transparent; background:none; color:var(--text-soft); font-size:12px; display:grid; place-items:center; }
-  .strip-ico:hover { background: rgba(255,255,255,.05); color: var(--text); }
-  .strip-ico[aria-current="page"] { background: var(--op-soft); border-color: var(--op-line); color: var(--op); }
+  .strip-ico[aria-current="page"] { background:var(--op-soft); border-color:var(--op-line); color:var(--op); }
 
-  /* ===== PIEZAS DE CONVERSACIÓN, comunes a las cinco ===== */
+  /* ===== EL INBOX, tal como existe hoy ===== */
+  .inbox { display:grid; gap:12px; align-items:start; }
+  .ib-list { overflow:hidden; display:flex; flex-direction:column; max-height:660px; }
+  .ib-listhead { padding:10px 12px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .ib-search { flex:1; min-width:120px; padding:6px 10px; border-radius:7px; border:1px solid var(--border); background:rgba(14,29,40,.9); color:var(--text-soft); font-size:12px; }
+  .ib-rows { overflow-y:auto; }
 
-  /* Tomar el chat ≠ asignarse. Dos marcas distintas, a propósito. */
-  .mk-paused { color:#c4b5fd; border-color: rgba(196,181,253,.4); background: rgba(196,181,253,.1); }
-  .mk-mine   { color:#7dd3fc; border-color: rgba(125,211,252,.4); background: rgba(125,211,252,.1); }
-
-  .who { font-weight:600; font-size:13.5px; letter-spacing:-.005em; }
-  .prev { color: var(--text-dim); font-size:12.5px; margin-top:3px; }
-  .meta { font-size:11.5px; color: var(--text-soft); display:flex; gap:7px; flex-wrap:wrap; align-items:center; }
-  .prod { font-size:11.5px; color: var(--text-dim); }
-  .prod strong { color: var(--text); font-weight:600; }
-  .when { font-size:11px; color: var(--text-soft); white-space:nowrap; }
-
-  .row {
-    display:grid; grid-template-columns: 1fr auto; gap:5px 14px;
-    padding:12px 14px; border-top:1px solid var(--border); align-items:start;
-    background:none; width:100%; text-align:left; border-left:2px solid transparent;
-  }
+  /* La fila del Inbox de producción: nombre, preview, y la marca de
+     automatización que YA existe. Nada de vocabulario nuevo. */
+  .row { display:grid; grid-template-columns:1fr auto; gap:4px 10px; padding:10px 12px; border-top:1px solid var(--border); align-items:start; background:none; width:100%; text-align:left; border-left:2px solid transparent; }
   .row:first-child { border-top:none; }
-  .row:hover { background: rgba(255,255,255,.028); }
-  .row.sel { background: var(--op-faint); border-left-color: var(--op); }
-  .row-esc { border-left-color: var(--danger); }
-  .row-amb { border-left-color: var(--highlight); }
-  .rowline { grid-column:1/-1; }
+  .row:hover { background:rgba(255,255,255,.028); }
+  .row.sel { background:var(--op-faint); border-left-color:var(--op); }
+  .row.attn { border-left-color:var(--highlight); }
+  .who { font-weight:600; font-size:13px; }
+  .prev { color:var(--text-dim); font-size:12px; margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .when { font-size:10.5px; color:var(--text-soft); white-space:nowrap; }
+  .rowfoot { grid-column:1/-1; display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-top:2px; }
+  .unread { background:var(--op); color:#06121b; border-radius:99px; padding:0 6px; font-size:10px; font-weight:700; font-variant-numeric:tabular-nums; }
 
-  .listhead { display:flex; align-items:center; gap:8px; padding:11px 14px; border-bottom:1px solid var(--border); }
-  .seg { display:flex; padding:3px; border-radius:9px; background: rgba(5,13,19,.6); border:1px solid var(--border); }
-  .segbtn { padding:5px 11px; border-radius:6px; border:none; background:none; color: var(--text-soft); font-size:12px; font-weight:500; }
-  .segbtn:hover { color: var(--text-dim); }
-  .segbtn[aria-pressed="true"] { background: var(--op-soft); color: var(--op); }
-  .count { font-size:11px; color: var(--text-soft); margin-left:auto; }
+  /* el hilo */
+  .th { display:flex; flex-direction:column; min-height:520px; max-height:660px; }
+  .th-head { padding:11px 14px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:10px; }
+  .th-body { flex:1; padding:14px; display:flex; flex-direction:column; gap:8px; overflow-y:auto; }
+  .bub { max-width:76%; padding:8px 11px; border-radius:11px; font-size:12.5px; line-height:1.45; }
+  .bub-in { align-self:flex-start; background:linear-gradient(135deg,rgba(20,40,54,.96),rgba(15,29,40,.96)); border:1px solid var(--border); }
+  .bub-out { align-self:flex-end; background:linear-gradient(135deg,rgba(42,93,82,.96),rgba(29,74,67,.98)); }
+  .th-foot { padding:10px 14px; border-top:1px solid var(--border); display:flex; gap:8px; align-items:center; }
+  .composer { flex:1; padding:7px 11px; border-radius:8px; border:1px solid var(--border); background:rgba(14,29,40,.9); color:var(--text-soft); font-size:12.5px; }
+  .btn { padding:7px 12px; border-radius:8px; border:1px solid var(--border); background:rgba(15,31,43,.88); font-size:12.5px; font-weight:600; color:var(--text-dim); white-space:nowrap; }
+  .btn:hover { color:var(--text); border-color:var(--border-strong); }
+  /* «Agente: ON/OFF» es el control que ya existe. No se renombra. */
+  .btn-agent-on { background:rgba(110,231,183,.12); border-color:rgba(110,231,183,.4); color:#9df5d0; }
+  .btn-agent-off { background:rgba(244,193,109,.12); border-color:rgba(244,193,109,.42); color:#f7d9a4; }
 
-  .empty { display:flex; flex-direction:column; align-items:center; gap:10px; padding:56px 24px; text-align:center; }
-  .empty-mark { width:44px; height:44px; border-radius:10px; border:1px dashed var(--border-strong); display:grid; place-items:center; color: var(--text-soft); }
+  /* D · el traspaso narrado en el hilo (ManyChat, Pipedrive) */
+  .ev { align-self:stretch; display:flex; align-items:center; gap:9px; padding:5px 0; color:var(--text-soft); font-size:11px; }
+  .ev::before, .ev::after { content:""; flex:1; height:1px; background:var(--border); }
+  .ev span { flex:none; max-width:78%; text-align:center; }
+  .ev-hot span { color:var(--highlight); }
+  .ev-ok span { color:var(--accent); }
 
-  /* dos paneles: lista + hilo */
-  .two { display:grid; grid-template-columns: 380px 1fr; gap:14px; align-items:start; }
-  .thread { display:flex; flex-direction:column; min-height:440px; }
-  .th-head { padding:13px 15px; border-bottom:1px solid var(--border); display:flex; align-items:flex-start; gap:12px; }
-  .th-ctx { padding:11px 15px; background: rgba(255,255,255,.02); border-bottom:1px solid var(--border); display:flex; gap:18px; flex-wrap:wrap; }
-  .th-ctx-k { font-size:9px; text-transform:uppercase; letter-spacing:.1em; color: var(--text-soft); }
-  .th-ctx-v { font-size:12px; font-weight:500; margin-top:2px; }
-  .th-body { flex:1; padding:15px; display:flex; flex-direction:column; gap:9px; }
-  .bub { max-width:74%; padding:8px 11px; border-radius:11px; font-size:12.5px; line-height:1.45; }
-  .bub-in  { align-self:flex-start; background: linear-gradient(135deg, rgba(20,40,54,.96), rgba(15,29,40,.96)); border:1px solid var(--border); }
-  .bub-out { align-self:flex-end; background: linear-gradient(135deg, rgba(42,93,82,.96), rgba(29,74,67,.98)); }
-  .bub-note { align-self:center; font-size:11px; color: var(--text-soft); background:none; border:1px dashed var(--border); }
-  .th-foot { padding:11px 15px; border-top:1px solid var(--border); display:flex; gap:8px; align-items:center; }
-  .btn { padding:7px 12px; border-radius:8px; border:1px solid var(--border); background: rgba(15,31,43,.88); font-size:12.5px; font-weight:500; color: var(--text-dim); }
-  .btn:hover { color: var(--text); border-color: var(--border-strong); }
-  .btn-hot { background: rgba(196,181,253,.14); border-color: rgba(196,181,253,.45); color:#ddd0fb; }
-  .composer { flex:1; padding:7px 11px; border-radius:8px; border:1px solid var(--border); background: rgba(14,29,40,.9); color: var(--text-soft); font-size:12.5px; }
+  /* B · cintas de filtro sobre la lista (Zillow, GoDaddy) */
+  .chips { display:flex; gap:6px; flex-wrap:wrap; }
+  .chip { padding:5px 11px; border-radius:99px; border:1px solid var(--border); background:rgba(14,29,40,.6); color:var(--text-soft); font-size:11.5px; font-weight:500; }
+  .chip:hover { color:var(--text-dim); border-color:var(--border-strong); }
+  .chip[aria-pressed="true"] { background:var(--op-soft); border-color:var(--op); color:var(--op); }
+  .chip .c { font-variant-numeric:tabular-nums; opacity:.75; margin-left:4px; }
 
-  /* variante 3 · cola de triage */
-  .band { padding:9px 14px; display:flex; align-items:center; gap:9px; border-top:1px solid var(--border); background: rgba(255,255,255,.02); }
-  .band:first-child { border-top:none; }
-  .band-t { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.09em; }
-  .quiet-fold { padding:13px 14px; border-top:1px solid var(--border); color: var(--text-soft); font-size:12.5px; display:flex; align-items:center; gap:8px; width:100%; background:none; text-align:left; }
-  .quiet-fold:hover { background: rgba(255,255,255,.028); color: var(--text-dim); }
+  /* C · tercer panel de contexto (Intercom, Lemni, Gorgias) */
+  .ctx { padding:13px 14px; display:flex; flex-direction:column; gap:14px; max-height:660px; overflow-y:auto; }
+  .ctx-sec { display:flex; flex-direction:column; gap:7px; }
+  .ctx-h { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.1em; color:var(--text-soft); }
+  .ctx-f { display:flex; flex-direction:column; gap:2px; }
+  .ctx-k { font-size:10.5px; color:var(--text-soft); }
+  .ctx-v { font-size:12.5px; font-weight:500; }
+  .ctx-v.strong { color:var(--text); font-weight:600; }
 
-  /* variante 4 · tablero */
-  .board { display:grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap:11px; align-items:start; }
-  .lane { display:flex; flex-direction:column; }
-  .lane-h { padding:10px 12px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:8px; }
-  .lane-n { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; }
-  .lane-c { margin-left:auto; font-size:11px; color: var(--text-soft); }
-  .lane-b { padding:9px; display:flex; flex-direction:column; gap:8px; min-height:70px; }
-  .cardlet { padding:10px 11px; border-radius:9px; border:1px solid var(--border); background: rgba(14,29,40,.6); text-align:left; width:100%; }
-  .cardlet:hover { border-color: var(--border-strong); background: rgba(20,38,50,.7); }
-  .cardlet.sel { border-color: var(--op); background: var(--op-soft); }
-
-  /* variante 5 · agrupada por anuncio */
-  .adgroup { border-top:1px solid var(--border); }
-  .adgroup:first-child { border-top:none; }
-  .adhead { padding:11px 14px; display:flex; align-items:center; gap:10px; background: rgba(255,255,255,.022); }
-  .adname { font-size:12.5px; font-weight:600; }
-  .adid { font-size:11px; color: var(--text-soft); font-variant-numeric: tabular-nums; }
-
-  /* ===== EL INSTRUMENTO ===== */
-  #picker { position:fixed; right:16px; bottom:16px; z-index:9999; width:288px; background:#16181c; border:1px solid #33373f; border-radius:12px; box-shadow:0 24px 60px rgba(0,0,0,.68); font-size:12px; color:#d6d9de; user-select:none; overflow:hidden; }
+  /* ===== instrumento ===== */
+  #picker { position:fixed; right:16px; bottom:16px; z-index:9999; width:284px; background:#16181c; border:1px solid #33373f; border-radius:12px; box-shadow:0 24px 60px rgba(0,0,0,.68); font-size:12px; color:#d6d9de; user-select:none; overflow:hidden; }
   #picker.is-min .pk-body { display:none; }
   .pk-head { display:flex; align-items:center; gap:9px; padding:9px 11px; background:#1e2127; border-bottom:1px solid #33373f; cursor:grab; }
-  .pk-head:active { cursor:grabbing; }
   .pk-grip { color:#6b7280; letter-spacing:2px; font-size:11px; }
   .pk-title { font-size:10px; text-transform:uppercase; letter-spacing:.12em; color:#8b919c; font-weight:600; }
   .pk-min { margin-left:auto; background:none; border:none; color:#8b919c; padding:2px 5px; border-radius:4px; }
-  .pk-min:hover { background:#2b2f36; color:#d6d9de; }
   .pk-body { padding:10px; display:flex; flex-direction:column; gap:9px; }
   .pk-pair { display:grid; grid-template-columns:1fr 1fr; gap:9px; }
   .pk-variant { display:flex; align-items:center; gap:8px; }
-  .pk-arrow { width:28px; height:30px; flex:none; border-radius:7px; border:1px solid #3a3f47; background:#22252b; color:#b8bdc6; font-size:13px; line-height:1; }
+  .pk-arrow { width:28px; height:30px; flex:none; border-radius:7px; border:1px solid #3a3f47; background:#22252b; color:#b8bdc6; font-size:13px; }
   .pk-arrow:hover { background:#2c3037; color:#fff; }
   .pk-vname { flex:1; min-width:0; text-align:center; }
   .pk-vnum { font-size:9px; color:#7c828d; letter-spacing:.12em; text-transform:uppercase; }
   .pk-vlabel { font-size:12.5px; font-weight:600; color:#f0f2f5; margin-top:1px; }
   .pk-vtag { font-size:9.5px; color:#7c828d; margin-top:2px; line-height:1.3; }
+  .pk-ref { font-size:9px; color:#5c9c86; margin-top:3px; }
   .pk-set { display:flex; flex-direction:column; gap:5px; }
   .pk-legend { font-size:9px; text-transform:uppercase; letter-spacing:.11em; color:#7c828d; font-weight:600; }
   .pk-opts { display:flex; gap:4px; flex-wrap:wrap; }
@@ -229,26 +201,27 @@
 <div id="picker">
   <div class="pk-head" id="pk-head">
     <span class="pk-grip">⠿</span>
-    <span class="pk-title">Nivel 2 · conversaciones</span>
-    <button class="pk-min" id="pk-min" title="Plegar">—</button>
+    <span class="pk-title">Nivel 2 · ronda 2</span>
+    <button class="pk-min" id="pk-min">—</button>
   </div>
   <div class="pk-body">
     <div class="pk-variant">
-      <button class="pk-arrow" id="pk-prev" title="Anterior (←)">←</button>
+      <button class="pk-arrow" id="pk-prev">←</button>
       <div class="pk-vname">
         <div class="pk-vnum" id="pk-vnum">1 de 5</div>
         <div class="pk-vlabel" id="pk-vlabel">—</div>
         <div class="pk-vtag" id="pk-vtag">—</div>
+        <div class="pk-ref" id="pk-ref">—</div>
       </div>
-      <button class="pk-arrow" id="pk-next" title="Siguiente (→)">→</button>
+      <button class="pk-arrow" id="pk-next">→</button>
     </div>
 
     <div class="pk-set">
-      <span class="pk-legend">Bandeja</span>
-      <div class="pk-opts" data-key="load">
-        <button class="pk-opt" data-val="busy">Con carga</button>
-        <button class="pk-opt" data-val="calm">Todo en orden</button>
-        <button class="pk-opt" data-val="empty">Vacía</button>
+      <span class="pk-legend">Vista de la bandeja</span>
+      <div class="pk-opts" data-key="view">
+        <button class="pk-opt" data-val="all">Todas</button>
+        <button class="pk-opt" data-val="attn">Atención</button>
+        <button class="pk-opt" data-val="auto">Automáticas</button>
       </div>
     </div>
 
@@ -283,540 +256,394 @@
     </div>
 
     <p class="pk-hint">
-      <kbd>←</kbd> <kbd>→</kbd> alternan. El encuadre ya está cerrado y va fijo.
-      Comparalos con <strong>«Con carga»</strong>: con la bandeja tranquila las
-      cinco se parecen, igual que Colombia vacía en el nivel 1.
+      <kbd>←</kbd> <kbd>→</kbd> alternan. Las cinco <strong>extienden el Inbox
+      que ya existe</strong> — el control sigue siendo «Agente: ON/OFF», no un
+      concepto nuevo. Mirá también con el módulo en Katherine: nada de lo que
+      agrega ventas debería estorbarle.
     </p>
   </div>
 </div>
 
 <script>
 /* ====================================================================
-   DATOS — la operación real de Vorare.
+   DATOS reales de Vorare. Vocabulario tomado de inbox-client.tsx.
    ==================================================================== */
 
 const OPS = {
-  GT: { code:"GT", name:"Guatemala", currency:"GTQ", phone:"+502 3689 0343",
-        store:"Vorare GT · Shopify", live:true, status:"Operando", accent:"#a78bfa" },
-  CO: { code:"CO", name:"Colombia", currency:"COP", phone:"+57 304 5430173",
-        store:"sin conectar", live:false, status:"Sin operar", accent:"#38bdf8" },
+  GT:{code:"GT",name:"Guatemala",currency:"GTQ",phone:"+502 3689 0343",store:"Vorare GT · Shopify",live:true,status:"Operando",accent:"#a78bfa"},
+  CO:{code:"CO",name:"Colombia",currency:"COP",phone:"+57 304 5430173",store:"sin conectar",live:false,status:"Sin operar",accent:"#38bdf8"},
 };
-
 const MODULES = {
-  ventas: { key:"ventas", label:"Ventas", agent:"Sebastián",
-    screens:[{key:"conversaciones",label:"Conversaciones",icon:"◇"},
-             {key:"catalogo",label:"Catálogo",icon:"▤"},
-             {key:"vendedor",label:"Vendedor",icon:"◉"}] },
-  confirmacion: { key:"confirmacion", label:"Confirmación", agent:"Katherine",
-    screens:[{key:"inbox",label:"Inbox",icon:"✉"},
-             {key:"pedidos",label:"Pedidos",icon:"▦"},
-             {key:"plantillas",label:"Plantillas",icon:"▥"}] },
+  ventas:{key:"ventas",label:"Ventas",agent:"Sebastián",
+    screens:[{key:"inbox",label:"Conversaciones",icon:"✉"},{key:"catalogo",label:"Catálogo",icon:"▤"},{key:"vendedor",label:"Vendedor",icon:"◉"}]},
+  confirmacion:{key:"confirmacion",label:"Confirmación",agent:"Katherine",
+    screens:[{key:"inbox",label:"Inbox",icon:"✉"},{key:"pedidos",label:"Pedidos",icon:"▦"},{key:"plantillas",label:"Plantillas",icon:"▥"}]},
 };
 
-/* `taken` = el vendedor está pausado en esa conversación.
-   `mine`  = assigned_user_id. Son independientes, y el prototipo tiene una
-   fila que lo demuestra: Silvia está asignada SIN pausar a Sebastián. */
+/* `agent` = agentMode de producción. true → «Automatización activa».
+   `unread` + !agent → needsAttention, que ya está calculado en el panel. */
 const CHATS = {
-  GT: [
-    { id:"c1", who:"Ana Sicán", tel:"+502 3390 5518", when:"hace 26 min", rec:"esc",
-      prev:"«Quiero hablar con una persona por favor»", unread:3,
-      prod:"REVITALHAIR – DHT ANTICALVICIE", ad:"23851094782", adName:"DHT · antes y después",
-      taken:false, mine:false, note:"Sebastián escaló tras dos intentos" },
-    { id:"c2", who:"Luis Ovalle", tel:"+502 4471 2093", when:"hace 12 min", rec:"amb",
-      prev:"«Vi el anuncio del tratamiento para la calvicie»", unread:1,
-      prod:null, ad:null, adName:"sin anuncio en el mensaje",
-      taken:false, mine:false, note:"3 productos posibles · el copy no los distingue" },
-    { id:"c3", who:"Wendy Morales", tel:"+502 5580 1174", when:"hace 2 h", rec:"amb",
-      prev:"«Cuánto sale el combo?»", unread:0,
-      prod:null, ad:null, adName:"sin anuncio en el mensaje",
-      taken:false, mine:false, note:"2 productos posibles" },
-    { id:"c4", who:"María José Chun", tel:"+502 5512 8840", when:"hace 4 min", rec:"ok",
-      prev:"«¿Sirve para entradas? tengo 34 años»", unread:2,
-      prod:"REVITALHAIR – DHT ANTICALVICIE", ad:"23851094782", adName:"DHT · antes y después",
-      taken:false, mine:false, note:null },
-    { id:"c5", who:"Byron Tzoc", tel:"+502 4419 3302", when:"hace 41 min", rec:"ok",
-      prev:"«Dale, mándame los datos para el pago»", unread:0,
-      prod:"REVITALHAIR – COMBO DHT + SERUM 360", ad:"23990117845", adName:"COMBO 360 · testimonio",
-      taken:true, mine:true, note:"Vendedor pausado · lo tomó Daniel" },
-    { id:"c6", who:"Silvia Xicará", tel:"+502 3312 7790", when:"hace 1 h", rec:"ok",
-      prev:"«Perfecto, gracias!»", unread:0,
-      prod:"REVITALHAIR – DHT BLOCKER ANTICALVICIE", ad:"23851094999", adName:"BLOCKER · dermatólogo",
-      taken:false, mine:true, note:"Asignada a Daniel · Sebastián sigue respondiendo" },
+  GT:[
+    {id:"c1",who:"Ana Sicán",tel:"+502 3390 5518",when:"26 min",rec:"esc",agent:false,unread:3,
+     prev:"Quiero hablar con una persona por favor",prod:"REVITALHAIR – DHT ANTICALVICIE",ad:"23851094782",camp:"DHT · antes y después",
+     by:"Sebastián escaló tras dos intentos"},
+    {id:"c2",who:"Luis Ovalle",tel:"+502 4471 2093",when:"12 min",rec:"amb",agent:true,unread:1,
+     prev:"Vi el anuncio del tratamiento para la calvicie",prod:null,ad:null,camp:"sin referencia de anuncio",
+     by:"3 productos posibles · el copy no los distingue"},
+    {id:"c3",who:"María José Chun",tel:"+502 5512 8840",when:"4 min",rec:"ok",agent:true,unread:2,
+     prev:"¿Sirve para entradas? tengo 34 años",prod:"REVITALHAIR – DHT ANTICALVICIE",ad:"23851094782",camp:"DHT · antes y después",by:null},
+    {id:"c4",who:"Byron Tzoc",tel:"+502 4419 3302",when:"41 min",rec:"ok",agent:false,unread:0,
+     prev:"Dale, mándame los datos para el pago",prod:"REVITALHAIR – COMBO DHT + SERUM 360",ad:"23990117845",camp:"COMBO 360 · testimonio",
+     by:"Daniel puso el agente en OFF"},
+    {id:"c5",who:"Silvia Xicará",tel:"+502 3312 7790",when:"1 h",rec:"ok",agent:true,unread:0,
+     prev:"Perfecto, gracias!",prod:"REVITALHAIR – DHT BLOCKER ANTICALVICIE",ad:"23851094999",camp:"BLOCKER · dermatólogo",by:null},
+    {id:"c6",who:"Wendy Morales",tel:"+502 5580 1174",when:"2 h",rec:"amb",agent:true,unread:0,
+     prev:"Cuánto sale el combo?",prod:null,ad:null,camp:"sin referencia de anuncio",by:"2 productos posibles"},
   ],
-  CO: [
-    { id:"k1", who:"Andrés Peña", tel:"+57 315 9920 774", when:"hace 21 min", rec:"esc",
-      prev:"«Necesito hablar con alguien real»", unread:2,
-      prod:"REVITALHAIR – DHT ANTICALVICIE", ad:"24019338451", adName:"DHT CO · lanzamiento",
-      taken:false, mine:false, note:"Sebastián escaló tras dos intentos" },
-    { id:"k2", who:"Camila Restrepo", tel:"+57 320 4471 002", when:"hace 9 min", rec:"amb",
-      prev:"«El del video de la caída de pelo»", unread:1,
-      prod:null, ad:null, adName:"sin anuncio en el mensaje",
-      taken:false, mine:false, note:"2 productos posibles" },
-    { id:"k3", who:"Jhon Rodríguez", tel:"+57 310 8842 190", when:"hace 2 min", rec:"ok",
-      prev:"«Buenas, precio del tratamiento?»", unread:1,
-      prod:"REVITALHAIR – DHT ANTICALVICIE", ad:"24019338451", adName:"DHT CO · lanzamiento",
-      taken:false, mine:false, note:null },
+  CO:[
+    {id:"k1",who:"Andrés Peña",tel:"+57 315 9920 774",when:"21 min",rec:"esc",agent:false,unread:2,
+     prev:"Necesito hablar con alguien real",prod:"REVITALHAIR – DHT ANTICALVICIE",ad:"24019338451",camp:"DHT CO · lanzamiento",
+     by:"Sebastián escaló tras dos intentos"},
+    {id:"k2",who:"Camila Restrepo",tel:"+57 320 4471 002",when:"9 min",rec:"amb",agent:true,unread:1,
+     prev:"El del video de la caída de pelo",prod:null,ad:null,camp:"sin referencia de anuncio",by:"2 productos posibles"},
+    {id:"k3",who:"Jhon Rodríguez",tel:"+57 310 8842 190",when:"2 min",rec:"ok",agent:true,unread:1,
+     prev:"Buenas, precio del tratamiento?",prod:"REVITALHAIR – DHT ANTICALVICIE",ad:"24019338451",camp:"DHT CO · lanzamiento",by:null},
   ],
 };
 
 const VARIANTS = [
-  { id:"v1", label:"Pestaña del Inbox",   tag:"la bandeja que ya existe, con un filtro de módulo" },
-  { id:"v2", label:"Bandeja hermana",     tag:"pantalla propia con la anatomía del Inbox" },
-  { id:"v3", label:"Cola de triage",      tag:"ordenada por quién necesita un humano" },
-  { id:"v4", label:"Tablero de reconocimiento", tag:"columnas por estado, no una lista" },
-  { id:"v5", label:"Agrupada por anuncio", tag:"la campaña al frente, la persona debajo" },
+  {id:"A",label:"Vistas en la barra",   tag:"Sebastián es un grupo de vistas con contador",   ref:"Intercom · Gorgias · Featurebase"},
+  {id:"B",label:"Cintas sobre la lista",tag:"los mismos cortes, como filtros encima",          ref:"Zillow · GoDaddy"},
+  {id:"C",label:"Panel de contexto",    tag:"tercer panel: producto, anuncio, campaña",        ref:"Intercom · Lemni · Gorgias"},
+  {id:"D",label:"Todo en el hilo",      tag:"reconocimiento y traspaso narrados como eventos", ref:"ManyChat · Pipedrive"},
+  {id:"E",label:"Las tres juntas",      tag:"vistas + panel + eventos, para ver si sobra",     ref:"la composición"},
 ];
 
-const REC = {
-  ok:  { label:"producto reconocido",     cls:"pill-ok",  lane:"Reconocidas" },
-  amb: { label:"reconocimiento ambiguo",  cls:"pill-amb", lane:"Ambiguas" },
-  esc: { label:"escalada a humano",       cls:"pill-esc", lane:"Escaladas" },
-};
+const REC = { ok:{l:"reconocido",c:"pill-ok"}, amb:{l:"ambiguo",c:"pill-amb"}, esc:{l:"escalado",c:"pill-esc"} };
 
-/* ==================================================================== */
-
-const state = { variant:0, load:"busy", country:"GT", module:"ventas",
-                screen:"conversaciones", bars:"open", sel:"c1" };
+const state = { variant:0, view:"all", country:"GT", module:"ventas", screen:"inbox", bars:"open", sel:"c1" };
 
 const el=(t,c,h)=>{const n=document.createElement(t);if(c)n.className=c;if(h!=null)n.innerHTML=h;return n;};
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const flag=(c,s)=>`<span class="flag flag-${c}${s?" flag-"+s:""}"></span>`;
 const op=()=>OPS[state.country];
 const mod=()=>MODULES[state.module];
-function rgba(hex,a){const n=parseInt(hex.slice(1),16);return `rgba(${(n>>16)&255}, ${(n>>8)&255}, ${n&255}, ${a})`;}
+const V=()=>VARIANTS[state.variant];
+function rgba(h,a){const n=parseInt(h.slice(1),16);return `rgba(${(n>>16)&255}, ${(n>>8)&255}, ${n&255}, ${a})`;}
 
-/* La bandeja según el estado elegido. «Todo en orden» es el estado feliz:
-   sirve para ver que con él las cinco variantes se parecen demasiado. */
+const all = () => CHATS[state.country];
+const needsAttention = c => !c.agent && c.unread > 0;
+const COUNTS = () => ({
+  all: all().length,
+  attn: all().filter(needsAttention).length,
+  auto: all().filter(c => c.agent).length,
+  amb: all().filter(c => c.rec === "amb").length,
+  esc: all().filter(c => c.rec === "esc").length,
+});
 function chats() {
-  if (state.load === "empty") return [];
-  const all = CHATS[state.country];
-  if (state.load === "calm") return all.filter(c => c.rec === "ok");
-  return all;
+  const a = all();
+  if (state.view === "attn") return a.filter(needsAttention);
+  if (state.view === "auto") return a.filter(c => c.agent);
+  return a;
 }
 const sel = () => chats().find(c => c.id === state.sel) || chats()[0] || null;
 
-/* ---------------- piezas ---------------- */
+/* ---------------- la fila del Inbox ---------------- */
 
-const recPill = r => `<span class="pill ${REC[r].cls}">${REC[r].label}</span>`;
-const stateMarks = c => `${c.taken ? `<span class="pill mk-paused">vendedor pausado</span>` : ""}${c.mine ? `<span class="pill mk-mine">mía</span>` : ""}`;
-
-function prodLine(c) {
-  return c.prod
-    ? `<span class="prod"><strong>${esc(c.prod)}</strong> · anuncio ${esc(c.ad)}</span>`
-    : `<span class="prod soft">sin producto reconocido · ${esc(c.adName)}</span>`;
-}
-
-function chatRow(c, opts = {}) {
-  const b = el("button", `row row-${c.rec}` + (sel() && sel().id === c.id ? " sel" : ""));
+function row(c, opts = {}) {
+  const b = el("button", "row" + (sel() && sel().id === c.id ? " sel" : "") + (needsAttention(c) ? " attn" : ""));
+  // La marca de automatización es la que ya existe en producción.
+  const agentMark = c.agent
+    ? `<span class="pill pill-ok"><span class="dot" style="background:var(--accent)"></span>Automatización activa</span>`
+    : `<span class="pill pill-amb"><span class="dot" style="background:var(--highlight)"></span>Respuesta manual</span>`;
+  // Lo que ventas AGREGA a la fila. La variante D no lo pone: lo cuenta el hilo.
+  const salesMark = opts.noSales ? "" :
+    (c.rec !== "ok" ? `<span class="pill ${REC[c.rec].c}">${REC[c.rec].l}</span>` : "") +
+    (c.prod && !opts.thin ? `<span class="soft" style="font-size:10.5px">${esc(c.prod.replace("REVITALHAIR – ", ""))}</span>` : "");
   b.innerHTML = `
     <div style="min-width:0">
-      <div class="who">${esc(c.who)}${c.unread ? ` <span class="pill pill-op num" style="padding:1px 6px">${c.unread}</span>` : ""}</div>
+      <div class="who">${esc(c.who)}</div>
       <div class="prev">${esc(c.prev)}</div>
     </div>
-    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px">
-      ${opts.hideRec ? "" : recPill(c.rec)}
+    <div style="display:flex;align-items:center;gap:6px">
+      ${c.unread ? `<span class="unread">${c.unread}</span>` : ""}
       <span class="when">${esc(c.when)}</span>
     </div>
-    <div class="rowline meta">${prodLine(c)}${stateMarks(c) ? " " + stateMarks(c) : ""}</div>`;
+    <div class="rowfoot">${agentMark}${salesMark}</div>`;
   b.onclick = () => { state.sel = c.id; render(); };
   return b;
 }
 
-function emptyBox(msg, sub) {
-  const c = el("div", "card");
-  c.appendChild(el("div", "empty", `<div class="empty-mark">◇</div>
-    <h3 style="font-size:15px">${esc(msg)}</h3>
-    <p class="soft" style="max-width:44ch;font-size:12.5px;line-height:1.55">${esc(sub)}</p>`));
-  return c;
+function listPanel(opts = {}) {
+  const box = el("div", "card ib-list");
+  const head = el("div", "ib-listhead");
+  head.appendChild(el("input", "ib-search"));
+  head.querySelector(".ib-search").placeholder = "Buscar por nombre o número";
+  if (opts.chips) {
+    const chips = el("div", "chips");
+    const K = COUNTS();
+    [["all","Todas",K.all],["attn","Necesitan atención",K.attn],["auto","Las lleva Sebastián",K.auto]].forEach(([k,l,n]) => {
+      const ch = el("button","chip",`${esc(l)}<span class="c">${n}</span>`);
+      ch.setAttribute("aria-pressed", String(state.view === k));
+      ch.onclick = () => { state.view = k; render(); };
+      chips.appendChild(ch);
+    });
+    head.appendChild(chips);
+  }
+  box.appendChild(head);
+  const rows = el("div", "ib-rows");
+  const list = chats();
+  if (!list.length) rows.appendChild(el("div","soft",`<div style="padding:34px 14px;text-align:center;font-size:12.5px">Nada en esta vista</div>`));
+  list.forEach(c => rows.appendChild(row(c, opts)));
+  box.appendChild(rows);
+  return box;
 }
 
-/* El hilo, con el contexto de venta arriba y los dos controles abajo.
-   Tomar el chat y asignarse son botones distintos: no son el mismo acto. */
-function threadPanel() {
+/* El hilo. El botón es «Agente: ON/OFF» — el que ya existe. */
+function threadPanel(opts = {}) {
   const c = sel();
-  const box = el("div", "card thread");
-  if (!c) { box.appendChild(el("div", "empty", `<div class="empty-mark">◇</div>
-    <p class="soft" style="font-size:12.5px">Elegí una conversación</p>`)); return box; }
+  const box = el("div", "card th");
+  if (!c) { box.appendChild(el("div","soft",`<div style="padding:60px 20px;text-align:center;font-size:12.5px">Elegí una conversación</div>`)); return box; }
 
   const head = el("div", "th-head");
   head.innerHTML = `<div style="flex:1;min-width:0">
-      <div class="who">${esc(c.who)}</div>
-      <div class="meta num" style="margin-top:3px">${esc(c.tel)}</div>
+      <div class="who" style="font-size:14px">${esc(c.who)}</div>
+      <div class="soft num" style="font-size:11.5px;margin-top:2px">${esc(c.tel)}</div>
     </div>
-    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px">${recPill(c.rec)}${stateMarks(c)}</div>`;
+    ${c.agent
+      ? `<span class="pill pill-ok">Agente IA activo</span>`
+      : `<span class="pill pill-amb">Respuesta manual</span>`}`;
   box.appendChild(head);
 
-  const ctx = el("div", "th-ctx");
-  ctx.innerHTML = `
-    <div><div class="th-ctx-k">Producto reconocido</div>
-      <div class="th-ctx-v">${c.prod ? esc(c.prod) : `<span class="soft">ninguno todavía</span>`}</div></div>
-    <div><div class="th-ctx-k">Vino del anuncio</div>
-      <div class="th-ctx-v num">${c.ad ? esc(c.ad) : `<span class="soft">sin referencia</span>`}</div></div>
-    <div><div class="th-ctx-k">Campaña</div><div class="th-ctx-v">${esc(c.adName)}</div></div>`;
-  box.appendChild(ctx);
-
   const body = el("div", "th-body");
-  body.innerHTML = `
-    <div class="bub bub-in">${esc(c.prev)}</div>
-    ${c.rec === "amb"
-      ? `<div class="bub bub-out">Con gusto. ¿Te interesa el tratamiento en cápsulas, el bloqueador o el combo con serum?</div>
-         <div class="bub bub-note">${esc(c.note || "")}</div>`
-      : c.rec === "esc"
-      ? `<div class="bub bub-out">Entiendo, ya paso tu caso con una persona del equipo.</div>
-         <div class="bub bub-note">${esc(c.note || "")}</div>`
-      : `<div class="bub bub-out">Sí, funciona muy bien para entradas. El tratamiento son 3 meses.</div>`}
-    ${c.taken ? `<div class="bub bub-note">${esc(c.note || "")}</div>` : ""}`;
+  const ev = (txt, cls) => `<div class="ev ${cls || ""}"><span>${esc(txt)}</span></div>`;
+
+  // D y E narran el contexto de venta como eventos del hilo (ManyChat).
+  if (opts.events) {
+    body.innerHTML += c.prod
+      ? ev(`Sebastián reconoció ${c.prod} · anuncio ${c.ad}`, "ev-ok")
+      : ev(`Sebastián no pudo reconocer el producto · ${c.camp}`, "ev-hot");
+  }
+  body.innerHTML += `<div class="bub bub-in">${esc(c.prev)}</div>`;
+  body.innerHTML += c.rec === "amb"
+    ? `<div class="bub bub-out">Con gusto. ¿Te interesa el tratamiento en cápsulas, el bloqueador o el combo con serum?</div>`
+    : c.rec === "esc"
+    ? `<div class="bub bub-out">Entiendo, ya paso tu caso con una persona del equipo.</div>`
+    : `<div class="bub bub-out">Sí, funciona muy bien para entradas. El tratamiento son 3 meses.</div>`;
+  if (opts.events && c.by) body.innerHTML += ev(c.by, c.rec === "ok" ? "" : "ev-hot");
+  if (opts.events && !c.agent) body.innerHTML += ev("Automatización pausada — respondés vos", "ev-hot");
   box.appendChild(body);
 
   const foot = el("div", "th-foot");
-  const composer = el("div", "composer", c.taken ? "Escribí — Sebastián está pausado aquí" : "Sebastián está respondiendo…");
-  const take = el("button", "btn" + (c.taken ? " btn-hot" : ""), c.taken ? "Devolver a Sebastián" : "Tomar el chat");
-  take.title = c.taken ? "Reactiva al vendedor en esta conversación" : "Pausa al vendedor solo en esta conversación";
-  take.onclick = () => { c.taken = !c.taken; render(); };
-  const assign = el("button", "btn", c.mine ? "Soltar" : "Asignarme");
-  assign.title = "Independiente de tomar el chat: marca quién la está trabajando";
-  assign.onclick = () => { c.mine = !c.mine; render(); };
-  foot.appendChild(composer); foot.appendChild(take); foot.appendChild(assign);
+  const comp = el("div", "composer", c.agent ? "Sebastián está respondiendo…" : "Escribí tu respuesta");
+  const btn = el("button", "btn " + (c.agent ? "btn-agent-on" : "btn-agent-off"), `Agente: ${c.agent ? "ON" : "OFF"}`);
+  btn.title = c.agent ? "Apagarlo deja la conversación en respuesta manual" : "Encenderlo devuelve la conversación a Sebastián";
+  btn.onclick = () => { c.agent = !c.agent; render(); };
+  foot.appendChild(comp); foot.appendChild(btn);
   box.appendChild(foot);
   return box;
 }
 
-function moduleSeg() {
-  const seg = el("div", "seg");
-  [["all","Todas"],["confirmacion","Katherine"],["ventas","Sebastián"]].forEach(([k, lbl]) => {
-    const b = el("button", "segbtn", lbl);
-    b.setAttribute("aria-pressed", String(k === "ventas"));
-    seg.appendChild(b);
-  });
-  return seg;
+/* C y E · el tercer panel (Intercom, Lemni, Gorgias) */
+function ctxPanel() {
+  const c = sel();
+  const box = el("div", "card ctx");
+  if (!c) return box;
+  box.innerHTML = `
+    <div class="ctx-sec">
+      <div class="ctx-h">Contexto de venta</div>
+      <div class="ctx-f"><span class="ctx-k">Producto reconocido</span>
+        <span class="ctx-v strong">${c.prod ? esc(c.prod) : `<span class="soft">ninguno todavía</span>`}</span></div>
+      <div class="ctx-f"><span class="ctx-k">Vino del anuncio</span>
+        <span class="ctx-v num">${c.ad ? esc(c.ad) : `<span class="soft">sin referencia</span>`}</span></div>
+      <div class="ctx-f"><span class="ctx-k">Campaña</span><span class="ctx-v">${esc(c.camp)}</span></div>
+      <div class="ctx-f"><span class="ctx-k">Reconocimiento</span>
+        <span class="ctx-v"><span class="pill ${REC[c.rec].c}">${REC[c.rec].l}</span></span></div>
+      ${c.by ? `<div class="ctx-f"><span class="ctx-k">Nota</span><span class="ctx-v soft" style="font-weight:400">${esc(c.by)}</span></div>` : ""}
+    </div>
+    <div class="ctx-sec" style="border-top:1px solid var(--border);padding-top:13px">
+      <div class="ctx-h">Contacto</div>
+      <div class="ctx-f"><span class="ctx-k">Teléfono</span><span class="ctx-v num">${esc(c.tel)}</span></div>
+      <div class="ctx-f"><span class="ctx-k">Operación</span><span class="ctx-v">${esc(op().name)} · ${esc(op().currency)}</span></div>
+      <div class="ctx-f"><span class="ctx-k">Última actividad</span><span class="ctx-v">hace ${esc(c.when)}</span></div>
+    </div>`;
+  return box;
 }
 
-/* ============ LAS CINCO VARIANTES ============ */
+/* ---------------- las cinco variantes ---------------- */
 
-/* V1 · La bandeja que ya existe, con un filtro de módulo. Lo más barato:
-   una pantalla menos y el asesor no aprende nada nuevo. */
-function convV1() {
-  const list = chats(), wrap = el("div");
+function inboxScreen() {
+  const v = V().id, wrap = el("div");
+  const isVentas = state.module === "ventas";
   wrap.appendChild(el("div", "page-head", `
-    <span class="eyebrow">${esc(op().name)} · inbox</span>
-    <h2 class="page-title">Inbox</h2>
-    <p class="page-sub">La bandeja del número, filtrada por módulo. Las de ventas son las de Sebastián.</p>`));
-  if (!list.length) { wrap.appendChild(emptyBox("Sin conversaciones de ventas", `El número ${op().phone} no tiene chats de Sebastián ahora mismo.`)); return wrap; }
-  const two = el("div", "two");
-  const card = el("div", "card");
-  card.style.overflow = "hidden";
-  const head = el("div", "listhead");
-  head.appendChild(moduleSeg());
-  head.appendChild(el("span", "count", `${list.length} conversaciones`));
-  card.appendChild(head);
-  list.forEach(c => card.appendChild(chatRow(c)));
-  two.appendChild(card); two.appendChild(threadPanel());
-  wrap.appendChild(two);
+    <span class="eyebrow">${esc(op().name)} · ${isVentas ? "ventas" : "confirmación"}</span>
+    <h2 class="page-title">${isVentas ? "Conversaciones" : "Inbox"}</h2>
+    <p class="page-sub">${isVentas
+      ? "La misma bandeja del número, en la vista de Sebastián. El control del agente es el que ya conocés."
+      : "La bandeja de Katherine, sin cambios. Lo que agrega ventas no debería aparecer acá."}</p>`));
+
+  const grid = el("div", "inbox");
+  const withCtx = (v === "C" || v === "E");
+  const events  = (v === "D" || v === "E");
+  grid.style.gridTemplateColumns = withCtx ? "330px 1fr 268px" : "360px 1fr";
+
+  grid.appendChild(listPanel({
+    chips: v === "B",
+    noSales: v === "D",          // D no toca la fila: el hilo lo cuenta
+    thin: v === "C" || v === "E" // con panel derecho, la fila no repite el producto
+  }));
+  grid.appendChild(threadPanel({ events }));
+  if (withCtx) grid.appendChild(ctxPanel());
+  wrap.appendChild(grid);
   return wrap;
 }
 
-/* V2 · Pantalla propia, misma anatomía que el Inbox: hermana, no otra app. */
-function convV2() {
-  const list = chats(), wrap = el("div");
-  wrap.appendChild(el("div", "page-head", `
-    <span class="eyebrow">${esc(op().name)} · conversaciones</span>
-    <h2 class="page-title">Chats de Sebastián</h2>
-    <p class="page-sub">Solo las conversaciones de venta. Las de confirmación siguen en el Inbox de Katherine, sin cambios.</p>`));
-  if (!list.length) { wrap.appendChild(emptyBox("Sin conversaciones de ventas", `El número ${op().phone} todavía no recibe leads de anuncios.`)); return wrap; }
-  const two = el("div", "two");
-  const card = el("div", "card");
-  card.style.overflow = "hidden";
-  const head = el("div", "listhead");
-  head.appendChild(el("span", "grouplabel", "Bandeja de ventas"));
-  head.appendChild(el("span", "count", `${list.length} conversaciones`));
-  card.appendChild(head);
-  list.forEach(c => card.appendChild(chatRow(c)));
-  two.appendChild(card); two.appendChild(threadPanel());
-  wrap.appendChild(two);
-  return wrap;
-}
-
-/* V3 · No es una bandeja: es una cola ordenada por quién necesita un humano.
-   Lo sano se pliega en una línea. */
-function convV3() {
-  const list = chats(), wrap = el("div");
-  wrap.appendChild(el("div", "page-head", `
-    <span class="eyebrow">${esc(op().name)} · conversaciones</span>
-    <h2 class="page-title">Cola de ventas</h2>
-    <p class="page-sub">Ordenada por quién necesita un humano. Lo que va bien se pliega: si Sebastián lo está resolviendo, no es trabajo tuyo.</p>`));
-  if (!list.length) { wrap.appendChild(emptyBox("Nada en la cola", "Ninguna conversación necesita un humano ahora mismo.")); return wrap; }
-
-  const two = el("div", "two");
-  const card = el("div", "card");
-  card.style.overflow = "hidden";
-  let any = false;
-  [["esc", "Necesitan un humano", "var(--danger)"], ["amb", "Reconocimiento dudoso", "var(--highlight)"]].forEach(([k, title, color]) => {
-    const rows = list.filter(c => c.rec === k);
-    if (!rows.length) return;
-    any = true;
-    const band = el("div", "band");
-    band.innerHTML = `<span class="dot" style="background:${color}"></span>
-      <span class="band-t" style="color:${color}">${esc(title)}</span>
-      <span class="count">${rows.length}</span>`;
-    card.appendChild(band);
-    rows.forEach(c => card.appendChild(chatRow(c, { hideRec: true })));
-  });
-  const ok = list.filter(c => c.rec === "ok");
-  if (ok.length) {
-    const f = el("button", "quiet-fold",
-      `<span class="dot" style="background:var(--accent)"></span>
-       ${ok.length} conversaciones van bien con Sebastián
-       <span style="margin-left:auto;opacity:.6">mostrar ▾</span>`);
-    f.onclick = () => { state.load = "calm"; render(); };
-    card.appendChild(f);
-  }
-  if (!any && ok.length) card.insertBefore(el("div", "band", `<span class="band-t" style="color:var(--accent)">Nada pendiente</span>`), card.firstChild);
-  two.appendChild(card); two.appendChild(threadPanel());
-  wrap.appendChild(two);
-  return wrap;
-}
-
-/* V4 · Tablero: el estado de reconocimiento es el eje principal. */
-function convV4() {
-  const list = chats(), wrap = el("div");
-  wrap.appendChild(el("div", "page-head", `
-    <span class="eyebrow">${esc(op().name)} · conversaciones</span>
-    <h2 class="page-title">Conversaciones de venta</h2>
-    <p class="page-sub">Por estado de reconocimiento. Lo tomado sale de su columna y pasa a la última.</p>`));
-  if (!list.length) { wrap.appendChild(emptyBox("Tablero vacío", `El número ${op().phone} todavía no recibe leads de anuncios.`)); return wrap; }
-
-  const board = el("div", "board");
-  const lanes = [
-    { k:"esc",   n:"Escaladas",   color:"var(--danger)"    },
-    { k:"amb",   n:"Ambiguas",    color:"var(--highlight)" },
-    { k:"ok",    n:"Reconocidas", color:"var(--accent)"    },
-    { k:"taken", n:"Tomadas",     color:"#c4b5fd"          },
-  ];
-  lanes.forEach(l => {
-    const rows = l.k === "taken" ? list.filter(c => c.taken) : list.filter(c => c.rec === l.k && !c.taken);
-    const lane = el("div", "card lane");
-    const h = el("div", "lane-h");
-    h.innerHTML = `<span class="dot" style="background:${l.color}"></span>
-      <span class="lane-n" style="color:${l.color}">${esc(l.n)}</span>
-      <span class="lane-c num">${rows.length}</span>`;
-    lane.appendChild(h);
-    const b = el("div", "lane-b");
-    if (!rows.length) b.appendChild(el("div", "soft", `<span style="font-size:11.5px">—</span>`));
-    rows.forEach(c => {
-      const cl = el("button", "cardlet" + (sel() && sel().id === c.id ? " sel" : ""));
-      cl.innerHTML = `<div class="who" style="font-size:12.5px">${esc(c.who)}</div>
-        <div class="prev" style="font-size:11.5px;margin-top:3px">${esc(c.prev)}</div>
-        <div class="meta" style="margin-top:6px">${prodLine(c)}</div>
-        <div class="meta" style="margin-top:6px">${stateMarks(c)}<span class="when">${esc(c.when)}</span></div>`;
-      cl.onclick = () => { state.sel = c.id; render(); };
-      b.appendChild(cl);
-    });
-    lane.appendChild(b);
-    board.appendChild(lane);
-  });
-  wrap.appendChild(board);
-  const t = threadPanel();
-  t.style.marginTop = "14px";
-  wrap.appendChild(t);
-  return wrap;
-}
-
-/* V5 · La campaña al frente: filas agrupadas por el anuncio que las trajo. */
-function convV5() {
-  const list = chats(), wrap = el("div");
-  wrap.appendChild(el("div", "page-head", `
-    <span class="eyebrow">${esc(op().name)} · conversaciones</span>
-    <h2 class="page-title">Conversaciones por anuncio</h2>
-    <p class="page-sub">Agrupadas por la campaña que las trajo. Las que llegaron sin referencia quedan arriba, porque son las que hay que registrar.</p>`));
-  if (!list.length) { wrap.appendChild(emptyBox("Sin conversaciones", `El número ${op().phone} todavía no recibe leads de anuncios.`)); return wrap; }
-
-  const groups = new Map();
-  list.forEach(c => {
-    const k = c.ad || "__none";
-    if (!groups.has(k)) groups.set(k, { ad: c.ad, name: c.adName, prod: c.prod, rows: [] });
-    groups.get(k).rows.push(c);
-  });
-  const ordered = [...groups.values()].sort((a, b) => (a.ad ? 1 : 0) - (b.ad ? 1 : 0));
-
-  const two = el("div", "two");
-  const card = el("div", "card");
-  card.style.overflow = "hidden";
-  ordered.forEach(g => {
-    const box = el("div", "adgroup");
-    const h = el("div", "adhead");
-    h.innerHTML = g.ad
-      ? `<span class="dot" style="background:var(--op)"></span>
-         <span><span class="adname">${esc(g.name)}</span>
-         <span class="adid" style="display:block;margin-top:2px">anuncio ${esc(g.ad)} → ${esc(g.prod || "")}</span></span>
-         <span class="count">${g.rows.length}</span>`
-      : `<span class="dot" style="background:var(--highlight)"></span>
-         <span><span class="adname" style="color:var(--highlight)">Sin anuncio en el mensaje</span>
-         <span class="adid" style="display:block;margin-top:2px">llegaron por orgánico o el anuncio no está registrado</span></span>
-         <span class="count">${g.rows.length}</span>`;
-    box.appendChild(h);
-    g.rows.forEach(c => box.appendChild(chatRow(c, { hideRec: false })));
-    card.appendChild(box);
-  });
-  two.appendChild(card); two.appendChild(threadPanel());
-  wrap.appendChild(two);
-  return wrap;
-}
-
-const CONV = { v1: convV1, v2: convV2, v3: convV3, v4: convV4, v5: convV5 };
-
-/* -------- las otras pantallas, de fondo: el nivel 2 no las rediseña -------- */
-function otherScreen(title, sub, mark) {
+function otherScreen(t, s, m) {
   const wrap = el("div");
-  wrap.appendChild(el("div", "page-head", `
-    <span class="eyebrow">${esc(op().name)} · ${esc(title.toLowerCase())}</span>
-    <h2 class="page-title">${esc(title)}</h2><p class="page-sub">${esc(sub)}</p>`));
-  const c = el("div", "card");
-  c.appendChild(el("div", "empty", `<div class="empty-mark">${mark}</div>
-    <p class="soft" style="font-size:12.5px;max-width:46ch;line-height:1.55">${esc(sub)}
-      Está aquí para comprobar que la bandeja de ventas se sienta hermana de esto y no otra aplicación.</p>`));
+  wrap.appendChild(el("div","page-head",`<span class="eyebrow">${esc(op().name)} · ${esc(t.toLowerCase())}</span>
+    <h2 class="page-title">${esc(t)}</h2><p class="page-sub">${esc(s)}</p>`));
+  const c = el("div","card");
+  c.innerHTML = `<div style="padding:50px 24px;text-align:center">
+    <div style="width:44px;height:44px;border-radius:10px;border:1px dashed var(--border-strong);display:grid;place-items:center;color:var(--text-soft);margin:0 auto 10px">${m}</div>
+    <p class="soft" style="font-size:12.5px;max-width:44ch;margin:0 auto;line-height:1.55">Grupo del nivel 2 todavía sin decidir.</p></div>`;
   wrap.appendChild(c);
   return wrap;
 }
 
 function content() {
   const s = state.screen;
-  if (s === "conversaciones") return CONV[VARIANTS[state.variant].id]();
-  if (s === "inbox") return otherScreen("Inbox", "La bandeja de Katherine, tal como existe hoy en producción.", "✉");
-  if (s === "pedidos") return otherScreen("Pedidos", "Confirmación de pedidos, sin cambios.", "▦");
-  if (s === "plantillas") return otherScreen("Plantillas", "Las plantillas aprobadas de Meta.", "▥");
-  if (s === "catalogo") return otherScreen("Catálogo", "Grupo del nivel 2 todavía sin decidir.", "▤");
-  return otherScreen("Vendedor", "Grupo del nivel 2 todavía sin decidir.", "◉");
+  if (s === "inbox") return inboxScreen();
+  if (s === "pedidos") return otherScreen("Pedidos","Confirmación de pedidos, sin cambios.","▦");
+  if (s === "plantillas") return otherScreen("Plantillas","Las plantillas aprobadas de Meta.","▥");
+  if (s === "catalogo") return otherScreen("Catálogo","Catálogo de doble fuente.","▤");
+  return otherScreen("Vendedor","Configuración de Sebastián.","◉");
 }
 
-/* ---------------- armazón (nivel 1, cerrado) ---------------- */
+/* ---------------- armazón ---------------- */
 
 const toggleBars = () => { state.bars = state.bars === "open" ? "collapsed" : "open"; render(); };
-function switchCountry(code) {
-  if (state.country === code) return;
-  state.country = code; state.bars = "open";
-  state.sel = (CHATS[code][0] || {}).id;
-  render();
-}
+function switchCountry(code){ if(state.country===code) return; state.country=code; state.bars="open"; state.sel=(CHATS[code][0]||{}).id; render(); }
 
+/* A y E · las vistas de Sebastián viven en la barra, con contador. */
 function navFor(m) {
   const box = el("div");
   box.style.cssText = "display:flex;flex-direction:column;gap:2px";
+  const K = COUNTS();
   MODULES[m].screens.forEach(s => {
-    const b = el("button", "navlink", `<span class="ico">${s.icon}</span>${esc(s.label)}`);
-    if (state.screen === s.key && state.module === m) b.setAttribute("aria-current", "page");
+    const isConv = s.key === "inbox" && m === "ventas";
+    const b = el("button","navlink",`<span class="ico">${s.icon}</span>${esc(s.label)}${
+      isConv && K.attn ? `<span class="cnt">${K.attn}</span>` : ""}`);
+    if (state.screen === s.key && state.module === m) b.setAttribute("aria-current","page");
     b.onclick = () => { state.module = m; state.screen = s.key; render(); };
     box.appendChild(b);
+    if (isConv && (V().id === "A" || V().id === "E") && state.module === "ventas") {
+      const sub = el("div");
+      sub.style.cssText = "display:flex;flex-direction:column;gap:1px;padding-left:22px;margin:2px 0 4px";
+      [["attn","Necesitan atención",K.attn],["auto","Las lleva Sebastián",K.auto],["all","Todas",K.all]].forEach(([k,l,n]) => {
+        const v = el("button","navlink",`<span>${esc(l)}</span><span class="cnt">${n}</span>`);
+        v.style.cssText = "height:27px;font-size:12px";
+        if (state.view === k && state.screen === "inbox") v.setAttribute("aria-current","page");
+        v.onclick = e => { e.stopPropagation(); state.view = k; state.screen = "inbox"; state.module = "ventas"; render(); };
+        sub.appendChild(v);
+      });
+      box.appendChild(sub);
+    }
   });
   return box;
 }
 
 function buildRail(tight) {
-  const rail = el("div", "rail" + (tight ? " tight" : ""));
+  const rail = el("div","rail"+(tight?" tight":""));
   Object.values(OPS).forEach(x => {
-    const t = el("button", "tile" + (x.live ? "" : " dormant"),
-      `${flag(x.code)}${tight ? "" : `<span class="tile-code">${esc(x.code)}</span>`}`);
-    t.setAttribute("aria-pressed", String(state.country === x.code));
+    const t = el("button","tile"+(x.live?"":" dormant"),`${flag(x.code)}${tight?"":`<span class="tile-code">${esc(x.code)}</span>`}`);
+    t.setAttribute("aria-pressed", String(state.country===x.code));
     t.title = `${x.name} · ${x.status}`;
     t.onclick = () => switchCountry(x.code);
     rail.appendChild(t);
   });
   if (tight) {
-    const sep = el("div");
-    sep.style.cssText = "width:20px;height:1px;background:var(--border);margin:3px 0";
-    rail.appendChild(sep);
+    const sep = el("div"); sep.style.cssText="width:20px;height:1px;background:var(--border);margin:3px 0"; rail.appendChild(sep);
     mod().screens.forEach(s => {
-      const b = el("button", "strip-ico", s.icon);
+      const b = el("button","strip-ico",s.icon);
       b.title = `${mod().label} · ${s.label}`;
-      if (state.screen === s.key) b.setAttribute("aria-current", "page");
+      if (state.screen === s.key) b.setAttribute("aria-current","page");
       b.onclick = () => { state.screen = s.key; render(); };
       rail.appendChild(b);
     });
   }
-  const f = el("button", "fold", state.bars === "open" ? "«" : "»");
-  f.style.marginTop = "auto";
-  f.onclick = toggleBars;
-  rail.appendChild(f);
+  const f = el("button","fold", state.bars==="open"?"«":"»");
+  f.style.marginTop="auto"; f.onclick=toggleBars; rail.appendChild(f);
   return rail;
 }
 
 function buildCol() {
-  const o = op(), col = el("div", "col");
-  const head = el("div", "col-head");
-  head.innerHTML = `${flag(o.code, "lg")}
-    <span style="min-width:0"><span class="col-name">${esc(o.name)}</span>
+  const o = op(), col = el("div","col");
+  const head = el("div","col-head");
+  head.innerHTML = `${flag(o.code,"lg")}<span style="min-width:0">
+      <span class="col-name">${esc(o.name)}</span>
       <span class="col-sub">${esc(o.status)} · ${esc(o.currency)}</span>
-      <span class="col-tel${o.live ? "" : " off"}">${esc(o.phone)}</span></span>`;
-  const f = el("button", "fold", "«");
-  f.onclick = toggleBars;
-  head.appendChild(f);
+      <span class="col-tel${o.live?"":" off"}">${esc(o.phone)}</span></span>`;
+  const f = el("button","fold","«"); f.onclick = toggleBars; head.appendChild(f);
   col.appendChild(head);
-  ["ventas", "confirmacion"].forEach(k => {
+  ["ventas","confirmacion"].forEach(k => {
     const m = MODULES[k];
-    const g = el("div", "group" + (state.module === k ? " on" : ""));
-    g.appendChild(el("div", "group-head", `<span class="grouplabel">${esc(m.label)}</span>
+    const g = el("div","group"+(state.module===k?" on":""));
+    g.appendChild(el("div","group-head",`<span class="grouplabel">${esc(m.label)}</span>
       <span class="soft" style="font-size:11px">${esc(m.agent)}</span>`));
-    const items = el("div", "group-items");
-    items.appendChild(navFor(k));
-    g.appendChild(items);
+    const items = el("div","group-items"); items.appendChild(navFor(k)); g.appendChild(items);
     col.appendChild(g);
   });
-  col.appendChild(el("div", "colfoot", `<div class="soft" style="font-size:11px;line-height:1.5">${esc(o.store)}</div>`));
+  col.appendChild(el("div","colfoot",`<div class="soft" style="font-size:11px;line-height:1.5">${esc(o.store)}</div>`));
   return col;
 }
 
 function render() {
-  const hex = op().accent;
-  const root = document.documentElement.style;
-  root.setProperty("--op", hex);
-  root.setProperty("--op-line", rgba(hex, .45));
-  root.setProperty("--op-soft", rgba(hex, .13));
-  root.setProperty("--op-faint", rgba(hex, .07));
+  const hex = op().accent, root = document.documentElement.style;
+  root.setProperty("--op",hex);
+  root.setProperty("--op-line",rgba(hex,.45));
+  root.setProperty("--op-soft",rgba(hex,.13));
+  root.setProperty("--op-faint",rgba(hex,.07));
 
   if (!mod().screens.some(s => s.key === state.screen)) state.screen = mod().screens[0].key;
   const cs = chats();
-  if (!cs.some(c => c.id === state.sel)) state.sel = (cs[0] || {}).id;
+  if (!cs.some(c => c.id === state.sel)) state.sel = (cs[0]||{}).id;
 
-  const shell = el("div", "shell");
+  const shell = el("div","shell");
   const open = state.bars === "open";
   shell.style.gridTemplateColumns = open ? "78px 216px 1fr" : "46px 1fr";
   shell.appendChild(buildRail(!open));
   if (open) shell.appendChild(buildCol());
-  const main = el("div", "main");
-  const page = el("div", "page");
-  page.appendChild(content());
-  main.appendChild(page);
-  shell.appendChild(main);
+  const main = el("div","main"), page = el("div","page");
+  page.appendChild(content()); main.appendChild(page); shell.appendChild(main);
 
   const app = document.getElementById("app");
-  app.innerHTML = "";
-  app.appendChild(shell);
+  app.innerHTML = ""; app.appendChild(shell);
   syncPicker();
 }
 
-/* ---------------------- el instrumento ---------------------- */
+/* ---------------- instrumento ---------------- */
 
 function syncPicker() {
-  const v = VARIANTS[state.variant];
-  document.getElementById("pk-vnum").textContent = `${state.variant + 1} de 5`;
+  const v = V();
+  document.getElementById("pk-vnum").textContent = `${state.variant+1} de 5 · ${v.id}`;
   document.getElementById("pk-vlabel").textContent = v.label;
   document.getElementById("pk-vtag").textContent = v.tag;
+  document.getElementById("pk-ref").textContent = "ref: " + v.ref;
 
   const box = document.querySelector('[data-key="sel"]');
   box.innerHTML = "";
   const cs = chats();
-  if (!cs.length) box.appendChild(el("span", "soft", `<span style="font-size:11px">bandeja vacía</span>`));
-  cs.slice(0, 4).forEach(c => {
-    const b = el("button", "pk-opt", esc(c.who.split(" ")[0]));
-    b.title = `${c.who} · ${REC[c.rec].label}`;
+  if (!cs.length) box.appendChild(el("span","soft",`<span style="font-size:11px">vista vacía</span>`));
+  cs.slice(0,4).forEach(c => {
+    const b = el("button","pk-opt",esc(c.who.split(" ")[0]));
+    b.title = `${c.who} · ${REC[c.rec].l} · agente ${c.agent?"ON":"OFF"}`;
     b.setAttribute("aria-pressed", String(state.sel === c.id));
     b.onclick = () => { state.sel = c.id; render(); };
     box.appendChild(b);
   });
-
   document.querySelectorAll(".pk-opts[data-key]").forEach(g => {
     if (g.dataset.key === "sel") return;
-    g.querySelectorAll(".pk-opt").forEach(b =>
-      b.setAttribute("aria-pressed", String(state[g.dataset.key] === b.dataset.val)));
+    g.querySelectorAll(".pk-opt").forEach(b => b.setAttribute("aria-pressed", String(state[g.dataset.key] === b.dataset.val)));
   });
 }
 
@@ -833,7 +660,7 @@ document.querySelectorAll('.pk-opts[data-key]').forEach(g => {
   });
 });
 
-function step(d) { state.variant = (state.variant + d + VARIANTS.length) % VARIANTS.length; render(); }
+function step(d){ state.variant = (state.variant+d+VARIANTS.length)%VARIANTS.length; render(); }
 document.getElementById("pk-prev").onclick = () => step(-1);
 document.getElementById("pk-next").onclick = () => step(1);
 document.getElementById("pk-min").onclick = () => document.getElementById("picker").classList.toggle("is-min");
@@ -843,24 +670,22 @@ addEventListener("keydown", e => {
   if (e.key === "ArrowRight") { step(1); e.preventDefault(); }
 });
 
-(function drag() {
-  const box = document.getElementById("picker"), head = document.getElementById("pk-head");
-  let dx = 0, dy = 0, on = false;
-  head.addEventListener("mousedown", e => {
-    if (e.target.closest("button")) return;
-    on = true;
-    const r = box.getBoundingClientRect();
-    dx = e.clientX - r.left; dy = e.clientY - r.top;
-    box.style.right = "auto"; box.style.bottom = "auto";
-    box.style.left = r.left + "px"; box.style.top = r.top + "px";
-    e.preventDefault();
+(function drag(){
+  const box=document.getElementById("picker"), head=document.getElementById("pk-head");
+  let dx=0,dy=0,on=false;
+  head.addEventListener("mousedown",e=>{
+    if(e.target.closest("button"))return;
+    on=true; const r=box.getBoundingClientRect();
+    dx=e.clientX-r.left; dy=e.clientY-r.top;
+    box.style.right="auto"; box.style.bottom="auto";
+    box.style.left=r.left+"px"; box.style.top=r.top+"px"; e.preventDefault();
   });
-  addEventListener("mousemove", e => {
-    if (!on) return;
-    box.style.left = Math.min(Math.max(0, e.clientX - dx), innerWidth - box.offsetWidth) + "px";
-    box.style.top = Math.min(Math.max(0, e.clientY - dy), innerHeight - box.offsetHeight) + "px";
+  addEventListener("mousemove",e=>{
+    if(!on)return;
+    box.style.left=Math.min(Math.max(0,e.clientX-dx),innerWidth-box.offsetWidth)+"px";
+    box.style.top=Math.min(Math.max(0,e.clientY-dy),innerHeight-box.offsetHeight)+"px";
   });
-  addEventListener("mouseup", () => { on = false; });
+  addEventListener("mouseup",()=>{on=false;});
 })();
 
 render();
