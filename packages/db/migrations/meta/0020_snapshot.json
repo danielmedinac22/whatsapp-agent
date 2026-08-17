@@ -1,5 +1,5 @@
 {
-  "id": "448d2a70-56d2-4ad2-a279-8e079dba666c",
+  "id": "8affe960-8f3c-4259-8ebb-71116f3232cd",
   "prevId": "68ced0b6-1662-4b83-89fc-b2cdedacbf5c",
   "version": "7",
   "dialect": "postgresql",
@@ -655,6 +655,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "operation_id": {
+          "name": "operation_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "last_inbound_at": {
           "name": "last_inbound_at",
           "type": "timestamp with time zone",
@@ -774,6 +780,19 @@
             "id"
           ],
           "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "conversations_operation_id_operations_id_fk": {
+          "name": "conversations_operation_id_operations_id_fk",
+          "tableFrom": "conversations",
+          "tableTo": "operations",
+          "columnsFrom": [
+            "operation_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
           "onUpdate": "no action"
         }
       },

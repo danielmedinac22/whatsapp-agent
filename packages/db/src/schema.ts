@@ -339,6 +339,18 @@ export const conversations = pgTable(
     contactId: uuid("contact_id")
       .notNull()
       .references(() => contacts.id, { onDelete: "cascade" }),
+    /**
+     * La operación de la conversación, resuelta en la ingesta por el número que
+     * recibió el mensaje y conservada de principio a fin. Nullable hasta el
+     * contract: hoy nadie la lee — el expand la deja puesta y la empieza a
+     * escribir el lote de la conexión de WhatsApp.
+     *
+     * `restrict` y no `cascade`: dar de baja una operación no puede llevarse por
+     * delante el historial de conversaciones.
+     */
+    operationId: uuid("operation_id").references(() => operations.id, {
+      onDelete: "restrict",
+    }),
     lastInboundAt: timestamp("last_inbound_at", { withTimezone: true }),
     lastOutboundAt: timestamp("last_outbound_at", { withTimezone: true }),
     lastMessagePreview: text("last_message_preview"),
