@@ -6,14 +6,14 @@ Se corre con el skill `grilling-frontend-prototyping`: cinco prototipos radicalm
 
 **Blocked by:** None — can start immediately.
 
-**Status:** claimed — worktree `grill-nivel-1`, sesión con el usuario, 17-ago-2026
+**Status:** resolved — worktree `grill-nivel-1`, sesión con el usuario, 17-ago-2026. Tres rondas de prototipos.
 
-- [ ] Cinco variantes vivas del encuadre general, comparables lado a lado.
-- [ ] Cada variante resuelve de forma distinta la manifestación de la operación activa — no cinco versiones del mismo selector en una esquina.
-- [ ] Cada variante muestra también **el módulo activo** —Katherine o Sebastián— y deja claro que está **anidado dentro** del país, no al lado.
-- [ ] El mock alterna entre operación de Guatemala y de Colombia, para verificar que el cambio de contexto **se percibe sin explicarlo**.
-- [ ] El usuario emite veredicto y queda registrado con su razón.
-- [ ] Si una variante necesita explicación para entenderse, se descarta.
+- [x] Cinco variantes vivas del encuadre general, comparables lado a lado.
+- [x] Cada variante resuelve de forma distinta la manifestación de la operación activa — no cinco versiones del mismo selector en una esquina.
+- [x] Cada variante muestra también **el módulo activo** —Katherine o Sebastián— y deja claro que está **anidado dentro** del país, no al lado.
+- [x] El mock alterna entre operación de Guatemala y de Colombia, para verificar que el cambio de contexto **se percibe sin explicarlo**.
+- [x] El usuario emite veredicto y queda registrado con su razón.
+- [x] Si una variante necesita explicación para entenderse, se descarta.
 
 **Se corre con el usuario presente.** Un agente que responde sus propias preguntas de diseño no está haciendo el ejercicio.
 
@@ -60,11 +60,19 @@ Las cuatro variantes descartadas resolvían la manifestación con una banda supe
 6. **El color no va solo.** Junto al tinte, el **número de teléfono de la operación** en la cabecera de la columna. Es el dato que hace el error irreversible —es lo que le sale al cliente— y protege de que el tinte se vuelva papel tapiz con el uso diario. Se descartó llevar también la moneda y el recuadro: costaba ~70px permanentes.
 7. **Violeta para Guatemala, cian para Colombia.** El criterio no fue cuál se ve mejor sino cuál es más difícil de confundir de reojo, y eso lo compra la distancia cromática. El par violeta/rosa se ve más armónico y es el peor para este trabajo. Ninguno de los dos tonos toca menta, ámbar ni rojo.
 
-### Abierto, y va a la ronda siguiente
+### Decisiones de la ronda 3 — las barras colapsables
 
-- **Las barras tienen que poder colapsarse** — requisito de Daniel (17-ago-2026): riel de 78px + columna de 216px son 294px permanentes de cromo, y le quitan espacio de trabajo a la herramienta.
+Daniel pidió que las barras se puedan colapsar: 294px permanentes de cromo le quitan espacio a la herramienta. **El pedido ataca directo al mecanismo elegido —el tinte vive en las barras—**, así que la ronda decidió qué sobrevive al colapso.
 
-  **Esto ataca directo al mecanismo elegido: el tinte vive en las barras, así que colapsarlas apaga el indicador** — y justo en el modo en que se pasa más tiempo. La ronda 3 decide qué sobrevive al colapso; sin esa respuesta la decisión de arriba queda incompleta.
+8. **Colapso a riel comprimido de 46px.** Recupera el 84% del espacio y es la única opción que, colapsada, conserva las dos cosas que importan: en qué país estás **y** que existe el otro. Conserva también la navegación por iconos de la pantalla actual. Lo que pierde son los nombres de las pantallas.
+
+   Descartadas: el filo de color de 5px (en tres días es parte del monitor), migrar el indicador al borde superior (manda la señal lejos justo cuando ya no hay barra que la sostenga), y las dos opciones que devuelven menos de la mitad del espacio.
+
+9. **El colapso se recuerda de forma global, y cambiar de operación reexpande las barras.** Es el único momento en que el contexto cambió de verdad y vale interrumpir. **Volver a plegarlas es acto del usuario, nunca automático**: un plegado que se mueve solo es peor que no tenerlo.
+
+10. **El marco ubica; la pantalla confirma.** Colapsado es suficiente para navegar, no para editar. Las pantallas que **escriben** —catálogo y configuración del vendedor— llevan el país en su propio encabezado (`COLOMBIA · CATÁLOGO` sobre el título), así que el colapso queda libre y sin techo: no hace falta prohibirlo en ninguna pantalla, y no cuesta espacio.
+
+### Deuda anotada, fuera de alcance
 
 ### Deuda anotada, fuera de alcance
 
@@ -74,6 +82,24 @@ Las cuatro variantes descartadas resolvían la manifestación con una banda supe
 
 **El criterio de aceptación de este ticket se puede aprobar por la razón equivocada.** «El cambio Guatemala ↔ Colombia se percibe sin explicarlo» lo pasan las cinco variantes hoy — pero no por el marco: porque Colombia está vacía y cambia todo el contenido. El día que Colombia opere, dos catálogos con los mismos cuatro nombres REVITALHAIR, y el contenido deja de ayudar. **La prueba válida es Colombia con catálogo lleno**, y por eso el mock permite forzar ese estado. Quien verifique la implementación tiene que usar ese estado, no el fácil.
 
+### El resultado, en una frase
+
+**Riel de operaciones a la izquierda que tiñe la barra con el color del país activo, con el módulo anidado dentro y el número de teléfono junto al color; colapsable a 46px sin perder ni el país ni la navegación.**
+
 ### Referencia visual
 
-Prototipos en `prototipos/nivel-1-encuadre.PROTOTIPO.html` (primera ronda: commit `2080fe6`). Son desechables — se archivan como referencia, no se integran.
+`prototipos/nivel-1-encuadre.PROTOTIPO.html` — un solo archivo, se actualizó en cada ronda. Cada ronda quedó en su commit:
+
+| Ronda | Qué se comparó | Commit |
+|---|---|---|
+| 1 | Cinco encuadres radicalmente distintos | `2080fe6` |
+| 2 | Hasta dónde llega el tinte, y con qué paleta | `d34ecbc` |
+| 3 | Qué sobrevive al colapso de las barras | `a646486` |
+
+El archivo final arranca en la variante elegida y demuestra la reexpansión al cambiar de operación. Son desechables — se archivan como referencia, **no se integran**.
+
+### Qué destraba
+
+El ticket 08 de Operaciones (activar Colombia). El selector ya tiene forma decidida, así que se puede construir y con eso dejan de ser bloqueantes las ocho pantallas que hoy `panelOperation()` haría fallar con dos operaciones activas.
+
+**El nivel 2 queda abierto**: el selector de operación en detalle, el catálogo, la configuración del vendedor y las conversaciones.

@@ -318,9 +318,9 @@
     </div>
 
     <p class="pk-hint">
-      <kbd>←</kbd> <kbd>→</kbd> cambian de variante. Expandidas las cinco son
-      idénticas — <strong>la comparación es en «Colapsadas»</strong>. Y probala
-      en Colombia: es donde el indicador tiene que seguir hablando.
+      <strong>Nivel 1 cerrado</strong> — la variante 1 es la elegida; las otras
+      cuatro quedan como registro de la comparación. Cambiar de operación
+      reexpande las barras a propósito. <kbd>←</kbd> <kbd>→</kbd> alternan.
     </p>
   </div>
 </div>
@@ -399,11 +399,11 @@ const ORDERS = {
 
 /* Las cinco respuestas a «qué sobrevive al colapso». */
 const VARIANTS = [
+  { id: "c5", label: "Riel comprimido ✓", tag: "ELEGIDA · 46px; los dos países y la navegación a la vista" },
   { id: "c1", label: "El riel se queda",  tag: "colapsa la columna; el riel de 78px no se toca" },
   { id: "c2", label: "Filo de color",     tag: "colapsa todo; queda una línea de 5px a la izquierda" },
   { id: "c3", label: "Tira de iconos",    tag: "colapsa a 56px teñidos; se pierde ver el otro país" },
   { id: "c4", label: "Migra arriba",      tag: "colapsa todo; el indicador se muda al borde superior" },
-  { id: "c5", label: "Riel comprimido",   tag: "el riel se encoge a 46px; los dos países siguen a la vista" },
 ];
 
 /* ==================================================================== */
@@ -580,6 +580,16 @@ function content() {
 
 const toggleBars = () => { state.bars = state.bars === "open" ? "collapsed" : "open"; render(); };
 
+/* Cambiar de operación REEXPANDE las barras — es el único momento en que el
+   contexto cambió de verdad y vale interrumpir. Volver a plegarlas es acto
+   del usuario: un plegado que se mueve solo es peor que no tenerlo. */
+function switchCountry(code) {
+  if (state.country === code) return;
+  state.country = code;
+  state.bars = "open";
+  render();
+}
+
 function navFor(m) {
   const box = el("div");
   box.style.cssText = "display:flex;flex-direction:column;gap:2px";
@@ -599,7 +609,7 @@ function buildRail(tight) {
       `${flag(x.code)}${tight ? "" : `<span class="tile-code">${esc(x.code)}</span>`}`);
     t.setAttribute("aria-pressed", String(state.country === x.code));
     t.title = `${x.name} · ${x.status}`;
-    t.onclick = () => { state.country = x.code; render(); };
+    t.onclick = () => { switchCountry(x.code); };
     rail.appendChild(t);
   });
   if (!tight) {
