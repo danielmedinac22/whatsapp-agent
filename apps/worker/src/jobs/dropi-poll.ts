@@ -1,10 +1,10 @@
 import { eq, inArray } from "@wa/db";
 import {
-  agentSettings,
   dropiOrders,
   getAgentSettings,
   GLOBAL_AGENT_SETTINGS,
   shopifyOrders,
+  type AgentSettings,
   type DropiOrder,
   type Operation,
 } from "@wa/db";
@@ -31,7 +31,7 @@ function fmtDate(d: Date): string {
 async function processRow(
   op: Operation,
   row: DropiOrderRow,
-  s: typeof agentSettings.$inferSelect,
+  s: AgentSettings,
 ): Promise<{ updated: boolean; notified: boolean }> {
   const state = deriveDropiState(row.status, row.raw);
   const newStatus = state.status;
@@ -169,7 +169,7 @@ export async function runDropiPoll(): Promise<DropiPollResult> {
  */
 export async function runDropiPollForOperation(
   op: Operation,
-  s: typeof agentSettings.$inferSelect,
+  s: AgentSettings,
 ): Promise<DropiPollResult> {
   // Active set: anything not yet quiescent-and-already-notified.
   // i.e. include terminal rows whose terminal status hasn't been notified yet,

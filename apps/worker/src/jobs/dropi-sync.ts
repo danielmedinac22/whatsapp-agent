@@ -5,6 +5,7 @@ import {
   getAgentSettings,
   GLOBAL_AGENT_SETTINGS,
   shopifyOrders,
+  type AgentSettings,
   type DropiOrder,
   type Operation,
 } from "@wa/db";
@@ -262,7 +263,7 @@ export async function runDropiSync(opts?: {
  */
 export async function runDropiSyncForOperation(
   op: Operation,
-  s: typeof agentSettings.$inferSelect,
+  s: AgentSettings,
   opts?: { windowDays?: number; pageSize?: number },
 ): Promise<DropiSyncResult> {
   const windowDays = opts?.windowDays ?? s.dropiMatchWindowDays ?? 5;
