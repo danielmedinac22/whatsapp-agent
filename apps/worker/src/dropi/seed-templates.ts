@@ -89,15 +89,19 @@ export async function ensureDropiTemplates(op: Operation): Promise<{
   let inserted = 0;
   let assigned = 0;
   for (const t of DEFAULTS) {
+    // La plantilla es de la operación desde la `0024`: el único pasó a ser
+    // (operación, nombre), así que la colombiana ya no choca con la
+    // guatemalteca del mismo nombre — antes se quedaba sin plantilla.
     const [ins] = await db
       .insert(templates)
       .values({
+        operationId: op.id,
         name: t.name,
         body: t.body,
         type: t.type,
         variables: extractVars(t.body),
       })
-      .onConflictDoNothing({ target: templates.name })
+      .onConflictDoNothing({ target: [templates.operationId, templates.name] })
       .returning({ id: templates.id });
 
     let templateId = ins?.id;
@@ -106,7 +110,9 @@ export async function ensureDropiTemplates(op: Operation): Promise<{
       const [existing] = await db
         .select({ id: templates.id })
         .from(templates)
-        .where(eq(templates.name, t.name))
+        .where(
+          and(eq(templates.operationId, op.id), eq(templates.name, t.name)),
+        )
         .limit(1);
       templateId = existing?.id;
     }

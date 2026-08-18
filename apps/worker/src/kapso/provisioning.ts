@@ -15,6 +15,10 @@ import { VORARE_TEMPLATES, toMetaDefinition } from "./templates";
  *
  * Y una WABA por operación: el catálogo de una operación se somete contra su
  * propia conexión, nunca contra "la" conexión.
+ *
+ * Desde la `0024` la fila además **dice de qué operación es**. El único sigue
+ * siendo (nombre, WABA) porque es Meta quien aprueba por WABA; la columna
+ * existe para que el panel pueda filtrar sin ir a buscar la conexión.
  */
 export async function ensureKapsoTemplates(
   op: Operation,
@@ -41,6 +45,7 @@ export async function ensureKapsoTemplates(
       await db
         .insert(waTemplates)
         .values({
+          operationId: op.id,
           name: def.name,
           language: def.language,
           category: def.category,
@@ -74,6 +79,7 @@ export async function ensureKapsoTemplates(
       await db
         .insert(waTemplates)
         .values({
+          operationId: op.id,
           name: def.name,
           language: def.language,
           category: def.category,

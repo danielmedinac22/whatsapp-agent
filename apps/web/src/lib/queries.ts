@@ -18,7 +18,30 @@ import {
   sql,
 } from "@wa/db";
 import type { SQL } from "drizzle-orm";
+import type { Operation } from "@wa/db";
 import { situationByKey } from "@wa/shared";
+import {
+  contactOfOperation,
+  ofOperation,
+  rowOfOperation,
+  throughConversationOfOperation,
+} from "./operation-scope";
+
+/**
+ * Las doce consultas del panel, todas con la operación por parámetro.
+ *
+ * **Ninguna resuelve la operación por su cuenta**, y eso es deliberado: la
+ * resuelve la pantalla con `resolvePanelOperation()` y la pasa. Una consulta
+ * que va a buscar la cookie por dentro esconde de qué depende, y son las
+ * pantallas las que tienen que poder decir «esta pantalla es de este país».
+ * Es el mismo mecanismo del contract (ticket 06) sobre los accesores de
+ * `@wa/db`: el parámetro obligatorio es lo que hace que el compilador encuentre
+ * a quien falte.
+ *
+ * Lo que el compilador **no** puede ver es una consulta nueva que reciba `op` y
+ * no lo use en el `where`. Para eso está `./operation-scope` y la prueba que lo
+ * vigila; ver el encabezado de ese archivo.
+ */
 
 /**
  * Actividad más reciente de una conversación. GREATEST y no COALESCE: con
@@ -82,6 +105,7 @@ export type ConversationListItem = {
  * a alguien de hace meses sin scrollear.
  */
 export async function listConversations(
+  op: Operation,
   search?: string,
   /** Conversación que debe aparecer aunque quede fuera del corte o del filtro
    *  (el salto desde Pedidos apunta a una concreta, que puede ser vieja). */
@@ -105,16 +129,30 @@ export async function listConversations(
     .select(selection)
     .from(conversations)
     .innerJoin(contacts, eq(conversations.contactId, contacts.id))
-    .where(term ? conversationSearchFilter(term) : undefined)
+    .where(
+      and(
+        ofOperation(op, conversations.operationId),
+        term ? conversationSearchFilter(term) : undefined,
+      ),
+    )
     .orderBy(desc(lastActivityAt))
     .limit(200);
 
+  // La conversación anclada también se verifica: el salto desde Pedidos trae un
+  // id, y un id de otro país no puede colarse arriba de la lista.
   if (pinnedId && !rows.some((r) => r.conversation.id === pinnedId)) {
     const [pinned] = await db
       .select(selection)
       .from(conversations)
       .innerJoin(contacts, eq(conversations.contactId, contacts.id))
-      .where(eq(conversations.id, pinnedId))
+      .where(
+        rowOfOperation(
+          op,
+          conversations.id,
+          pinnedId,
+          conversations.operationId,
+        ),
+      )
       .limit(1);
     if (pinned) rows.unshift(pinned);
   }
@@ -129,7 +167,12 @@ export async function listConversations(
   const dropiRows = await db
     .select()
     .from(dropiOrders)
-    .where(inArray(dropiOrders.contactId, contactIds))
+    .where(
+      and(
+        ofOperation(op, dropiOrders.operationId),
+        inArray(dropiOrders.contactId, contactIds),
+      ),
+    )
     .orderBy(desc(dropiOrders.updatedAt));
 
   const byContact = new Map<string, DropiSummary>();
@@ -161,7 +204,12 @@ export async function listConversations(
       producto: sql<string>`coalesce(${shopifyOrders.rawPayload}->'line_items'->0->>'title', '')`,
     })
     .from(shopifyOrders)
-    .where(inArray(shopifyOrders.contactId, contactIds))
+    .where(
+      and(
+        ofOperation(op, shopifyOrders.operationId),
+        inArray(shopifyOrders.contactId, contactIds),
+      ),
+    )
     .orderBy(desc(shopifyOrders.receivedAt));
   const shopifyByContact = new Map<string, ShopifySummary>();
   for (const o of shopifyRows) {
@@ -180,43 +228,105 @@ export async function listConversations(
   }));
 }
 
-/** Catalog templates Meta has approved for the current WABA. */
-export async function listApprovedWaTemplates(): Promise<string[]> {
+/**
+ * Las plantillas que Meta aprobó para la WABA de esta operación.
+ *
+ * Filtra por operación y no por WABA teniendo las dos a mano: la operación es
+ * lo que el panel tiene en la mano, y traducir operación → conexión → WABA
+ * sería una consulta más para llegar al mismo sitio. La columna existe desde la
+ * `0024` justamente para esto.
+ */
+export async function listApprovedWaTemplates(
+  op: Operation,
+): Promise<string[]> {
   const rows = await db
     .select({ name: waTemplates.name })
     .from(waTemplates)
-    .where(eq(waTemplates.status, "approved"));
+    .where(
+      and(
+        ofOperation(op, waTemplates.operationId),
+        eq(waTemplates.status, "approved"),
+      ),
+    );
   return rows.map((r) => r.name);
 }
 
-export async function getConversationById(id: string) {
+/** Una conversación **de esta operación**. La de otra no existe para el panel. */
+export async function getConversationById(op: Operation, id: string) {
   const [row] = await db
     .select({ conversation: conversations, contact: contacts })
     .from(conversations)
     .innerJoin(contacts, eq(conversations.contactId, contacts.id))
-    .where(eq(conversations.id, id))
+    .where(rowOfOperation(op, conversations.id, id, conversations.operationId))
     .limit(1);
   return row ?? null;
 }
 
-export async function listMessages(conversationId: string, limit = 200) {
+/**
+ * El historial de un chat. `messages` no lleva operación —cuelga de la
+ * conversación— pero el id llega desde la URL, así que la pertenencia se
+ * verifica igual: sin esto, pegar el id de una conversación colombiana en la
+ * URL abre el historial completo del cliente.
+ */
+export async function listMessages(
+  op: Operation,
+  conversationId: string,
+  limit = 200,
+) {
   return db
     .select()
     .from(messages)
-    .where(eq(messages.conversationId, conversationId))
+    .where(
+      and(
+        eq(messages.conversationId, conversationId),
+        throughConversationOfOperation(op, messages.conversationId),
+      ),
+    )
     .orderBy(asc(messages.createdAt))
     .limit(limit);
 }
 
-export async function markRead(conversationId: string) {
-  await db
+/**
+ * Marca el chat como leído. **Escritura por id: verifica pertenencia dentro del
+ * `where`.** Es la más inocua de las tres —perder un contador de no leídos no
+ * le cuesta nada a nadie— y va igual, porque la regla tiene que ser una sola:
+ * si una escritura por id puede saltarse la verificación, la siguiente que
+ * alguien copie de aquí también.
+ *
+ * Devuelve **si escribió**. Las tres lo hacen: un `ok: true` sobre una fila que
+ * no se tocó es la forma de que el bug quede invisible en la pantalla del
+ * asesor, que es donde tiene que verse.
+ */
+export async function markRead(
+  op: Operation,
+  conversationId: string,
+): Promise<boolean> {
+  const written = await db
     .update(conversations)
     .set({ unreadCount: 0 })
-    .where(eq(conversations.id, conversationId));
+    .where(
+      rowOfOperation(
+        op,
+        conversations.id,
+        conversationId,
+        conversations.operationId,
+      ),
+    )
+    .returning({ id: conversations.id });
+  return written.length > 0;
 }
 
-export async function listTemplates() {
-  return db.select().from(templates).orderBy(asc(templates.name));
+/**
+ * Las plantillas de esta operación. De aquí salen las opciones de las seis FK
+ * de plantilla de `agent_settings`, que es una fila por operación: ofrecer las
+ * de otro país sería ofrecer que la configuración apunte al texto equivocado.
+ */
+export async function listTemplates(op: Operation) {
+  return db
+    .select()
+    .from(templates)
+    .where(ofOperation(op, templates.operationId))
+    .orderBy(asc(templates.name));
 }
 
 /**
@@ -230,7 +340,10 @@ export { getAgentSettings } from "@wa/db";
  * Conversaciones recientes para el selector del banco de pruebas del prompt:
  * permite probar el prompt sobre el historial real de un cliente.
  */
-export async function listRecentConversationOptions(limit = 25) {
+export async function listRecentConversationOptions(
+  op: Operation,
+  limit = 25,
+) {
   const rows = await db
     .select({
       id: conversations.id,
@@ -241,6 +354,7 @@ export async function listRecentConversationOptions(limit = 25) {
     })
     .from(conversations)
     .innerJoin(contacts, eq(conversations.contactId, contacts.id))
+    .where(ofOperation(op, conversations.operationId))
     .orderBy(desc(lastActivityAt))
     .limit(limit);
 
@@ -250,11 +364,27 @@ export async function listRecentConversationOptions(limit = 25) {
   }));
 }
 
-export async function setAgentMode(contactId: string, on: boolean) {
-  await db
+/**
+ * «Contesta el bot o contesto yo», sobre un contacto que **esta** operación
+ * atiende.
+ *
+ * Es la escritura por id más peligrosa de las tres: apagar el modo agente de la
+ * conversación de otro país deja a ese cliente esperando una respuesta que no
+ * llega, y no hay nada en pantalla que lo diga. `contacts` no lleva operación
+ * —una persona puede existir en las dos— así que el alcance se resuelve por su
+ * conversación.
+ */
+export async function setAgentMode(
+  op: Operation,
+  contactId: string,
+  on: boolean,
+): Promise<boolean> {
+  const written = await db
     .update(contacts)
     .set({ agentMode: on })
-    .where(eq(contacts.id, contactId));
+    .where(contactOfOperation(op, contactId))
+    .returning({ id: contacts.id });
+  return written.length > 0;
 }
 
 export type ConfirmationStatus =
@@ -263,24 +393,40 @@ export type ConfirmationStatus =
   | "confirmed"
   | "not_confirmed";
 
+/**
+ * *La* decisión de Katherine: confirmado o no confirmado. Escritura por id, con
+ * la pertenencia dentro del `where` — marcar confirmado el pedido de otro país
+ * dispara la confirmación a su logística.
+ */
 export async function setConfirmationStatus(
+  op: Operation,
   conversationId: string,
   status: ConfirmationStatus,
-) {
-  await db
+): Promise<boolean> {
+  const written = await db
     .update(conversations)
     .set({
       confirmationStatus: status,
       confirmationSource: "manual",
       confirmationUpdatedAt: new Date(),
     })
-    .where(eq(conversations.id, conversationId));
+    .where(
+      rowOfOperation(
+        op,
+        conversations.id,
+        conversationId,
+        conversations.operationId,
+      ),
+    )
+    .returning({ id: conversations.id });
+  return written.length > 0;
 }
 
-export async function listShopifyOrders(limit = 50) {
+export async function listShopifyOrders(op: Operation, limit = 50) {
   return db
     .select()
     .from(shopifyOrders)
+    .where(ofOperation(op, shopifyOrders.operationId))
     .orderBy(desc(shopifyOrders.receivedAt))
     .limit(limit);
 }
@@ -303,6 +449,7 @@ export type OrderFilters = {
  * Shopify y Dropi, que hacían el payload enorme sin que la tabla los use.
  */
 export async function listShopifyOrdersWithDropi(
+  op: Operation,
   filters: OrderFilters = {},
   limit = 300,
 ) {
@@ -388,17 +535,26 @@ export async function listShopifyOrdersWithDropi(
     .from(shopifyOrders)
     .leftJoin(dropiOrders, eq(dropiOrders.shopifyOrderRowId, shopifyOrders.id))
     .leftJoin(conversations, eq(conversations.contactId, shopifyOrders.contactId))
-    .where(where.length > 0 ? and(...where) : undefined)
+    // El alcance de operación va **aquí y no en el arreglo de arriba**: los
+    // filtros de esa lista son todos opcionales y este no, y escribirlo sobre
+    // la consulta es lo que deja verlo sin seguirle la pista a una variable.
+    // La red de `consultas-del-panel` lo pedía y tenía razón.
+    .where(and(ofOperation(op, shopifyOrders.operationId), ...where))
     .orderBy(desc(shopifyOrders.receivedAt))
     .limit(limit);
 }
 
 /** Transportadoras presentes en los datos, para poblar el filtro. */
-export async function listCarriers(): Promise<string[]> {
+export async function listCarriers(op: Operation): Promise<string[]> {
   const rows = await db
     .selectDistinct({ carrier: dropiOrders.carrier })
     .from(dropiOrders)
-    .where(isNotNull(dropiOrders.carrier));
+    .where(
+      and(
+        ofOperation(op, dropiOrders.operationId),
+        isNotNull(dropiOrders.carrier),
+      ),
+    );
   return rows
     .map((r) => r.carrier)
     .filter((c): c is string => Boolean(c))

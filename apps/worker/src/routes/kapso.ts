@@ -1,12 +1,8 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { desc, eq } from "@wa/db";
-import {
-  panelOperation,
-  requireOperationById,
-  waTemplates,
-  webhookEvents,
-} from "@wa/db";
+import { requireOperationById, waTemplates, webhookEvents } from "@wa/db";
+import { panelOperation } from "../operations";
 import { db } from "../db";
 import { logger } from "../lib/logger";
 import {
@@ -86,11 +82,11 @@ kapsoWebhook.post("/webhook", async (c) => {
 /** Admin API (behind the Bearer middleware, /api/kapso/*). */
 export const kapsoAdmin = new Hono();
 
-// El panel de administración todavía muestra una sola conexión:
-// `panelOperation()` resuelve la única activa y falla con dos, en vez de mostrar
-// siempre la de Guatemala. Cuando llegue el selector (ticket 07) se cambia ahí.
+// El panel de administración muestra la conexión de la operación elegida en el
+// riel, que llega en el header `x-operation-id`. Antes era el puente
+// `panelOperation()`, que resolvía la única activa y fallaba con dos.
 kapsoAdmin.get("/status", async (c) => {
-  const conn = await getKapsoConnection(await panelOperation());
+  const conn = await getKapsoConnection(await panelOperation(c));
   const templates = conn?.businessAccountId
     ? await db
         .select({
@@ -123,7 +119,7 @@ kapsoAdmin.post("/connect", async (c) => {
   // es la del panel. Ya no existe la forma de guardarlo sin operación.
   const op = parsed.data.operationId
     ? await requireOperationById(parsed.data.operationId)
-    : await panelOperation();
+    : await panelOperation(c);
   const conn = await connectKapsoNumber(op, parsed.data.phoneNumberId);
   // Sandbox numbers have no real WABA review flow; template submit may fail
   // there — logged, non-fatal.
@@ -135,7 +131,7 @@ kapsoAdmin.post("/connect", async (c) => {
 });
 
 kapsoAdmin.post("/templates/sync", async (c) => {
-  const op = await panelOperation();
+  const op = await panelOperation(c);
   await ensureKapsoTemplates(op);
   await refreshKapsoTemplateStatuses(op);
   const conn = await getKapsoConnection(op);

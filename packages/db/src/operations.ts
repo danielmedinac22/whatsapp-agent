@@ -31,28 +31,41 @@ export type OperationId = string;
 /** Mismo TTL que las conexiones: la lista de operaciones cambia casi nunca. */
 const OPERATIONS_CACHE_MS = 30_000;
 
-let activeCache: { rows: Operation[]; at: number } | null = null;
+let allCache: { rows: Operation[]; at: number } | null = null;
 
 /**
  * A llamar cuando se da de alta, se activa o se desactiva una operación. Es lo
  * que arma o desarma el puente de {@link requireSoleActiveOperation}.
  */
 export function invalidateOperationsCache(): void {
-  activeCache = null;
+  allCache = null;
 }
 
-/** Las operaciones que atienden hoy. `inactive` existe pero no opera. */
-export async function listActiveOperations(): Promise<Operation[]> {
-  if (activeCache && Date.now() - activeCache.at < OPERATIONS_CACHE_MS) {
-    return activeCache.rows;
+/**
+ * Todas las operaciones, activas e inactivas, por código de país.
+ *
+ * La caché guarda **la tabla entera y no solo las activas** desde el ticket 07:
+ * el riel del panel muestra también las dormidas —que exista el otro país es la
+ * mitad de lo que el riel comunica— y con dos cachés la lista del riel y la del
+ * puente se desincronizaban en la ventana de 30 s. Las activas se derivan de
+ * aquí, que son una o dos filas: filtrar cuesta nada.
+ */
+export async function listOperations(): Promise<Operation[]> {
+  if (allCache && Date.now() - allCache.at < OPERATIONS_CACHE_MS) {
+    return allCache.rows;
   }
   const rows = await getDb()
     .select()
     .from(operations)
-    .where(eq(operations.status, "active"))
     .orderBy(asc(operations.countryCode));
-  activeCache = { rows, at: Date.now() };
+  allCache = { rows, at: Date.now() };
   return rows;
+}
+
+/** Las operaciones que atienden hoy. `inactive` existe pero no opera. */
+export async function listActiveOperations(): Promise<Operation[]> {
+  const rows = await listOperations();
+  return rows.filter((o) => o.status === "active");
 }
 
 /**
@@ -74,9 +87,10 @@ export async function getSingleActiveOperation(): Promise<Operation | null> {
 }
 
 /**
- * Puente para quien todavía no puede recibir la operación por parámetro: el
- * panel, que no tiene selector hasta el ticket 07, y las filas de datos cuya
- * `operation_id` sigue siendo nullable.
+ * Puente para quien todavía no puede recibir la operación por parámetro: las
+ * filas de datos cuya `operation_id` sigue siendo nullable. El panel ya no
+ * pasa por aquí — desde el ticket 07 usa {@link requirePanelOperation}, que es
+ * este mismo puente con la elección del admin por delante.
  *
  * **Con dos operaciones activas lanza en vez de elegir.** Elegir en silencio es
  * exactamente el error que esta migración existe para hacer imposible: un
@@ -99,17 +113,134 @@ export async function requireSoleActiveOperation(): Promise<Operation> {
   return only;
 }
 
+// ────────────────────────────────────────────────────────────────────────────
+// De qué operación habla el panel · ticket 07
+// ────────────────────────────────────────────────────────────────────────────
+
 /**
- * De qué operación habla el panel.
+ * Por qué el panel terminó hablando de la operación que habla.
  *
- * Hasta que exista el selector (ticket 07) el panel no manda ninguna, así que
- * resuelve la única activa — y con dos falla en vez de adivinar. Es el mismo
- * puente de arriba con nombre propio: cuando llegue el selector se cambia aquí
- * y todas las pantallas quedan migradas de una vez, en vez de repartir
- * `requireSoleActiveOperation()` por seis rutas y dos páginas.
+ * No es decorativo: distingue «el admin eligió Guatemala» de «nadie eligió y
+ * había una sola», que en pantalla se ven igual y en un incidente no son lo
+ * mismo. {@link PANEL_OPERATION_REASONS} es la lista para quien la enumere.
  */
-export function panelOperation(): Promise<Operation> {
-  return requireSoleActiveOperation();
+export type PanelOperationReason =
+  /** Quien llama nombró una operación y existe. */
+  | "elegida"
+  /** Nadie eligió: cae al puente de la operación única. */
+  | "unica_activa"
+  /** Nombró una que no existe —cookie vieja, operación dada de baja— y cae al puente. */
+  | "eleccion_desconocida";
+
+export const PANEL_OPERATION_REASONS = [
+  "elegida",
+  "unica_activa",
+  "eleccion_desconocida",
+] as const satisfies readonly PanelOperationReason[];
+
+/** Lo que {@link decidePanelOperation} resuelve. `operation` null = no se pudo. */
+export interface PanelOperationDecision {
+  operation: Operation | null;
+  reason: PanelOperationReason;
+}
+
+/**
+ * **La regla del selector, y es pura**: no toca la base ni el reloj. Recibe lo
+ * que el panel dijo querer y la tabla de operaciones, y devuelve sobre cuál se
+ * trabaja. Se prueba con fixtures de dos filas, no contra producción.
+ *
+ * Tres decisiones que están aquí y no en quien la llama:
+ *
+ * 1. **Una elección desconocida no rompe el panel, cae al puente.** Una cookie
+ *    que nombra una operación dada de baja dejaría al admin sin panel, y el
+ *    puente no puede equivocarse de país: con dos activas devuelve `null` y
+ *    quien llama falla. Silencioso solo cuando hay una sola, donde acertar es
+ *    lo único posible.
+ * 2. **Se puede elegir una operación `inactive`.** El riel las muestra —que
+ *    exista el otro país es la mitad de lo que comunica— y configurar Colombia
+ *    antes de activarla es justamente el trabajo que destraba el ticket 08.
+ *    Lo que no puede pasar es *caer* en una inactiva sin elegirla: el puente
+ *    solo mira las activas.
+ * 3. **Con cero o dos o más activas y sin elección, devuelve `null`.** Es
+ *    `getSingleActiveOperation()` escrito aquí: elegir en silencio es el error
+ *    que toda esta migración existe para hacer imposible.
+ */
+export function decidePanelOperation(input: {
+  /** El id que mandó el panel: la cookie en la web, el header en el worker. */
+  requested: OperationId | null | undefined;
+  /** La tabla entera, activas e inactivas. */
+  operations: readonly Operation[];
+}): PanelOperationDecision {
+  const active = input.operations.filter((o) => o.status === "active");
+  const sole = active.length === 1 ? (active[0] ?? null) : null;
+
+  const requested = input.requested?.trim();
+  if (!requested) return { operation: sole, reason: "unica_activa" };
+
+  const chosen = input.operations.find((o) => o.id === requested);
+  if (chosen) return { operation: chosen, reason: "elegida" };
+  return { operation: sole, reason: "eleccion_desconocida" };
+}
+
+/** La decisión, con la tabla que la produjo — que es la que dibuja el riel. */
+export interface PanelOperationState extends PanelOperationDecision {
+  operations: Operation[];
+}
+
+/**
+ * La decisión **sin lanzar**, para quien tiene que seguir dibujando aunque no
+ * haya operación.
+ *
+ * Existe por un problema que apareció al probar el panel con las dos
+ * operaciones activas, y que el mecanismo escrito en el ticket no cubría: con
+ * dos activas y sin elección, `requirePanelOperation` lanza — y lo que lanza es
+ * el layout, que es **el que dibuja el riel con el que se elige**. El panel
+ * quedaba muerto el día de la apertura de Colombia, sin ninguna forma de salir:
+ * para elegir hacía falta un riel que no se podía dibujar hasta haber elegido.
+ *
+ * El marco usa esto y las pantallas siguen usando {@link requirePanelOperation}:
+ * así el riel siempre se dibuja y **ninguna pantalla llega a renderizarse con
+ * una operación adivinada**. Elegir por el admin seguiría siendo el error que
+ * esta migración existe para hacer imposible; lo que cambia es que ahora hay
+ * dónde elegir.
+ */
+export async function panelOperationState(
+  requested: OperationId | null | undefined,
+): Promise<PanelOperationState> {
+  const operations = await listOperations();
+  return { ...decidePanelOperation({ requested, operations }), operations };
+}
+
+/**
+ * De qué operación habla el panel, con la base delante.
+ *
+ * Es el reemplazo de `panelOperation()`, el puente que el ticket 07 retira: ya
+ * no resuelve «la única activa» a ciegas sino la que el admin eligió, y el
+ * fallback es lo que mantiene a Guatemala funcionando sin que nadie elija nada.
+ *
+ * Vive en `@wa/db` y no en cada app porque las dos la necesitan y la regla
+ * tiene que ser una: la web le pasa la cookie, el worker el header
+ * `x-operation-id`. Quien sabe de cookies es `apps/web` — este paquete lo
+ * importa también el worker, que no tiene contexto de request de Next.
+ */
+export async function requirePanelOperation(
+  requested: OperationId | null | undefined,
+): Promise<Operation> {
+  const { operation, reason } = await panelOperationState(requested);
+  if (operation) return operation;
+
+  // Sin operación: el mismo error que daba el puente, que es el que hay que
+  // leer en el log. Con dos activas y sin elección dice cuáles son.
+  const active = (await listActiveOperations()).map((o) => o.countryCode);
+  if (active.length === 0) {
+    throw new Error("no hay ninguna operación activa configurada");
+  }
+  throw new Error(
+    `hay ${active.length} operaciones activas (${active.join(", ")}): ` +
+      (reason === "eleccion_desconocida"
+        ? `el panel pidió la operación ${requested}, que no existe`
+        : "el panel tiene que decir sobre cuál trabaja"),
+  );
 }
 
 /**

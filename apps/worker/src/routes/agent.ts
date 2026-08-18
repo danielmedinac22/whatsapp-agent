@@ -5,13 +5,8 @@ import {
   agentPromptInput,
   agentSettingsInput,
 } from "@wa/shared";
-import {
-  db,
-  agentSettings,
-  eq,
-  getAgentSettings,
-  panelOperation,
-} from "../db";
+import { db, agentSettings, eq, getAgentSettings } from "../db";
+import { panelOperation, type HeaderCarrier } from "../operations";
 import { logger } from "../lib/logger";
 import { previewAgentReply } from "../agent/preview";
 import {
@@ -31,18 +26,18 @@ function actorEmail(c: { req: { header: (n: string) => string | undefined } }) {
 }
 
 /**
- * El panel edita la configuración de **una** operación, y hasta el selector
- * (ticket 07) esa operación es la única activa.
+ * El panel edita la configuración de **una** operación: la que el admin eligió
+ * en el riel, que llega en el header `x-operation-id`.
  *
  * El lote 05 dejó estas cuatro lecturas/escrituras en ámbito global explícito
  * (`GLOBAL_AGENT_SETTINGS`, la fila `id = 1`). El contract lo borró: `id = 1`
  * es Guatemala, y un panel que escribe siempre en Guatemala pasaría a editar el
- * país equivocado en cuanto exista el segundo. `panelOperation()` no adivina —
- * con dos operaciones activas falla y obliga a que el selector llegue antes que
- * Colombia.
+ * país equivocado en cuanto exista el segundo. Hasta el ticket 07 lo cubría el
+ * puente `panelOperation()`, que no adivinaba —con dos activas fallaba— y por
+ * eso obligaba a que el selector llegara antes que Colombia. Ya llegó.
  */
-function loadSettings() {
-  return panelOperation().then(getAgentSettings);
+function loadSettings(c: HeaderCarrier) {
+  return panelOperation(c).then(getAgentSettings);
 }
 
 /**
@@ -55,14 +50,14 @@ async function nextAgentSettingsId(): Promise<number> {
 }
 
 agent.get("/settings", async (c) => {
-  return c.json(await loadSettings());
+  return c.json(await loadSettings(c));
 });
 
 agent.put("/settings", async (c) => {
   const parsed = agentSettingsInput.safeParse(await c.req.json());
   if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
   const v = parsed.data;
-  const op = await panelOperation();
+  const op = await panelOperation(c);
   const previous = await getAgentSettings(op);
   const fields = {
     systemPrompt: v.systemPrompt,
@@ -120,7 +115,7 @@ agent.put("/prompt", async (c) => {
   if (!parsed.success) return c.json({ error: parsed.error.issues }, 400);
   const { prompt, label } = parsed.data;
 
-  const previous = await loadSettings();
+  const previous = await loadSettings(c);
   if (!previous) {
     return c.json({ error: "agent_settings sin configurar" }, 409);
   }
@@ -155,7 +150,7 @@ agent.post("/prompt/versions/:id/restore", async (c) => {
   const row = await getPromptVersion(c.req.param("id"));
   if (!row) return c.json({ error: "not found" }, 404);
 
-  const previous = await loadSettings();
+  const previous = await loadSettings(c);
   if (!previous) {
     return c.json({ error: "agent_settings sin configurar" }, 409);
   }

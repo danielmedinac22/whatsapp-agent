@@ -10,12 +10,12 @@ import {
 import { dropiConnectionInput } from "@wa/shared";
 import { db } from "../db";
 import { logger } from "../lib/logger";
-import { panelOperation } from "@wa/db";
 import {
   getDropiConnection,
   invalidateDropiConnectionCache,
   upsertDropiConnection,
 } from "../dropi/config";
+import { panelOperation } from "../operations";
 import { enqueueDropiSyncNow, runDropiSync } from "../jobs/dropi-sync";
 import {
   confirmDropiOrderById,
@@ -27,7 +27,7 @@ import { DropiHttpError } from "../dropi/client";
 export const dropi = new Hono();
 
 dropi.get("/connection", async (c) => {
-  const op = await panelOperation().catch(() => null);
+  const op = await panelOperation(c).catch(() => null);
   if (!op) return c.json(null);
   const row = await getDropiConnection(op);
   if (!row) return c.json(null);
@@ -59,7 +59,7 @@ dropi.post("/connection/refresh", async (c) => {
     "../dropi/auth"
   );
   try {
-    const auth = await refreshDropiAuth(await panelOperation());
+    const auth = await refreshDropiAuth(await panelOperation(c));
     return c.json({ ok: true, userId: auth.userId });
   } catch (err) {
     if (err instanceof Dropi2FAPendingError) {
@@ -88,7 +88,7 @@ dropi.post("/connection/2fa/submit", async (c) => {
     );
   }
   const { submitDropi2FACode } = await import("../dropi/auth");
-  const result = await submitDropi2FACode(await panelOperation(), code);
+  const result = await submitDropi2FACode(await panelOperation(c), code);
   if (!result.ok) {
     return c.json({ ok: false, error: result.error }, 400);
   }
@@ -116,12 +116,12 @@ dropi.put("/connection", async (c) => {
     patch.adminPhone = v.adminPhone ?? null;
   }
   patch.connectedAt = new Date();
-  await upsertDropiConnection(await panelOperation(), patch);
+  await upsertDropiConnection(await panelOperation(c), patch);
   return c.json({ ok: true });
 });
 
 dropi.delete("/connection", async (c) => {
-  const op = await panelOperation();
+  const op = await panelOperation(c);
   await upsertDropiConnection(op, {
     email: null,
     password: null,

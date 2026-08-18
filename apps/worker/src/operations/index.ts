@@ -17,12 +17,15 @@ import { contacts, conversations, type OperationId } from "@wa/db";
 import { db } from "../db";
 
 export {
+  decidePanelOperation,
   getOperationById,
   getSingleActiveOperation,
   invalidateOperationsCache,
   listActiveOperations,
+  listOperations,
   requireOperationById,
   requireOperationOrSole,
+  requirePanelOperation,
   requireSoleActiveOperation,
   resolveOperationForContact,
   type Operation,
@@ -36,6 +39,12 @@ export {
   decideInboundOperation,
   resolveOperationIdByPhoneNumberId,
 } from "./resolve";
+export {
+  OPERATION_HEADER,
+  type HeaderCarrier,
+  panelOperation,
+  panelOperationId,
+} from "./panel";
 
 /** La operación que una conversación guarda, si ya tiene una. */
 export async function getConversationOperationId(

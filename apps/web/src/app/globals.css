@@ -56,21 +56,122 @@
 }
 
 @layer components {
-  .app-shell {
-    @apply grid min-h-screen grid-cols-1 lg:h-screen lg:grid-cols-[248px_1fr] lg:overflow-hidden;
+  /* ── El marco: riel de operaciones, columna de módulos, contenido ────────
+     El tinte (`--op*`) lo declara el layout sobre `.app-frame` y **solo lo
+     usan las dos barras**. El contenido conserva la paleta neutra: si el
+     acento siguiera al país, el verde dejaría de significar «confirmado».
+     Debajo de `lg` el marco cae a una columna y las barras se vuelven una
+     banda superior — ahí se pierde la placa del país, deuda anotada del
+     nivel 1 y fuera del alcance de este ticket. */
+
+  .app-frame {
+    @apply grid min-h-screen grid-cols-1 lg:h-screen lg:overflow-hidden;
   }
 
-  .app-sidebar {
+  .app-frame[data-bars="open"] {
+    @apply lg:grid-cols-[78px_216px_1fr];
+  }
+
+  .app-frame[data-bars="collapsed"] {
+    @apply lg:grid-cols-[46px_1fr];
+  }
+
+  .op-rail {
     background:
-      linear-gradient(180deg, rgba(12, 25, 34, 0.98), rgba(8, 18, 25, 0.98)),
-      var(--color-panel);
-    @apply relative flex flex-col border-b px-3 py-3 lg:h-screen lg:overflow-y-auto lg:border-b-0 lg:border-r lg:px-3 lg:py-4;
+      linear-gradient(180deg, var(--op-faint), transparent 40%),
+      linear-gradient(180deg, rgba(6, 14, 21, 0.98), rgba(4, 11, 17, 0.98));
+    border-color: var(--color-border-strong);
+    @apply flex flex-row items-center gap-2.5 overflow-x-auto border-b px-3 py-2.5 lg:h-screen lg:flex-col lg:overflow-x-visible lg:overflow-y-auto lg:border-b-0 lg:border-r lg:px-2.5 lg:py-3.5;
   }
 
-  .app-sidebar::after {
-    content: "";
-    background: linear-gradient(180deg, rgba(110, 231, 183, 0.08), transparent 55%);
-    @apply pointer-events-none absolute inset-x-0 top-0 h-24;
+  .op-rail.is-tight {
+    @apply gap-1.5 lg:px-[7px] lg:py-3;
+  }
+
+  .op-tile {
+    background: rgba(14, 30, 42, 0.7);
+    @apply relative flex h-14 w-14 flex-none flex-col items-center justify-center gap-1 rounded-[15px] border transition hover:border-[var(--color-border-strong)];
+  }
+
+  .op-tile.is-tight {
+    @apply h-8 w-8 gap-0 rounded-[10px];
+  }
+
+  .op-tile.is-dormant {
+    @apply border-dashed opacity-60;
+  }
+
+  .op-tile[aria-pressed="true"] {
+    border-color: var(--op);
+    background: var(--op-soft);
+    box-shadow: 0 0 0 1px var(--op-line), 0 8px 20px rgba(3, 10, 16, 0.5);
+    @apply opacity-100;
+  }
+
+  /* La bandera del país que no está activo va apagada: el color de la bandera
+     no compite con el tinte, que es el que dice dónde estás. */
+  .op-flag {
+    @apply inline-block flex-none rounded-[2px] border border-white/20 shadow-sm;
+    filter: saturate(0.2) brightness(0.55);
+    transition: filter 0.18s;
+  }
+
+  .op-tile[aria-pressed="true"] .op-flag,
+  .op-column-head .op-flag {
+    filter: none;
+  }
+
+  .op-tile-code {
+    color: var(--color-text-soft);
+    @apply text-[10px] font-bold tracking-wider;
+  }
+
+  .op-tile[aria-pressed="true"] .op-tile-code {
+    color: var(--op);
+  }
+
+  .op-rail-icon {
+    @apply flex h-[30px] w-8 flex-none items-center justify-center rounded-lg border border-transparent text-[var(--color-text-soft)] transition hover:border-[var(--color-border)] hover:text-[var(--color-text)];
+  }
+
+  .op-rail-icon[aria-current="page"] {
+    border-color: var(--op-line);
+    background: var(--op-soft);
+    color: var(--op);
+  }
+
+  .op-fold {
+    background: rgba(8, 19, 27, 0.7);
+    @apply flex h-6 w-6 flex-none items-center justify-center rounded-[7px] border text-[var(--color-text-soft)] transition hover:border-[var(--op-line)] hover:text-[var(--color-text)];
+  }
+
+  .op-column {
+    background:
+      linear-gradient(180deg, var(--op-soft), var(--op-faint) 38%, transparent 72%),
+      rgba(9, 20, 28, 0.86);
+    @apply flex flex-col border-b px-3 py-3 lg:h-screen lg:overflow-y-auto lg:border-b-0 lg:border-r lg:px-3 lg:py-4;
+  }
+
+  .op-column-head {
+    border-color: var(--op-line);
+    @apply mb-3 flex items-start gap-2.5 border-b px-0.5 pb-3;
+  }
+
+  .op-group-label {
+    color: var(--color-text-soft);
+    @apply text-[10px] font-semibold uppercase tracking-[0.1em];
+  }
+
+  .op-group.is-on .op-group-label {
+    color: var(--op);
+  }
+
+  .op-group-items {
+    @apply ml-2.5 flex flex-col gap-0.5 border-l border-[var(--color-border)] pl-2.5;
+  }
+
+  .op-group.is-on .op-group-items {
+    border-left-color: var(--op-line);
   }
 
   .app-main {
@@ -147,7 +248,13 @@
   }
 
   .app-nav-link {
-    @apply flex h-10 items-center gap-2 rounded-lg border border-transparent px-3 text-sm font-medium text-[var(--color-text-dim)] transition hover:border-[var(--color-border)] hover:bg-[rgba(18,35,48,0.72)] hover:text-[var(--color-text)];
+    @apply flex h-[34px] items-center gap-2 rounded-lg border border-transparent px-2.5 text-[13px] font-medium text-[var(--color-text-dim)] transition hover:border-[var(--color-border)] hover:bg-[rgba(18,35,48,0.72)] hover:text-[var(--color-text)];
+  }
+
+  .app-nav-link[aria-current="page"] {
+    border-color: var(--op-line);
+    background: var(--op-soft);
+    color: var(--color-text);
   }
 
   .app-table {

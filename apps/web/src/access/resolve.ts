@@ -77,13 +77,26 @@ export type Area = Module | "ambos" | "solo-admin";
  * nombre: `/templates` y `/agent` parecen genéricas y no lo son — todos los
  * tipos de plantilla que existen (`followup`, `remarketing`, `confirmation_ack`,
  * `dropi_*`) y toda la configuración de `agent_settings` son del agente que
- * confirma y acompaña la entrega. Lo de ventas todavía no existe: vive en
- * `sales_agent_settings`, `products` y `product_ads`, que la `0022` dejó vacías.
+ * confirma y acompaña la entrega. Lo de ventas vive en `sales_agent_settings`,
+ * `products` y `product_ads`, que la `0022` dejó vacías, y son las dos
+ * pantallas que la ola del 18-ago-2026 está construyendo: `/catalogo` y
+ * `/vendedor`, ya clasificadas abajo aunque sus páginas todavía no existan.
  */
 const AREAS: Readonly<Record<string, Area>> = {
   // ── Pantallas ──────────────────────────────────────────────────────────
   /** La bandeja. Hoy es una sola; el ticket 03 la parte en dos. */
   "/inbox": "ambos",
+  /**
+   * Las dos pantallas de ventas, cuyas páginas construyen otros worktrees de la
+   * ola. Van clasificadas desde ya porque **la ausencia cierra**: sin línea
+   * aquí, `resolveAccess` las manda a `ruta_sin_clasificar` y el menú no las
+   * ofrece a nadie con módulo — la pantalla existiría y nadie la vería.
+   *
+   * Son de ventas y no `ambos`: el catálogo es lo que Sebastián ofrece y la
+   * configuración del vendedor es su persona. Lo de confirmación no las toca.
+   */
+  "/catalogo": "ventas",
+  "/vendedor": "ventas",
   /** Plantillas de confirmación, seguimiento, remarketing y logística. */
   "/templates": "operaciones",
   /** Prompt, modelo y automatizaciones del agente que confirma. */

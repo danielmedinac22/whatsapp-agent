@@ -4,7 +4,7 @@
 
 **Blocked by:** 06 · 07
 
-**Status:** claimed — worktree `selector-operacion`, ola del 18-ago-2026
+**Status:** resolved — worktree `selector-operacion`, ola del 18-ago-2026
 
 Levantado el 18-ago-2026 desde el spec de pulido de UI, al construir los prototipos del grupo de conversaciones.
 
@@ -44,12 +44,12 @@ Por eso este ticket existe aparte y no como un remiendo del 06: **la red del con
 
 ## Criterios
 
-- [ ] Ninguna consulta de `queries.ts` devuelve filas de una operación distinta de la activa.
-- [ ] **Las escrituras por id verifican la pertenencia antes de escribir**, no solo al leer.
-- [ ] `shopify_orders` y `wa_templates` tienen `operation_id`, con backfill a Guatemala.
-- [ ] Existe una prueba, aunque sea una, que falle si alguien agrega una consulta sin filtro. Sin eso el punto ciego vuelve.
-- [ ] `pnpm -r typecheck` limpio y la suite del worker en verde.
-- [ ] **El comportamiento observable de Guatemala no cambia.** Con una sola operación activa, filtrar por ella devuelve exactamente las mismas filas que hoy.
+- [x] Ninguna consulta de `queries.ts` devuelve filas de una operación distinta de la activa.
+- [x] **Las escrituras por id verifican la pertenencia antes de escribir**, no solo al leer.
+- [x] `shopify_orders` y `wa_templates` tienen `operation_id`, con backfill a Guatemala. **Y `templates` también**: no la tenía, aunque este ticket decía que sí.
+- [x] Existe una prueba, aunque sea una, que falle si alguien agrega una consulta sin filtro. Sin eso el punto ciego vuelve.
+- [x] `pnpm -r typecheck` limpio y la suite del worker en verde.
+- [x] **El comportamiento observable de Guatemala no cambia.** Con una sola operación activa, filtrar por ella devuelve exactamente las mismas filas que hoy.
 
 ## No-regresión
 
@@ -108,3 +108,98 @@ Y la prueba que falla si alguien agrega una consulta sin filtro: sin ella el
 punto ciego vuelve, porque **el compilador no puede verlo** — una consulta con
 Drizzle no pasa por accesor y no hay parámetro que volver obligatorio. Esa es la
 razón por la que este ticket existe aparte del 06 y no como su remiendo.
+
+
+## Answer — lo construido (18-ago-2026, worktree `selector-operacion`)
+
+Las doce consultas reciben la operación **por parámetro** y acotan por ella. No
+la resuelven por dentro a propósito: una consulta que va a buscar sola sobre qué
+país trabaja esconde de qué depende, y son las pantallas las que tienen que poder
+decir «esta pantalla es de este país». Es el mismo mecanismo del contract del
+ticket 06, aplicado a lo que aquel no podía alcanzar.
+
+### El error del ticket: `templates` no tenía la columna
+
+Este ticket daba `templates` por resuelta —«ya tiene `operation_id`, solo agregás
+el `where`»— y **no la tenía**. Medido contra producción antes de escribir nada:
+nueve plantillas, ninguna columna de operación. Es la única corrección de fondo
+al enunciado y no es cosmética: de esas nueve cuelgan las seis referencias de
+plantilla de la configuración de agente, que desde el contract es **una por
+operación**. Sin la columna, la configuración colombiana solo puede apuntar a
+plantillas guatemaltecas, y lo que hay dentro de una plantilla es el texto que le
+sale al cliente.
+
+Así que la migración toca tres tablas, no dos. Y a `templates` además le cambia
+la regla de nombres únicos: antes el nombre era único a secas, con lo cual
+Colombia no podía tener su propia plantilla de «guía generada» —el alta chocaba
+contra la guatemalteca y la operación se quedaba sin plantilla, en silencio—.
+Ahora el nombre es único **dentro de cada operación**, que es el mismo movimiento
+que la migración anterior le hizo a los pedidos de logística.
+
+### Qué lleva la columna y qué no, y por qué
+
+Las dos tablas de plantillas la llevan **obligatoria**: quien las escribe siempre
+sabe de qué operación son. Los pedidos de la tienda la llevan **opcional**, por
+la misma razón por la que las conversaciones la tienen opcional desde el
+contract: el webhook de la tienda no puede saber de qué tienda viene un pedido
+hasta que exista la segunda, y volverla obligatoria convertiría «no sé de qué
+operación es» en «pierdo el pedido», sobre el camino por el que entran los que
+facturan.
+
+Eso obligó a tocar el receptor de pedidos, que no estaba en el reparto: si la
+columna nace y nadie la escribe, **cada pedido nuevo queda fuera de la pantalla
+de Pedidos desde el primer día**, con una sola operación. Ahora el pedido hereda
+la operación de la conversación de ese cliente, que la ingesta ya resolvió por el
+número que recibió el mensaje.
+
+### Las escrituras por id
+
+Es el criterio que más importa y quedó resuelto de la forma fuerte: la
+pertenencia viaja **dentro del `where` de la escritura**, no en una consulta
+previa. Entre leer y escribir, una fila puede cambiar de dueño; así no hay
+ventana.
+
+Y las tres dicen **si escribieron**. Cuando la fila no es de la operación activa,
+la pantalla recibe un «no existe» en vez de un «listo» sobre algo que no pasó —
+un acuse falso es la manera de que el error quede invisible justo donde tenía que
+verse. Verificado contra una base de ensayo con las dos operaciones vivas: pedir
+el historial, marcar confirmado y apagar el agente de una conversación del otro
+país devuelven «no existe» y **no escriben nada**; las mismas tres operaciones
+sobre una conversación propia funcionan igual que siempre.
+
+### La prueba que hace que el punto ciego no vuelva
+
+Es lo que más valor tiene a futuro y por eso se le dio dos vueltas.
+
+La primera versión miraba función por función: «si esta función toca una tabla
+con dueño, que nombre la operación». **Pasaba estando rota.** Se descubrió
+probándola contra el código con el filtro quitado a mano: la consulta del Inbox
+hace cuatro consultas, así que le bastaba acotar una para parecer sana — se le
+podía quitar el filtro a la lista entera sin que nadie se enterara.
+
+La versión que quedó mira **consulta por consulta**. Cada una responde por sí
+misma. Se verificó al revés, que es la única forma de saber que una red sirve:
+quitando el filtro del Inbox falla nombrándolo, y quitando la verificación de
+pertenencia de la escritura del modo agente también.
+
+Además, la lista de tablas con dueño **sale del esquema, no de una lista
+escrita a mano**. Una tabla nueva con operación entra sola a la vigilancia el día
+que alguien la agrega, que es exactamente cuando una lista a mano ya estaría
+vieja.
+
+Vigila dos archivos: las doce consultas y las escrituras de la pantalla de
+Plantillas, que no pasan por ahí y también reciben un id de un formulario.
+
+### Lo que se descartó
+
+- **Filtrar las plantillas de Meta por la cuenta de WhatsApp** en vez de por
+  operación. Funciona, pero obliga a ir a buscar la conexión para traducir; la
+  operación es lo que el panel tiene en la mano.
+- **Dejar que las filas sin operación aparezcan en los dos países.** Una fila que
+  no dice de quién es no es de nadie, y mostrarla en ambos lados es la mezcla que
+  este ticket prohíbe. Hoy no hay ninguna: cero en NULL en las 1.719
+  conversaciones y en los 1.712 pedidos.
+- **Arreglar de paso el número único de pedido de la tienda**, que con dos
+  tiendas puede colisionar. Es del ticket 08, que es el que trae la segunda
+  tienda; tocarlo acá solo podía introducir pedidos duplicados, y un pedido
+  duplicado es un mensaje duplicado al cliente.
