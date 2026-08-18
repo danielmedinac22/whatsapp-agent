@@ -18,6 +18,7 @@ import { events } from "./routes/events";
 import { agent } from "./routes/agent";
 import { shopify } from "./routes/shopify";
 import { shopifyConn } from "./routes/shopify-connection";
+import { catalogStore } from "./shopify/catalog-routes";
 import { dropi } from "./routes/dropi";
 import { kapsoAdmin, kapsoWebhook } from "./routes/kapso";
 import {
@@ -70,6 +71,8 @@ app.route("/api/wa", wa);
 app.route("/api/events", events);
 app.route("/api/agent", agent);
 app.route("/api/shopify", shopifyConn);
+// El catálogo del panel: lo único que necesita del worker es la tienda.
+app.route("/api/catalog", catalogStore);
 app.route("/api/dropi", dropi);
 app.route("/api/kapso", kapsoAdmin);
 

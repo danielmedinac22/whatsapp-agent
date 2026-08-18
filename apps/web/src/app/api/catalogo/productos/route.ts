@@ -1,0 +1,55 @@
+import { auth } from "@/auth";
+import { connectShopifyProduct, createNativeProduct, panelOperation } from "@wa/db";
+
+/**
+ * Alta de producto, por los dos caminos que el ticket pide.
+ *
+ * `nativo` guarda nombre y descripción porque no hay de dónde leerlos.
+ * `tienda` guarda **solo el identificador**: copiar el título acá sería la
+ * desincronización silenciosa que el criterio del ticket prohíbe.
+ *
+ * La operación la resuelve `panelOperation()` y no el cuerpo de la petición: de
+ * dónde es el producto no lo decide el navegador.
+ */
+export async function POST(req: Request) {
+  const session = await auth();
+  if (!session) return new Response("unauthorized", { status: 401 });
+
+  const body = (await req.json()) as {
+    source?: string;
+    name?: string;
+    description?: string | null;
+    shopifyProductId?: string;
+  };
+
+  const op = await panelOperation();
+  try {
+    if (body.source === "shopify") {
+      if (!body.shopifyProductId?.trim()) {
+        return Response.json(
+          { error: "falta el producto de la tienda" },
+          { status: 400 },
+        );
+      }
+      const product = await connectShopifyProduct(op, body.shopifyProductId);
+      return Response.json({ ok: true, id: product.id });
+    }
+
+    if (!body.name?.trim()) {
+      return Response.json(
+        { error: "un producto creado en el panel necesita nombre" },
+        { status: 400 },
+      );
+    }
+    const product = await createNativeProduct(op, {
+      name: body.name,
+      description: body.description ?? null,
+    });
+    return Response.json({ ok: true, id: product.id });
+  } catch (err) {
+    return Response.json(
+      { error: err instanceof Error ? err.message : String(err) },
+      { status: 400 },
+    );
+  }
+}

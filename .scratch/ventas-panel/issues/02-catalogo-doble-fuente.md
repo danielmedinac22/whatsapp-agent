@@ -4,14 +4,14 @@
 
 **Blocked by:** ventas-ingesta-reconocimiento 03 · Catálogo y mapeo anuncio→productos
 
-**Status:** claimed — worktree `catalogo`, ola del 18-ago-2026
+**Status:** en curso — worktree `catalogo`, ola del 18-ago-2026 · rama `danielmedinac22/catalogo`. **No se cierra en esta ola**: faltan los archivos enviables, que necesitan la migración `0025`.
 
-- [ ] El admin puede buscar y conectar un producto existente de la tienda.
-- [ ] **Un producto conectado lee su información de la tienda en tiempo de uso, no la copia** — editarlo allá se refleja acá, sin desincronización silenciosa.
-- [ ] El admin puede crear un producto nativo con nombre, descripción, imágenes y adjuntos.
-- [ ] El panel no escribe sobre los productos de la tienda: los lee.
+- [x] El admin puede buscar y conectar un producto existente de la tienda. *(construido; sin verificar contra datos reales — `shopify_connection` está vacía)*
+- [x] **Un producto conectado lee su información de la tienda en tiempo de uso, no la copia** — editarlo allá se refleja acá, sin desincronización silenciosa.
+- [ ] El admin puede crear un producto nativo con nombre, descripción, imágenes y adjuntos. *(nombre y descripción, sí; imágenes y adjuntos esperan la `0025`)*
+- [x] El panel no escribe sobre los productos de la tienda: los lee.
 - [ ] **Un video que excede el límite de tamaño de la API de WhatsApp se rechaza al subir**, no al enviar, para que el problema aparezca cuando el admin puede resolverlo.
-- [ ] La lista de productos es navegable con el catálogo real del cliente, que hoy son unas decenas.
+- [x] La lista de productos es navegable con el catálogo real del cliente, que hoy son unas decenas.
 
 ## Answer — dónde viven los binarios, y qué entra en esta ola (18-ago-2026)
 
@@ -89,3 +89,60 @@ Dos cosas de ese nivel que son criterio y no adorno:
 2. **Un producto sin anuncios no es «incompleto»: es una fuga de
    reconocimiento**, y la pantalla lo dice con su consecuencia. Es la única
    parte del panel que explica por qué existe registrar anuncios.
+
+## Answer — lo construido y lo que falta (18-ago-2026, worktree `catalogo`)
+
+### Lo que ya se puede usar
+
+`/catalogo` existe: tabla densa con el origen como columna, buscar por nombre o
+por id de anuncio, filtrar con chips removibles, ordenar, columnas conmutables,
+total y estado del filtro al pie, y selección múltiple. La ficha muestra la
+descripción en texto plano con el aviso **«el panel no escribe sobre la tienda»**
+cuando el producto vive en Shopify, y editable cuando es del panel.
+
+**Un producto conectado no copia nada**: se guarda su identificador y su nombre,
+descripción y precio se leen de la tienda en cada carga de la pantalla. Es lo
+que hace verdadero el criterio de «editarlo allá se refleja acá»: no hay copia
+que pueda quedar vieja.
+
+Se agregó el código que faltaba en `apps/worker/src/shopify/admin.ts`:
+`searchStoreProducts` —buscar por texto libre, que es lo que permite conectar un
+producto sin saberse el id de memoria— y `readStoreProducts`, que devuelve el
+**estado de la tienda** y no solo una lista. Esa diferencia importa: con una
+lista vacía, «no hay tienda conectada» y «la tienda no tiene ese producto» se
+ven igual, y se arreglan distinto.
+
+### El estado que el operador va a ver primero, y es honesto
+
+`shopify_connection` sigue con **0 filas**. Buscar en la tienda responde «la
+tienda no está conectada», dice dónde se configura (Conexión → Shopify), aclara
+que las credenciales las trae el dueño de la tienda y **ofrece la salida**: se
+puede crear el producto en el panel y registrarle sus anuncios, que el
+reconocimiento funciona igual. No es un error crudo ni una pantalla vacía.
+
+El camino del producto del panel se verificó de punta a punta contra una base de
+ensayo con el catálogo real cargado. El camino conectado **está construido y no
+se pudo verificar contra datos reales**: la afirmación más riesgosa de este
+reporte es que la búsqueda en Shopify funciona, porque nunca corrió contra una
+tienda. Lo que sí se verificó es que su ausencia no rompe la pantalla.
+
+### Por qué este ticket queda abierto
+
+Falta **subir imágenes y adjuntos, y el interruptor de enviable por archivo**.
+Necesitan la tabla `product_media`, que es migración, y esta ola tenía una sola
+migración asignada —la `0024`, de otro worktree—: dos ramas generando en
+paralelo reescriben el mismo journal y chocan siempre. Va con la `0025`.
+
+Con eso llega también el rechazo por tamaño al subir (el criterio del video de
+27 MB), que sale gratis de validar el `size` en la carga.
+
+### Lo que quien siga tiene que saber
+
+- La entrada de menú de `/catalogo` y su clasificación de permisos son del
+  worktree `selector-operacion`. Hoy los tres usuarios de producción son `admin`
+  y alcanzan la pantalla; **cuando exista un usuario con rol `sales`, `/catalogo`
+  y `/api/catalogo` tienen que entrar en `AREAS` de `apps/web/src/access/resolve.ts`
+  como `"ventas"`**, o el borde los rebota por «ruta sin clasificar».
+- Buscar, filtrar y ordenar corren en el navegador, no en la URL —al revés que
+  la tabla de pedidos—: son decenas de filas y traerlas todas es correcto. Si el
+  catálogo creciera a miles, eso es lo que cambia.

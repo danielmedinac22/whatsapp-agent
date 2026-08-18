@@ -137,27 +137,50 @@ async function adminGraphQL<T>(
   return json.data;
 }
 
+/**
+ * Los campos de un producto, en un solo lugar.
+ *
+ * Los comparten la lectura por id —la que alimenta el prompt del agente— y la
+ * búsqueda del catálogo del panel. Dos listas de campos separadas es cómo se
+ * llega a que el panel muestre un producto sin precio que el agente sí ve.
+ */
+const PRODUCT_FIELDS = /* GraphQL */ `
+  id
+  title
+  handle
+  descriptionHtml
+  priceRangeV2 {
+    minVariantPrice { amount currencyCode }
+    maxVariantPrice { amount currencyCode }
+  }
+  variants(first: 20) {
+    edges {
+      node {
+        title
+        price
+        availableForSale
+        sku
+      }
+    }
+  }
+`;
+
 const PRODUCT_QUERY = /* GraphQL */ `
   query GetProducts($ids: [ID!]!) {
     nodes(ids: $ids) {
       ... on Product {
-        id
-        title
-        handle
-        descriptionHtml
-        priceRangeV2 {
-          minVariantPrice { amount currencyCode }
-          maxVariantPrice { amount currencyCode }
-        }
-        variants(first: 20) {
-          edges {
-            node {
-              title
-              price
-              availableForSale
-              sku
-            }
-          }
+        ${PRODUCT_FIELDS}
+      }
+    }
+  }
+`;
+
+const PRODUCT_SEARCH_QUERY = /* GraphQL */ `
+  query SearchProducts($query: String, $first: Int!) {
+    products(first: $first, query: $query, sortKey: TITLE) {
+      edges {
+        node {
+          ${PRODUCT_FIELDS}
         }
       }
     }
@@ -266,6 +289,103 @@ export async function getProductsByIds(
     );
     return cached;
   }
+}
+
+/**
+ * En qué estado está la tienda de una operación cuando el panel le pregunta.
+ *
+ * **Es un valor, no una excepción, a propósito.** Hoy `shopify_connection` está
+ * vacía en producción: «la tienda no está conectada» no es un caso raro sino el
+ * primero que el admin va a ver, y tiene que llegar a la pantalla como un
+ * estado que se puede explicar —«conectala en Conexión»— y no como un error
+ * crudo de red o un `500`. `unreachable` es el otro: la conexión existe pero la
+ * tienda no contestó, que se resuelve distinto.
+ */
+export type StoreRead<T> =
+  | { store: "not_connected" }
+  | { store: "unreachable"; error: string }
+  | { store: "connected"; shopDomain: string; result: T };
+
+/**
+ * Busca productos en la tienda de una operación, por texto libre.
+ *
+ * Es el código que faltaba: `getProductsByIds` sabe leer productos que alguien
+ * ya identificó, y `pingShopify` sabe si la tienda contesta, pero **no había
+ * forma de listar ni de buscar** — o sea, no había forma de que el admin
+ * conectara un producto sin conocer su id de memoria.
+ *
+ * Sin término devuelve el principio del catálogo ordenado por título, que es lo
+ * que hace útil abrir el buscador vacío. El resultado **no se cachea**: la
+ * caché de `getProductsByIds` es por id y sirve al agente, que pide lo mismo
+ * muchas veces; una búsqueda es de una vez y cachearla haría que un producto
+ * recién creado en la tienda no apareciera.
+ */
+export async function searchStoreProducts(
+  op: Operation,
+  term: string,
+  limit = 25,
+): Promise<StoreRead<ShopifyProduct[]>> {
+  const conn = await getShopifyConnection(op);
+  if (!conn?.shopDomain || !conn?.adminAccessToken) {
+    return { store: "not_connected" };
+  }
+
+  // La sintaxis de búsqueda de Shopify usa comillas dobles para las frases: un
+  // término con comillas rompería la consulta, así que se escapan. El `*` final
+  // hace que "revita" encuentre REVITALHAIR, que es como se busca de verdad.
+  const clean = term.trim().replace(/["\\]/g, " ").trim();
+  const query = clean ? `title:*${clean}* OR ${clean}` : null;
+
+  try {
+    const data = await adminGraphQL<{
+      products: { edges: Array<{ node: ProductGqlNode }> };
+    }>(conn, {
+      query: PRODUCT_SEARCH_QUERY,
+      variables: { query, first: Math.min(Math.max(limit, 1), 100) },
+    });
+    const found = data.products.edges
+      .map((e) => toProduct(e.node))
+      .filter((p): p is ShopifyProduct => Boolean(p));
+    return {
+      store: "connected",
+      shopDomain: conn.shopDomain,
+      result: found,
+    };
+  } catch (err) {
+    logger.warn(
+      { err, operation: op.countryCode },
+      "shopify admin searchStoreProducts failed",
+    );
+    return {
+      store: "unreachable",
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+/**
+ * Los productos conectados del catálogo, leídos de la tienda **en tiempo de
+ * uso**.
+ *
+ * Es {@link getProductsByIds} con el estado de la tienda a la vista: el panel
+ * necesita distinguir «no hay tienda conectada» de «la tienda no tiene ese
+ * producto», porque la primera se arregla conectando y la segunda significa que
+ * alguien lo borró allá y el catálogo quedó apuntando al vacío. Con una lista
+ * vacía —lo que devuelve el hermano— las dos se ven igual.
+ *
+ * Sigue sin copiar nada a la base: eso es lo que hace que editar el producto en
+ * la tienda se refleje acá sin desincronización silenciosa.
+ */
+export async function readStoreProducts(
+  op: Operation,
+  ids: Array<string | number>,
+): Promise<StoreRead<ShopifyProduct[]>> {
+  const conn = await getShopifyConnection(op);
+  if (!conn?.shopDomain || !conn?.adminAccessToken) {
+    return { store: "not_connected" };
+  }
+  const found = await getProductsByIds(op, ids);
+  return { store: "connected", shopDomain: conn.shopDomain, result: found };
 }
 
 export async function pingShopify(
