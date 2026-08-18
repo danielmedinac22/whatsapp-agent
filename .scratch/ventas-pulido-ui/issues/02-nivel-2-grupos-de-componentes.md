@@ -4,14 +4,14 @@
 
 **Blocked by:** 01
 
-**Status:** in-progress — worktree `grill-nivel-1`, sesión con el usuario, 17-ago-2026
+**Status:** resolved — worktree `grill-nivel-1`, sesión con el usuario, 17/18-ago-2026. Seis grupos cerrados.
 
-- [ ] Cinco variantes por grupo, en el archivo vivo que se actualiza en sitio.
+- [x] Cinco variantes por grupo, en el archivo vivo que se actualiza en sitio.
 - [x] El catálogo se muestra vacío y cargado, y con productos de ambos orígenes.
 - [x] La configuración del vendedor separa visualmente lo que tiene consecuencia —el límite de descuento— de lo que es tono.
 - [x] Las conversaciones se muestran con casos normales, ambiguos y escalados.
 - [x] La vista de ventas se siente hermana de la de confirmaciones, no una aplicación distinta.
-- [ ] Veredicto por grupo, registrado con su razón.
+- [x] Veredicto por grupo, registrado con su razón.
 
 ### Estado por grupo
 
@@ -22,7 +22,7 @@
 | Ficha de cliente y etapas del lead | **cerrado** — grupo agregado el 17-ago-2026 |
 | Catálogo | **cerrado** (ver abajo) |
 | Configuración del vendedor | **cerrado** (ver abajo) |
-| Tablero de pipeline | pendiente — **último grupo**, ver más abajo |
+| Tablero de pipeline | **cerrado** (ver abajo) |
 
 ### Grupo agregado: la ficha de cliente y las etapas
 
@@ -64,6 +64,46 @@ Quedan los dos, con trabajos distintos:
 - **La pestaña dice CÓMO**: el nivel de la cascada que resolvió, y en el caso ambiguo los nombres candidatos que el matcher no pudo separar. Eso el evento no lo puede contar, y hoy no se enseña en ninguna pantalla.
 
 Es el mejor lugar del panel para el problema real de Vorare: los cuatro SKUs REVITALHAIR casi homónimos aparecen ahí, listados, con el botón que los desambigua para siempre.
+
+## Answer · Tablero del recorrido
+
+**Tablero de columnas por etapa, con la caída entre columnas.** Se descartaron el embudo, la lista con bandas, los carriles por país y el detector de estancamiento.
+
+### El veredicto y su razón
+
+> «Columnas por claridad.»
+
+Y sobre mostrar la conversión entre etapas: **«sí podemos mostrar»**. Se aplicó el principio que Daniel fijó en el grupo de la ficha —*«si tenemos información organizada mostrémosla»*—, así que van **los cinco porcentajes con el peor destacado en rojo**, no solo el peor.
+
+### Lo que este tablero no es
+
+Tres cosas lo separan de un CRM normal, y quien construya no debería importarlas de uno:
+
+1. **Las seis etapas son derivadas.** Se calculan del reconocimiento, del pedido y de la confirmación. **Nadie arrastra tarjetas** — igual que el Salesbot de Kommo, que mueve el lead solo. Un tablero con drag mentiría sobre quién las mueve, así que la pantalla lo dice explícitamente arriba en vez de dejar que alguien lo intente.
+2. **No reparte trabajo.** Vorare es un operador con dos agentes automáticos; el reparto lo hace el ruteo. Las columnas no son bandejas de personas.
+3. **Cada columna sigue siendo una lista de leads accionables**, no un gráfico. El spec excluye «reportería y analítica de ventas», y esa exclusión se respeta manteniendo el tablero operativo.
+
+### El hallazgo que produjo el prototipo
+
+Con los volúmenes reales, **el 88,4% que la operación celebra no es donde está el problema**:
+
+| Paso | Conversión | Leads perdidos |
+|---|---|---|
+| Anuncio → Reconocido | 86% | 49 |
+| Reconocido → Conversando | 74% | 77 |
+| **Conversando → Pedido** | **60%** | **86** |
+| Pedido → Confirmado | 88% | 15 |
+| Confirmado → Entregado | 87% | 15 |
+
+De 340 clics salen 98 entregas. **La caída grande está en Conversando → Pedido**, donde se pierden 86 leads — casi seis veces los 15 que se pierden en la confirmación, que es la métrica que hoy se mira. Nadie lo veía porque el recorrido vive partido en tres pantallas.
+
+### Aplazado, no descartado
+
+**Los carriles por operación** (etapas × Guatemala/Colombia) se difieren hasta que Colombia facture. Hoy su fila está vacía y diseñarla ahora sería diseñar contra un futuro que no existe; el riel del nivel 1 ya resuelve mirar un país a la vez. Cuando comparar los dos sea una necesidad real, se diseña con datos reales.
+
+### Referencia visual
+
+`prototipos/nivel-2-tablero.PROTOTIPO.html`. La variante 1 es la decidida; B–E quedan como registro.
 
 ## Answer · Configuración del vendedor
 
