@@ -1,0 +1,858 @@
+<title>Encuadre del Panel de Ventas</title>
+
+<!--
+  PROTOTIPO DESECHABLE — no es código de producción, no se integra.
+
+  RONDA 3 · Nivel 1. Ya está decidido: marco teñido en la BARRA (modelo
+  Slack, no el borde de AWS), riel de operaciones, el número de teléfono
+  junto al color, violeta Guatemala / cian Colombia.
+
+  Lo que esta ronda decide: **qué sobrevive cuando las barras se colapsan.**
+  Daniel pidió que sean colapsables — 78px de riel + 216px de columna son
+  294px permanentes de cromo. Pero el tinte VIVE en las barras: colapsarlas
+  apaga el indicador, y justo en el modo donde más rato se trabaja.
+
+  Las cinco variantes son cinco respuestas a esa pregunta. El estado
+  expandido es idéntico en todas — la comparación es el estado colapsado.
+
+  Ronda 1 (cinco encuadres): 2080fe6 · Ronda 2 (alcance del tinte): d34ecbc
+-->
+
+<style>
+  :root {
+    --bg: #071119;
+    --panel: rgba(10, 24, 34, 0.82);
+    --panel-2: rgba(18, 35, 48, 0.9);
+    --border: rgba(157, 187, 210, 0.16);
+    --border-strong: rgba(157, 187, 210, 0.28);
+    --text: #eff7fb;
+    --text-dim: #99adbc;
+    --text-soft: #6f8798;
+    --accent: #6ee7b7;
+    --highlight: #f4c16d;
+    --danger: #f87171;
+    --shadow-panel: 0 14px 42px rgba(3, 10, 16, 0.32);
+    --font: "Avenir Next", "Segoe UI", "Helvetica Neue", system-ui, sans-serif;
+
+    /* La operación activa. Nunca se usa para nada semántico: la menta
+       sigue significando «correcto» y el ámbar «atención», en los dos países. */
+    --op: #a78bfa;
+    --op-line: rgba(167, 139, 250, .45);
+    --op-soft: rgba(167, 139, 250, .13);
+    --op-faint: rgba(167, 139, 250, .07);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0; min-height: 100vh; color: var(--text);
+    background:
+      linear-gradient(180deg, rgba(244,193,109,.03), transparent 28%),
+      linear-gradient(180deg, #09131c 0%, #071119 45%, #050d14 100%);
+    background-attachment: fixed;
+    font-family: var(--font); font-size: 14px; -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3, h4 { margin: 0; font-weight: 600; }
+  p { margin: 0; }
+  button { font-family: inherit; font-size: inherit; color: inherit; cursor: pointer; }
+  table { border-collapse: collapse; width: 100%; }
+  :focus-visible { outline: 2px solid var(--op); outline-offset: 2px; border-radius: 4px; }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; } }
+
+  .flag { display: inline-block; flex: none; width: 22px; height: 15px; border-radius: 2px; border: 1px solid rgba(255,255,255,.18); box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+  .flag-GT { background: linear-gradient(90deg, #4997d0 0 33.3%, #fff 33.3% 66.6%, #4997d0 66.6%); }
+  .flag-CO { background: linear-gradient(180deg, #fcd116 0 50%, #003893 50% 75%, #ce1126 75%); }
+  .flag-lg { width: 32px; height: 22px; border-radius: 3px; }
+  .flag-sm { width: 18px; height: 12px; }
+
+  /* ================= piezas compartidas del mock ================= */
+  .card { background: var(--panel); box-shadow: var(--shadow-panel); backdrop-filter: blur(18px); border: 1px solid var(--border); border-radius: 10px; }
+  .card-muted { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; }
+  .eyebrow { color: var(--highlight); font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: .09em; }
+  .muted { color: var(--text-dim); }
+  .soft { color: var(--text-soft); }
+  .pill { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; font-size: 11px; font-weight: 500; white-space: nowrap; }
+  .pill-accent { color: var(--accent); border-color: rgba(110,231,183,.35); background: rgba(110,231,183,.08); }
+  .pill-warn { color: var(--highlight); border-color: rgba(244,193,109,.35); background: rgba(244,193,109,.08); }
+  .pill-danger { color: var(--danger); border-color: rgba(248,113,113,.35); background: rgba(248,113,113,.08); }
+  .pill-quiet { color: var(--text-soft); }
+  .dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+  .mocktable { font-size: 13px; }
+  .mocktable thead th { text-align: left; font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: .08em; color: var(--text-soft); padding: 0 12px 8px; }
+  .mocktable td { padding: 11px 12px; vertical-align: middle; border-top: 1px solid var(--border); }
+  .num { font-variant-numeric: tabular-nums; }
+  .prodname { font-weight: 500; letter-spacing: -.01em; }
+  .empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 56px 24px; text-align: center; }
+  .empty-mark { width: 44px; height: 44px; border-radius: 10px; border: 1px dashed var(--border-strong); display: grid; place-items: center; color: var(--text-soft); }
+
+  .navlink { display: flex; align-items: center; gap: 9px; height: 34px; padding: 0 10px; border-radius: 8px; border: 1px solid transparent; color: var(--text-dim); font-size: 13px; font-weight: 500; background: none; width: 100%; text-align: left; transition: background .14s, color .14s, border-color .14s; }
+  .navlink:hover { background: rgba(255,255,255,.045); color: var(--text); }
+  .navlink[aria-current="page"] { background: var(--op-soft); border-color: var(--op-line); color: var(--text); }
+  .navlink .ico { width: 15px; text-align: center; opacity: .7; font-size: 12px; }
+  .grouplabel { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .1em; color: var(--text-soft); }
+
+  .page { padding: 22px 26px 60px; max-width: 1180px; margin: 0 auto; width: 100%; }
+  .page-head { display: flex; flex-direction: column; gap: 5px; margin-bottom: 20px; }
+  .page-title { font-size: 21px; letter-spacing: -.015em; }
+  .page-sub { color: var(--text-dim); font-size: 13px; max-width: 60ch; line-height: 1.5; }
+  .statgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 18px; }
+  .stat { padding: 12px 14px; }
+  .stat-k { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-soft); }
+  .stat-v { font-size: 19px; font-weight: 600; margin-top: 4px; letter-spacing: -.02em; }
+  .convrow { display: grid; grid-template-columns: 1fr auto; gap: 4px 14px; padding: 13px 14px; border-top: 1px solid var(--border); align-items: start; }
+  .convrow:first-of-type { border-top: none; }
+  .convrow.is-open { background: rgba(110,231,183,.05); box-shadow: inset 2px 0 0 var(--accent); }
+  .convrow.is-open.amb { background: rgba(244,193,109,.06); box-shadow: inset 2px 0 0 var(--highlight); }
+  .convrow.is-open.esc { background: rgba(248,113,113,.06); box-shadow: inset 2px 0 0 var(--danger); }
+  .convmeta { grid-column: 1 / -1; font-size: 12px; color: var(--text-soft); display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+  @keyframes ctxin { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+  .ctx-anim { animation: ctxin .3s cubic-bezier(.22,1,.36,1); }
+  @keyframes slidein { from { opacity: .25; transform: translateX(16px); } to { opacity: 1; transform: none; } }
+
+  /* ================= ARMAZÓN =================
+     Expandido es idéntico en las cinco. Lo que se compara es el colapso.
+     ============================================ */
+  .shell { display: grid; min-height: 100vh; }
+  .shell .main, .shell .col { animation: slidein .3s cubic-bezier(.22,1,.36,1); }
+
+  .rail {
+    background: linear-gradient(180deg, var(--op-faint), transparent 40%), linear-gradient(180deg, rgba(6,14,21,.98), rgba(4,11,17,.98));
+    border-right: 1px solid var(--border-strong);
+    padding: 14px 11px; display: flex; flex-direction: column; gap: 10px; align-items: center;
+  }
+  .tile { width: 56px; height: 56px; border-radius: 15px; border: 1px solid var(--border); background: rgba(14,30,42,.7); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; position: relative; transition: all .18s cubic-bezier(.22,1,.36,1); }
+  .tile .flag { filter: saturate(.2) brightness(.55); transition: filter .18s; }
+  .tile-code { font-size: 10px; font-weight: 700; letter-spacing: .06em; color: var(--text-soft); transition: color .18s; }
+  .tile:hover { border-color: var(--border-strong); transform: translateY(-1px); }
+  .tile[aria-pressed="true"] { border-color: var(--op); background: var(--op-soft); box-shadow: 0 0 0 1px var(--op-line), 0 8px 20px rgba(3,10,16,.5); }
+  .tile[aria-pressed="true"] .flag { filter: none; }
+  .tile[aria-pressed="true"] .tile-code { color: var(--op); }
+  .tile.dormant { border-style: dashed; opacity: .6; }
+  .tile[aria-pressed="true"]::after { content: ""; position: absolute; right: -12px; top: 50%; transform: translateY(-50%); width: 12px; height: 26px; background: var(--op-soft); border: 1px solid var(--op); border-left: none; border-radius: 0 6px 6px 0; }
+  /* Riel comprimido (variante 5) */
+  .rail.tight { padding: 12px 7px; gap: 7px; }
+  .rail.tight .tile { width: 32px; height: 32px; border-radius: 10px; gap: 0; }
+  .rail.tight .tile .flag { width: 18px; height: 12px; }
+  .rail.tight .tile-code { display: none; }
+  .rail.tight .tile[aria-pressed="true"]::after { display: none; }
+
+  .col {
+    border-right: 1px solid var(--border);
+    background: linear-gradient(180deg, var(--op-soft), var(--op-faint) 38%, transparent 72%), rgba(9,20,28,.86);
+    padding: 15px 12px; display: flex; flex-direction: column; overflow: hidden;
+  }
+  .col-head { display: flex; align-items: flex-start; gap: 10px; padding: 0 2px 12px; margin-bottom: 12px; border-bottom: 1px solid var(--op-line); }
+  .col-name { display: block; font-size: 14px; font-weight: 600; letter-spacing: -.01em; }
+  .col-sub { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; margin-top: 3px; color: var(--text-soft); }
+  /* El número junto al color: el dato que hace el error irreversible. */
+  .col-tel { display: block; font-size: 11.5px; font-weight: 600; color: var(--op); margin-top: 5px; font-variant-numeric: tabular-nums; }
+  .col-tel.off { color: var(--highlight); }
+
+  .group { margin-bottom: 13px; }
+  .group-head { display: flex; align-items: baseline; gap: 7px; padding: 0 10px 6px; }
+  .group.on .group-head .grouplabel { color: var(--op); }
+  .group-items { display: flex; flex-direction: column; gap: 2px; padding-left: 10px; margin-left: 9px; border-left: 1px solid var(--border); }
+  .group.on .group-items { border-left-color: var(--op-line); }
+  .colfoot { margin-top: auto; padding-top: 14px; border-top: 1px solid var(--border); }
+  .main { min-width: 0; }
+
+  /* El control de plegado, común a las cinco. */
+  .fold {
+    flex: none; width: 24px; height: 24px; border-radius: 7px;
+    border: 1px solid var(--border); background: rgba(8,19,27,.7);
+    color: var(--text-soft); font-size: 12px; line-height: 1;
+    display: grid; place-items: center; margin-left: auto;
+  }
+  .fold:hover { color: var(--text); border-color: var(--op-line); }
+
+  /* ---- C2 · Filo de color: todo colapsa, queda una línea ---- */
+  .edge-stripe { position: fixed; left: 0; top: 0; bottom: 0; width: 5px; background: var(--op); z-index: 45; }
+  .edge-open {
+    position: fixed; left: 13px; top: 14px; z-index: 46;
+    display: flex; align-items: center; gap: 7px;
+    padding: 6px 10px; border-radius: 9px;
+    border: 1px solid var(--op-line); background: rgba(10,22,31,.95);
+    font-size: 12px; font-weight: 600; color: var(--text);
+  }
+  .edge-open:hover { border-color: var(--op); }
+
+  /* ---- C3 · Tira de iconos teñida ---- */
+  .strip {
+    background: linear-gradient(180deg, var(--op-soft), var(--op-faint) 45%, transparent 80%), rgba(9,20,28,.9);
+    border-right: 1px solid var(--op-line);
+    padding: 13px 8px; display: flex; flex-direction: column; align-items: center; gap: 7px;
+  }
+  .strip-flag { width: 40px; height: 40px; border-radius: 12px; border: 1px solid var(--op); background: var(--op-soft); display: grid; place-items: center; margin-bottom: 6px; }
+  .strip-ico {
+    width: 38px; height: 36px; border-radius: 9px; border: 1px solid transparent;
+    background: none; color: var(--text-soft); font-size: 14px; display: grid; place-items: center;
+  }
+  .strip-ico:hover { background: rgba(255,255,255,.05); color: var(--text); }
+  .strip-ico[aria-current="page"] { background: var(--op-soft); border-color: var(--op-line); color: var(--op); }
+
+  /* ---- C4 · Migra arriba: el indicador se muda al borde ---- */
+  .top-edge { position: fixed; top: 0; left: 0; right: 0; height: 4px; background: var(--op); z-index: 50; }
+  .top-chip {
+    position: fixed; top: 4px; left: 0; z-index: 50;
+    display: flex; align-items: center; gap: 8px;
+    padding: 5px 13px 6px; border-radius: 0 0 9px 0;
+    background: var(--op); color: #06121b; font-size: 12px; font-weight: 700;
+  }
+  .top-open {
+    position: fixed; top: 8px; left: 172px; z-index: 50;
+    padding: 5px 11px; border-radius: 8px;
+    border: 1px solid var(--border-strong); background: rgba(10,22,31,.92);
+    font-size: 12px; color: var(--text-dim);
+  }
+  .top-open:hover { color: var(--text); border-color: var(--op-line); }
+  [data-c="c4"][data-bars="collapsed"] .page { padding-top: 52px; }
+
+  /* ================= EL INSTRUMENTO ================= */
+  #picker { position: fixed; right: 16px; bottom: 16px; z-index: 9999; width: 288px; background: #16181c; border: 1px solid #33373f; border-radius: 12px; box-shadow: 0 24px 60px rgba(0,0,0,.68); font-size: 12px; color: #d6d9de; user-select: none; overflow: hidden; }
+  #picker.is-min .pk-body { display: none; }
+  .pk-head { display: flex; align-items: center; gap: 9px; padding: 9px 11px; background: #1e2127; border-bottom: 1px solid #33373f; cursor: grab; }
+  .pk-head:active { cursor: grabbing; }
+  .pk-grip { color: #6b7280; letter-spacing: 2px; font-size: 11px; }
+  .pk-title { font-size: 10px; text-transform: uppercase; letter-spacing: .12em; color: #8b919c; font-weight: 600; }
+  .pk-min { margin-left: auto; background: none; border: none; color: #8b919c; padding: 2px 5px; border-radius: 4px; }
+  .pk-min:hover { background: #2b2f36; color: #d6d9de; }
+  .pk-body { padding: 10px; display: flex; flex-direction: column; gap: 9px; }
+  .pk-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+  .pk-variant { display: flex; align-items: center; gap: 8px; }
+  .pk-arrow { width: 28px; height: 30px; flex: none; border-radius: 7px; border: 1px solid #3a3f47; background: #22252b; color: #b8bdc6; font-size: 13px; line-height: 1; }
+  .pk-arrow:hover { background: #2c3037; color: #fff; }
+  .pk-vname { flex: 1; min-width: 0; text-align: center; }
+  .pk-vnum { font-size: 9px; color: #7c828d; letter-spacing: .12em; text-transform: uppercase; }
+  .pk-vlabel { font-size: 12.5px; font-weight: 600; color: #f0f2f5; margin-top: 1px; }
+  .pk-vtag { font-size: 9.5px; color: #7c828d; margin-top: 2px; line-height: 1.3; }
+  .pk-set { display: flex; flex-direction: column; gap: 5px; }
+  .pk-legend { font-size: 9px; text-transform: uppercase; letter-spacing: .11em; color: #7c828d; font-weight: 600; }
+  .pk-opts { display: flex; gap: 4px; flex-wrap: wrap; }
+  .pk-opt { flex: 1 1 0; min-width: 0; padding: 6px 8px; border-radius: 6px; border: 1px solid #3a3f47; background: #22252b; color: #9aa0aa; font-size: 11px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pk-opt:hover { background: #2c3037; color: #e3e6ea; }
+  .pk-opt[aria-pressed="true"] { background: #2f5d4f; border-color: #4b9c81; color: #b8f5dc; }
+  .pk-opt.hot[aria-pressed="true"] { background: #5b3f7a; border-color: #8b62b8; color: #e3d0f5; }
+  .pk-swatch { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+  .pk-hint { font-size: 10px; color: #6b7280; line-height: 1.45; border-top: 1px solid #2b2f36; padding-top: 9px; }
+  .pk-hint kbd { background: #2b2f36; border: 1px solid #3f444c; border-radius: 3px; padding: 0 4px; font-family: inherit; font-size: 9.5px; color: #b8bdc6; }
+</style>
+
+<div id="app"></div>
+
+<div id="picker">
+  <div class="pk-head" id="pk-head">
+    <span class="pk-grip">⠿</span>
+    <span class="pk-title">Nivel 1 · ronda 3</span>
+    <button class="pk-min" id="pk-min" title="Plegar">—</button>
+  </div>
+  <div class="pk-body">
+    <div class="pk-variant">
+      <button class="pk-arrow" id="pk-prev" title="Anterior (←)">←</button>
+      <div class="pk-vname">
+        <div class="pk-vnum" id="pk-vnum">1 de 5</div>
+        <div class="pk-vlabel" id="pk-vlabel">—</div>
+        <div class="pk-vtag" id="pk-vtag">—</div>
+      </div>
+      <button class="pk-arrow" id="pk-next" title="Siguiente (→)">→</button>
+    </div>
+
+    <div class="pk-set">
+      <span class="pk-legend">Barras ← la pregunta de esta ronda</span>
+      <div class="pk-opts" data-key="bars">
+        <button class="pk-opt hot" data-val="open">Expandidas</button>
+        <button class="pk-opt hot" data-val="collapsed">Colapsadas</button>
+      </div>
+    </div>
+
+    <div class="pk-set">
+      <span class="pk-legend">Operación</span>
+      <div class="pk-opts" data-key="country">
+        <button class="pk-opt" data-val="GT">Guatemala</button>
+        <button class="pk-opt" data-val="CO">Colombia</button>
+      </div>
+    </div>
+
+    <div class="pk-set">
+      <span class="pk-legend">Módulo</span>
+      <div class="pk-opts" data-key="module">
+        <button class="pk-opt" data-val="ventas">Sebastián</button>
+        <button class="pk-opt" data-val="confirmacion">Katherine</button>
+      </div>
+    </div>
+
+    <div class="pk-set">
+      <span class="pk-legend">Pantalla</span>
+      <div class="pk-opts" data-key="screen"></div>
+    </div>
+
+    <div class="pk-pair">
+      <div class="pk-set">
+        <span class="pk-legend">Catálogo</span>
+        <div class="pk-opts" data-key="catalog">
+          <button class="pk-opt" data-val="loaded">Lleno</button>
+          <button class="pk-opt" data-val="empty">Vacío</button>
+        </div>
+      </div>
+      <div class="pk-set">
+        <span class="pk-legend">Anuncios</span>
+        <div class="pk-opts" data-key="ads">
+          <button class="pk-opt" data-val="some">Varios</button>
+          <button class="pk-opt" data-val="none">Cero</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="pk-set">
+      <span class="pk-legend">Conversación</span>
+      <div class="pk-opts" data-key="conv">
+        <button class="pk-opt" data-val="ok">Reconocida</button>
+        <button class="pk-opt" data-val="amb">Ambigua</button>
+        <button class="pk-opt" data-val="esc">Escalada</button>
+      </div>
+    </div>
+
+    <div class="pk-set">
+      <span class="pk-legend">Paleta (ya decidida)</span>
+      <div class="pk-opts" data-key="palette" id="pk-palette"></div>
+    </div>
+
+    <p class="pk-hint">
+      <strong>Nivel 1 cerrado</strong> — la variante 1 es la elegida; las otras
+      cuatro quedan como registro de la comparación. Cambiar de operación
+      reexpande las barras a propósito. <kbd>←</kbd> <kbd>→</kbd> alternan.
+    </p>
+  </div>
+</div>
+
+<script>
+/* ====================================================================
+   DATOS — reales, de la operación de Vorare.
+   ==================================================================== */
+
+const PALETTES = [
+  { key: "vc", label: "Violeta / Cian", GT: "#a78bfa", CO: "#38bdf8" },
+  { key: "cr", label: "Cian / Rosa",    GT: "#38bdf8", CO: "#f472b6" },
+  { key: "vr", label: "Violeta / Rosa", GT: "#a78bfa", CO: "#f472b6" },
+];
+
+const OPS = {
+  GT: { code: "GT", name: "Guatemala", currency: "GTQ", currencyLong: "quetzales (GTQ)",
+        phone: "+502 3689 0343", store: "Vorare GT · Shopify", live: true, status: "Operando",
+        orders: "1.678", confirm: "88,4%", monthly: "~470 / mes", products: "17" },
+  CO: { code: "CO", name: "Colombia", currency: "COP", currencyLong: "pesos (COP)",
+        phone: "+57 304 5430173", store: "sin conectar", live: false, status: "Sin operar",
+        orders: "0", confirm: "—", monthly: "—", products: "0" },
+};
+
+const MODULES = {
+  ventas: { key: "ventas", label: "Ventas", agent: "Sebastián", role: "preventa",
+    screens: [{ key: "catalogo", label: "Catálogo", icon: "▤" },
+              { key: "conversaciones", label: "Conversaciones", icon: "◇" },
+              { key: "vendedor", label: "Vendedor", icon: "◉" }] },
+  confirmacion: { key: "confirmacion", label: "Confirmación", agent: "Katherine", role: "postventa",
+    screens: [{ key: "pedidos", label: "Pedidos", icon: "▦" },
+              { key: "plantillas", label: "Plantillas", icon: "▥" },
+              { key: "inbox", label: "Inbox", icon: "✉" }] },
+};
+
+const PRODUCTS_GT = [
+  { name: "REVITALHAIR – DHT ANTICALVICIE",         src: "shopify", price: "Q 349", ads: 4, orders: "1.263", share: "77%" },
+  { name: "REVITALHAIR – DHT BLOCKER ANTICALVICIE", src: "shopify", price: "Q 389", ads: 2, orders: "187",   share: "11%" },
+  { name: "REVITALHAIR – COMBO DHT + SERUM 360",    src: "shopify", price: "Q 549", ads: 3, orders: "121",   share: "7%"  },
+  { name: "REVITALHAIR – Hair Recovery 3X",         src: "shopify", price: "Q 429", ads: 0, orders: "18",    share: "1%"  },
+  { name: "REVITALHAIR Serum Capilar",              src: "panel",   price: "Q 199", ads: 1, orders: "9",     share: "—"   },
+];
+const PRODUCTS_CO = [
+  { name: "REVITALHAIR – DHT ANTICALVICIE",         src: "shopify", price: "$ 129.900", ads: 1, orders: "0", share: "—" },
+  { name: "REVITALHAIR – DHT BLOCKER ANTICALVICIE", src: "shopify", price: "$ 144.900", ads: 0, orders: "0", share: "—" },
+  { name: "REVITALHAIR – COMBO DHT + SERUM 360",    src: "panel",   price: "$ 199.900", ads: 0, orders: "0", share: "—" },
+];
+
+const CONVS = {
+  GT: [
+    { who: "María José Chun", tel: "+502 5512 8840", when: "hace 4 min", state: "ok",
+      line: "«¿Sirve para entradas? tengo 34 años»", det: "REVITALHAIR – DHT ANTICALVICIE · anuncio 23851094782" },
+    { who: "Luis Ovalle", tel: "+502 4471 2093", when: "hace 12 min", state: "amb",
+      line: "«Vi el anuncio del tratamiento para la calvicie»", det: "3 productos posibles · sin ID de anuncio" },
+    { who: "Ana Sicán", tel: "+502 3390 5518", when: "hace 26 min", state: "esc",
+      line: "«Quiero hablar con una persona por favor»", det: "Sebastián pausado · esperando asesor" },
+  ],
+  CO: [
+    { who: "Jhon Rodríguez", tel: "+57 310 8842 190", when: "hace 2 min", state: "ok",
+      line: "«Buenas, precio del tratamiento?»", det: "REVITALHAIR – DHT ANTICALVICIE · anuncio 24019338451" },
+    { who: "Camila Restrepo", tel: "+57 320 4471 002", when: "hace 9 min", state: "amb",
+      line: "«El del video de la caída de pelo»", det: "2 productos posibles · sin ID de anuncio" },
+    { who: "Andrés Peña", tel: "+57 315 9920 774", when: "hace 21 min", state: "esc",
+      line: "«Necesito hablar con alguien real»", det: "Sebastián pausado · esperando asesor" },
+  ],
+};
+
+const ORDERS = {
+  GT: [{ id: "#10428", who: "María José Chun", amount: "Q 349", state: "confirmado" },
+       { id: "#10427", who: "Byron Tzoc", amount: "Q 549", state: "esperando" },
+       { id: "#10426", who: "Ana Sicán", amount: "Q 389", state: "sin-confirmar" },
+       { id: "#10425", who: "Silvia Xicará", amount: "Q 349", state: "confirmado" }],
+  CO: [{ id: "#00003", who: "Jhon Rodríguez", amount: "$ 129.900", state: "esperando" },
+       { id: "#00002", who: "Camila Restrepo", amount: "$ 199.900", state: "sin-confirmar" }],
+};
+
+/* Las cinco respuestas a «qué sobrevive al colapso». */
+const VARIANTS = [
+  { id: "c5", label: "Riel comprimido ✓", tag: "ELEGIDA · 46px; los dos países y la navegación a la vista" },
+  { id: "c1", label: "El riel se queda",  tag: "colapsa la columna; el riel de 78px no se toca" },
+  { id: "c2", label: "Filo de color",     tag: "colapsa todo; queda una línea de 5px a la izquierda" },
+  { id: "c3", label: "Tira de iconos",    tag: "colapsa a 56px teñidos; se pierde ver el otro país" },
+  { id: "c4", label: "Migra arriba",      tag: "colapsa todo; el indicador se muda al borde superior" },
+];
+
+/* ==================================================================== */
+
+const state = {
+  variant: 0, bars: "collapsed", palette: "vc", country: "GT",
+  module: "ventas", screen: "catalogo", catalog: "loaded", ads: "some", conv: "ok",
+};
+
+const el = (t, cls, html) => { const n = document.createElement(t); if (cls) n.className = cls; if (html != null) n.innerHTML = html; return n; };
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const flag = (code, sz) => `<span class="flag flag-${code}${sz ? " flag-" + sz : ""}"></span>`;
+const op = () => OPS[state.country];
+const mod = () => MODULES[state.module];
+const pal = () => PALETTES.find((p) => p.key === state.palette);
+function rgba(hex, a) { const n = parseInt(hex.slice(1), 16); return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`; }
+
+/* ---------------- CONTENIDO — idéntico en las cinco ---------------- */
+
+function products() {
+  if (state.catalog === "empty") return [];
+  const base = state.country === "GT" ? PRODUCTS_GT : PRODUCTS_CO;
+  return base.map((p) => (state.ads === "none" ? { ...p, ads: 0 } : p));
+}
+const srcPill = (s) => s === "shopify"
+  ? `<span class="pill pill-quiet"><span class="dot" style="background:#95bf47"></span>Shopify</span>`
+  : `<span class="pill pill-quiet"><span class="dot" style="background:var(--accent)"></span>Panel</span>`;
+const adsPill = (n) => n === 0 ? `<span class="pill pill-warn">sin anuncios</span>`
+  : `<span class="pill pill-quiet num">${n} anuncio${n > 1 ? "s" : ""}</span>`;
+
+function screenCatalogo() {
+  const list = products(), o = op(), wrap = el("div");
+  wrap.appendChild(el("div", "page-head", `
+    <span class="eyebrow">${esc(o.name)} · catálogo</span>
+    <h2 class="page-title">Productos</h2>
+    <p class="page-sub">Los productos conectados se leen de la tienda; los nativos se editan aquí.
+      Cada uno lleva la lista de anuncios que le apuntan.</p>`));
+  if (!list.length) {
+    const c = el("div", "card");
+    c.appendChild(el("div", "empty", `<div class="empty-mark">▤</div>
+      <h3 style="font-size:15px">Todavía no hay productos en ${esc(o.name)}</h3>
+      <p class="soft" style="max-width:42ch;font-size:12.5px;line-height:1.55">${o.live
+        ? "Conecta un producto de la tienda o crea uno nativo para que el vendedor tenga qué ofrecer."
+        : "Esta operación aún no vende. Su catálogo empieza vacío y no comparte nada con Guatemala."}</p>`));
+    wrap.appendChild(c); return wrap;
+  }
+  const grid = el("div", "statgrid");
+  grid.innerHTML = `
+    <div class="card-muted stat"><div class="stat-k">Productos</div><div class="stat-v num">${state.country === "GT" ? esc(o.products) : list.length}</div></div>
+    <div class="card-muted stat"><div class="stat-k">Anuncios registrados</div><div class="stat-v num">${list.reduce((a, p) => a + p.ads, 0)}</div></div>
+    <div class="card-muted stat"><div class="stat-k">Moneda</div><div class="stat-v">${esc(o.currency)}</div></div>
+    <div class="card-muted stat"><div class="stat-k">Tienda</div><div class="stat-v" style="font-size:13px;font-weight:500">${esc(o.store)}</div></div>`;
+  wrap.appendChild(grid);
+  const card = el("div", "card");
+  card.style.padding = "14px 4px 4px";
+  card.innerHTML = `<table class="mocktable">
+    <thead><tr><th>Producto</th><th>Origen</th><th>Precio</th><th>Anuncios</th><th>Pedidos</th></tr></thead>
+    <tbody>${list.map((p) => `<tr>
+      <td><div class="prodname">${esc(p.name)}</div>
+          <div class="soft" style="font-size:11px;margin-top:2px">${p.share !== "—" ? esc(p.share) + " del volumen" : "volumen bajo"}</div></td>
+      <td>${srcPill(p.src)}</td><td class="num" style="font-weight:500">${esc(p.price)}</td>
+      <td>${adsPill(p.ads)}</td><td class="num muted">${esc(p.orders)}</td></tr>`).join("")}</tbody></table>
+    ${state.country === "GT" ? `<div style="padding:11px 12px;border-top:1px solid var(--border)" class="soft">12 productos más · entre 1 y 18 pedidos cada uno</div>` : ""}`;
+  wrap.appendChild(card);
+  return wrap;
+}
+
+function screenConversaciones() {
+  const o = op(), wrap = el("div");
+  wrap.appendChild(el("div", "page-head", `
+    <span class="eyebrow">${esc(o.name)} · conversaciones</span>
+    <h2 class="page-title">Chats de ${esc(mod().agent)}</h2>
+    <p class="page-sub">Toma un chat para pausar al vendedor y escribir tú; devuélveselo cuando termines.</p>`));
+  if (!o.live && state.catalog === "empty") {
+    const c = el("div", "card");
+    c.appendChild(el("div", "empty", `<div class="empty-mark">◇</div>
+      <h3 style="font-size:15px">Sin conversaciones en ${esc(o.name)}</h3>
+      <p class="soft" style="max-width:40ch;font-size:12.5px;line-height:1.55">El número ${esc(o.phone)} todavía no recibe leads.</p>`));
+    wrap.appendChild(c); return wrap;
+  }
+  const card = el("div", "card");
+  card.style.overflow = "hidden";
+  CONVS[state.country].forEach((c) => {
+    const open = c.state === state.conv;
+    const row = el("div", `convrow ${c.state} ${open ? "is-open" : ""}`);
+    const chip = c.state === "ok" ? `<span class="pill pill-accent">producto reconocido</span>`
+      : c.state === "amb" ? `<span class="pill pill-warn">reconocimiento ambiguo</span>`
+      : `<span class="pill pill-danger">escalada a humano</span>`;
+    row.innerHTML = `
+      <div><div style="font-weight:600;font-size:13.5px">${esc(c.who)}</div>
+           <div class="muted" style="font-size:12.5px;margin-top:3px">${esc(c.line)}</div></div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px">${chip}
+           <span class="soft" style="font-size:11px">${esc(c.when)}</span></div>
+      <div class="convmeta"><span class="num">${esc(c.tel)}</span><span style="opacity:.4">·</span><span>${esc(c.det)}</span></div>`;
+    card.appendChild(row);
+  });
+  wrap.appendChild(card);
+  return wrap;
+}
+
+function screenVendedor() {
+  const o = op(), wrap = el("div");
+  wrap.appendChild(el("div", "page-head", `
+    <span class="eyebrow">${esc(o.name)} · vendedor</span>
+    <h2 class="page-title">Configuración de ${esc(mod().agent)}</h2>
+    <p class="page-sub">Lo que tiene consecuencia va arriba; el tono, abajo. Los cambios aplican en la próxima conversación.</p>`));
+  const card = el("div", "card");
+  card.style.padding = "16px 18px";
+  card.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px">
+      <div><div class="stat-k">Nombre visible</div><div style="margin-top:5px;font-weight:500">Sebastián</div></div>
+      <div><div class="stat-k">Número que responde</div><div class="num" style="margin-top:5px;font-weight:500">${esc(o.phone)}</div></div>
+      <div><div class="stat-k">Límite de descuento</div><div style="margin-top:5px;font-weight:500">${o.live ? "10 % · máx " + o.currency : "0 % · sin operar"}</div></div>
+    </div>
+    <div style="margin-top:16px;padding-top:15px;border-top:1px solid var(--border)">
+      <div class="stat-k">Tono e instrucciones</div>
+      <p class="muted" style="margin-top:7px;line-height:1.6;font-size:12.5px;max-width:62ch">
+        Cercano y directo, sin tratar de usted. Responde en ${o.live ? "guatemalteco neutro" : "colombiano neutro"}.
+        No prometas resultados médicos. Si preguntan por envío, ${o.live ? "confirma contraentrega en toda Guatemala" : "aclara que la operación aún no despacha"}.</p>
+    </div>`;
+  wrap.appendChild(card);
+  return wrap;
+}
+
+function screenPedidos() {
+  const o = op(), list = ORDERS[state.country], wrap = el("div");
+  wrap.appendChild(el("div", "page-head", `
+    <span class="eyebrow">${esc(o.name)} · pedidos</span>
+    <h2 class="page-title">Confirmación de pedidos</h2>
+    <p class="page-sub">${esc(mod().agent)} confirma dirección y disponibilidad antes de mandar a logística.</p>`));
+  const grid = el("div", "statgrid");
+  grid.innerHTML = `
+    <div class="card-muted stat"><div class="stat-k">Pedidos totales</div><div class="stat-v num">${esc(o.orders)}</div></div>
+    <div class="card-muted stat"><div class="stat-k">Confirmación</div><div class="stat-v num">${esc(o.confirm)}</div></div>
+    <div class="card-muted stat"><div class="stat-k">Volumen</div><div class="stat-v" style="font-size:15px;font-weight:500">${esc(o.monthly)}</div></div>`;
+  wrap.appendChild(grid);
+  const chip = (s) => s === "confirmado" ? `<span class="pill pill-accent">confirmado</span>`
+    : s === "esperando" ? `<span class="pill pill-warn">esperando respuesta</span>`
+    : `<span class="pill pill-quiet">sin confirmar</span>`;
+  const card = el("div", "card");
+  card.style.padding = "14px 4px 4px";
+  card.innerHTML = `<table class="mocktable">
+    <thead><tr><th>Pedido</th><th>Cliente</th><th>Total</th><th>Estado</th></tr></thead>
+    <tbody>${list.map((r) => `<tr><td class="num" style="font-weight:500">${esc(r.id)}</td>
+      <td>${esc(r.who)}</td><td class="num">${esc(r.amount)}</td><td>${chip(r.state)}</td></tr>`).join("")}</tbody></table>`;
+  wrap.appendChild(card);
+  return wrap;
+}
+
+function screenSimple(title, sub, mark) {
+  const o = op(), wrap = el("div");
+  wrap.appendChild(el("div", "page-head", `
+    <span class="eyebrow">${esc(o.name)} · ${esc(title.toLowerCase())}</span>
+    <h2 class="page-title">${esc(title)}</h2><p class="page-sub">${esc(sub)}</p>`));
+  const card = el("div", "card");
+  card.appendChild(el("div", "empty", `<div class="empty-mark">${mark}</div>
+    <p class="soft" style="font-size:12.5px;max-width:44ch;line-height:1.55">Pantalla existente del producto.
+      El nivel 1 no la rediseña — está aquí para ver cómo se siente el marco alrededor de lo que ya funciona.</p>`));
+  wrap.appendChild(card);
+  return wrap;
+}
+
+function content() {
+  const s = state.screen;
+  if (s === "catalogo") return screenCatalogo();
+  if (s === "conversaciones") return screenConversaciones();
+  if (s === "vendedor") return screenVendedor();
+  if (s === "pedidos") return screenPedidos();
+  if (s === "plantillas") return screenSimple("Plantillas", "Las plantillas aprobadas de Meta que usa Katherine para confirmar.", "▥");
+  return screenSimple("Inbox", "Todas las conversaciones del número, incluidas las que no son de ventas.", "✉");
+}
+
+/* ---------------- PIEZAS DEL ARMAZÓN ---------------- */
+
+const toggleBars = () => { state.bars = state.bars === "open" ? "collapsed" : "open"; render(); };
+
+/* Cambiar de operación REEXPANDE las barras — es el único momento en que el
+   contexto cambió de verdad y vale interrumpir. Volver a plegarlas es acto
+   del usuario: un plegado que se mueve solo es peor que no tenerlo. */
+function switchCountry(code) {
+  if (state.country === code) return;
+  state.country = code;
+  state.bars = "open";
+  render();
+}
+
+function navFor(m) {
+  const box = el("div");
+  box.style.cssText = "display:flex;flex-direction:column;gap:2px";
+  MODULES[m].screens.forEach((s) => {
+    const b = el("button", "navlink", `<span class="ico">${s.icon}</span>${esc(s.label)}`);
+    if (state.screen === s.key && state.module === m) b.setAttribute("aria-current", "page");
+    b.onclick = () => { state.module = m; state.screen = s.key; render(); };
+    box.appendChild(b);
+  });
+  return box;
+}
+
+function buildRail(tight) {
+  const rail = el("div", "rail" + (tight ? " tight" : ""));
+  Object.values(OPS).forEach((x) => {
+    const t = el("button", "tile" + (x.live ? "" : " dormant"),
+      `${flag(x.code)}${tight ? "" : `<span class="tile-code">${esc(x.code)}</span>`}`);
+    t.setAttribute("aria-pressed", String(state.country === x.code));
+    t.title = `${x.name} · ${x.status}`;
+    t.onclick = () => { switchCountry(x.code); };
+    rail.appendChild(t);
+  });
+  if (!tight) {
+    const add = el("button", "tile", `<span style="color:var(--text-soft);font-size:19px;line-height:1">+</span>`);
+    add.style.opacity = ".4";
+    add.title = "Las operaciones se dan de alta por configuración, no desde el panel";
+    rail.appendChild(add);
+  } else {
+    // Comprimido tiene que seguir navegando, o no es un colapso: es una mutilación.
+    const sep = el("div");
+    sep.style.cssText = "width:20px;height:1px;background:var(--border);margin:3px 0";
+    rail.appendChild(sep);
+    mod().screens.forEach((s) => {
+      const b = el("button", "strip-ico", s.icon);
+      b.style.cssText = "width:32px;height:30px;font-size:12px";
+      b.title = `${mod().label} · ${s.label}`;
+      if (state.screen === s.key) b.setAttribute("aria-current", "page");
+      b.onclick = () => { state.screen = s.key; render(); };
+      rail.appendChild(b);
+    });
+  }
+  const f = el("button", "fold", state.bars === "open" ? "«" : "»");
+  f.title = state.bars === "open" ? "Colapsar barras" : "Expandir barras";
+  f.style.marginTop = "auto";
+  f.onclick = toggleBars;
+  rail.appendChild(f);
+  return rail;
+}
+
+function buildCol() {
+  const o = op();
+  const col = el("div", "col");
+  const head = el("div", "col-head ctx-anim");
+  head.innerHTML = `${flag(o.code, "lg")}
+    <span style="min-width:0"><span class="col-name">${esc(o.name)}</span>
+      <span class="col-sub">${esc(o.status)} · ${esc(o.currency)}</span>
+      <span class="col-tel${o.live ? "" : " off"}">${esc(o.phone)}</span></span>`;
+  const f = el("button", "fold", "«");
+  f.title = "Colapsar barras";
+  f.onclick = toggleBars;
+  head.appendChild(f);
+  col.appendChild(head);
+
+  ["ventas", "confirmacion"].forEach((k) => {
+    const m = MODULES[k];
+    const g = el("div", "group" + (state.module === k ? " on" : ""));
+    g.appendChild(el("div", "group-head", `<span class="grouplabel">${esc(m.label)}</span>
+      <span class="soft" style="font-size:11px">${esc(m.agent)}</span>`));
+    const items = el("div", "group-items");
+    items.appendChild(navFor(k));
+    g.appendChild(items);
+    col.appendChild(g);
+  });
+
+  col.appendChild(el("div", "colfoot", `<div class="soft" style="font-size:11px;line-height:1.5">${esc(o.store)}</div>`));
+  return col;
+}
+
+/* C3 · la tira de iconos teñida: conserva la navegación del módulo,
+   pierde la vista de que existe otra operación. */
+function buildStrip() {
+  const o = op();
+  const strip = el("div", "strip");
+  const fb = el("button", "strip-flag", flag(o.code, "sm"));
+  fb.title = `${o.name} · cambiar de operación`;
+  fb.onclick = () => { state.country = state.country === "GT" ? "CO" : "GT"; render(); };
+  strip.appendChild(fb);
+  ["ventas", "confirmacion"].forEach((k, i) => {
+    if (i > 0) {
+      const sep = el("div");
+      sep.style.cssText = "width:22px;height:1px;background:var(--border);margin:4px 0";
+      strip.appendChild(sep);
+    }
+    MODULES[k].screens.forEach((s) => {
+      const b = el("button", "strip-ico", s.icon);
+      b.title = `${MODULES[k].label} · ${s.label}`;
+      if (state.screen === s.key && state.module === k) b.setAttribute("aria-current", "page");
+      b.onclick = () => { state.module = k; state.screen = s.key; render(); };
+      strip.appendChild(b);
+    });
+  });
+  const f = el("button", "fold", "»");
+  f.title = "Expandir barras";
+  f.style.marginTop = "auto";
+  f.onclick = toggleBars;
+  strip.appendChild(f);
+  return strip;
+}
+
+function reopenButton(cls, label) {
+  const o = op();
+  const b = el("button", cls, `${flag(o.code, "sm")}${label ? esc(o.name) : ""} <span style="opacity:.55">»</span>`);
+  b.title = "Expandir barras";
+  b.onclick = toggleBars;
+  return b;
+}
+
+/* ==================================================================== */
+
+function buildShell(id) {
+  const frag = document.createDocumentFragment();
+  const shell = el("div", "shell");
+  shell.setAttribute("data-c", id);
+  shell.setAttribute("data-bars", state.bars);
+  const openBars = state.bars === "open";
+
+  if (openBars) {
+    shell.style.gridTemplateColumns = "78px 216px 1fr";
+    shell.appendChild(buildRail(false));
+    shell.appendChild(buildCol());
+  } else if (id === "c1") {
+    shell.style.gridTemplateColumns = "78px 1fr";
+    shell.appendChild(buildRail(false));
+  } else if (id === "c5") {
+    shell.style.gridTemplateColumns = "46px 1fr";
+    shell.appendChild(buildRail(true));
+  } else if (id === "c3") {
+    shell.style.gridTemplateColumns = "56px 1fr";
+    shell.appendChild(buildStrip());
+  } else {
+    // c2 y c4 colapsan del todo: el contenido ocupa el ancho completo.
+    shell.style.gridTemplateColumns = "1fr";
+  }
+
+  const main = el("div", "main");
+  const page = el("div", "page ctx-anim");
+  page.appendChild(content());
+  main.appendChild(page);
+  shell.appendChild(main);
+
+  if (!openBars && id === "c2") {
+    frag.appendChild(el("div", "edge-stripe"));
+    frag.appendChild(reopenButton("edge-open", true));
+    page.style.paddingTop = "58px";
+  }
+  if (!openBars && id === "c4") {
+    const o = op();
+    frag.appendChild(el("div", "top-edge"));
+    frag.appendChild(el("div", "top-chip ctx-anim", `${flag(o.code)}${esc(o.name)}`));
+    frag.appendChild(reopenButton("top-open", false));
+  }
+
+  frag.appendChild(shell);
+  return frag;
+}
+
+function render() {
+  const v = VARIANTS[state.variant];
+  const hex = pal()[state.country];
+  const root = document.documentElement.style;
+  root.setProperty("--op", hex);
+  root.setProperty("--op-line", rgba(hex, .45));
+  root.setProperty("--op-soft", rgba(hex, .13));
+  root.setProperty("--op-faint", rgba(hex, .07));
+
+  if (!mod().screens.some((s) => s.key === state.screen)) state.screen = mod().screens[0].key;
+
+  const app = document.getElementById("app");
+  app.innerHTML = "";
+  app.appendChild(buildShell(v.id));
+  syncPicker();
+}
+
+/* ---------------------- El instrumento ---------------------- */
+
+function syncPicker() {
+  const v = VARIANTS[state.variant];
+  document.getElementById("pk-vnum").textContent = `${state.variant + 1} de 5`;
+  document.getElementById("pk-vlabel").textContent = v.label;
+  document.getElementById("pk-vtag").textContent = v.tag;
+
+  const pbox = document.getElementById("pk-palette");
+  pbox.innerHTML = "";
+  PALETTES.forEach((p) => {
+    const b = el("button", "pk-opt",
+      `<span class="pk-swatch" style="background:${p.GT}"></span><span class="pk-swatch" style="background:${p.CO};margin-left:-3px"></span>`);
+    b.title = p.label;
+    b.setAttribute("aria-pressed", String(state.palette === p.key));
+    b.onclick = () => { state.palette = p.key; render(); };
+    pbox.appendChild(b);
+  });
+
+  const screens = document.querySelector('[data-key="screen"]');
+  screens.innerHTML = "";
+  mod().screens.forEach((s) => {
+    const b = el("button", "pk-opt", esc(s.label));
+    b.setAttribute("aria-pressed", String(state.screen === s.key));
+    b.onclick = () => { state.screen = s.key; render(); };
+    screens.appendChild(b);
+  });
+
+  document.querySelectorAll(".pk-opts[data-key]").forEach((g) => {
+    const key = g.dataset.key;
+    if (key === "screen" || key === "palette") return;
+    g.querySelectorAll(".pk-opt").forEach((b) => b.setAttribute("aria-pressed", String(state[key] === b.dataset.val)));
+  });
+}
+
+document.querySelectorAll('.pk-opts[data-key]').forEach((g) => {
+  const key = g.dataset.key;
+  if (key === "screen" || key === "palette") return;
+  g.querySelectorAll(".pk-opt").forEach((b) => {
+    b.onclick = () => {
+      state[key] = b.dataset.val;
+      if (key === "module") state.screen = MODULES[b.dataset.val].screens[0].key;
+      if (key === "conv" && state.module === "ventas") state.screen = "conversaciones";
+      if ((key === "catalog" || key === "ads") && state.module === "ventas") state.screen = "catalogo";
+      render();
+    };
+  });
+});
+
+function step(d) { state.variant = (state.variant + d + VARIANTS.length) % VARIANTS.length; render(); }
+document.getElementById("pk-prev").onclick = () => step(-1);
+document.getElementById("pk-next").onclick = () => step(1);
+document.getElementById("pk-min").onclick = () => document.getElementById("picker").classList.toggle("is-min");
+
+addEventListener("keydown", (e) => {
+  if (e.target.closest("input, textarea")) return;
+  if (e.key === "ArrowLeft") { step(-1); e.preventDefault(); }
+  if (e.key === "ArrowRight") { step(1); e.preventDefault(); }
+});
+
+(function drag() {
+  const box = document.getElementById("picker"), head = document.getElementById("pk-head");
+  let dx = 0, dy = 0, on = false;
+  head.addEventListener("mousedown", (e) => {
+    if (e.target.closest("button")) return;
+    on = true;
+    const r = box.getBoundingClientRect();
+    dx = e.clientX - r.left; dy = e.clientY - r.top;
+    box.style.right = "auto"; box.style.bottom = "auto";
+    box.style.left = r.left + "px"; box.style.top = r.top + "px";
+    e.preventDefault();
+  });
+  addEventListener("mousemove", (e) => {
+    if (!on) return;
+    const w = box.offsetWidth, h = box.offsetHeight;
+    box.style.left = Math.min(Math.max(0, e.clientX - dx), innerWidth - w) + "px";
+    box.style.top = Math.min(Math.max(0, e.clientY - dy), innerHeight - h) + "px";
+  });
+  addEventListener("mouseup", () => { on = false; });
+})();
+
+render();
+</script>

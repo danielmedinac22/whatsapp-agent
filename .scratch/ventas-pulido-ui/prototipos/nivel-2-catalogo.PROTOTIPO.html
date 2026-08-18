@@ -1,0 +1,1085 @@
+<title>Catálogo de doble fuente</title>
+
+<!--
+  PROTOTIPO DESECHABLE — no es código de producción, no se integra.
+
+  NIVEL 2 · grupo «catálogo». El encuadre del nivel 1 va fijo (riel + tinte +
+  plegado) y la anatomía de panel derecho ya quedó decidida en el grupo de
+  conversaciones. Lo que se compara acá es la forma del catálogo.
+
+  Lo que el diseño tiene que hacer imposible, del ticket 02 de ventas-panel:
+  · Un producto CONECTADO lee su información de la tienda en tiempo de uso;
+    uno NATIVO se edita aquí. Se ven parecidos y se comportan distinto —
+    confundirlos es editar algo que no se puede editar.
+  · El panel NO escribe sobre los productos de la tienda.
+  · Un video que excede el límite de la API de WhatsApp se rechaza AL SUBIR,
+    no al enviar, para que el problema aparezca cuando se puede resolver.
+
+  Y del ticket 03, lo que determina el soporte recurrente no cotizado:
+  · «Registrar un anuncio nuevo es de segundos, no de minutos.»
+  · Un anuncio puede apuntar a VARIOS productos (relación N:M).
+  · Se marca por archivo si es enviable.
+
+  Referencias (Mobbin): Dovetail y TheyDo tratan el origen como COLUMNA, no
+  como insignia suelta. Whop resuelve «N asociados» con pila. Frame.io y
+  Proton, interruptor por archivo.
+
+  Nivel 1 cerrado en eee80a0 · conversaciones en 3e6c095.
+-->
+
+<style>
+  :root {
+    --bg:#071119; --panel:rgba(10,24,34,.82); --panel-2:rgba(18,35,48,.9);
+    --border:rgba(157,187,210,.16); --border-strong:rgba(157,187,210,.28);
+    --text:#eff7fb; --text-dim:#99adbc; --text-soft:#6f8798;
+    --accent:#6ee7b7; --highlight:#f4c16d; --danger:#f87171;
+    --shopify:#95bf47;
+    --shadow-panel:0 14px 42px rgba(3,10,16,.32);
+    --font:"Avenir Next","Segoe UI","Helvetica Neue",system-ui,sans-serif;
+    --op:#a78bfa; --op-line:rgba(167,139,250,.45);
+    --op-soft:rgba(167,139,250,.13); --op-faint:rgba(167,139,250,.07);
+  }
+  * { box-sizing:border-box; }
+  body {
+    margin:0; min-height:100vh; color:var(--text);
+    background:linear-gradient(180deg,rgba(244,193,109,.03),transparent 28%),
+               linear-gradient(180deg,#09131c 0%,#071119 45%,#050d14 100%);
+    background-attachment:fixed;
+    font-family:var(--font); font-size:14px; -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3,h4 { margin:0; font-weight:600; }
+  p { margin:0; }
+  button { font-family:inherit; font-size:inherit; color:inherit; cursor:pointer; }
+  :focus-visible { outline:2px solid var(--op); outline-offset:2px; border-radius:4px; }
+  @media (prefers-reduced-motion:reduce){ *,*::before,*::after{ animation-duration:.001ms !important; transition-duration:.001ms !important; } }
+
+  .flag { display:inline-block; flex:none; width:22px; height:15px; border-radius:2px; border:1px solid rgba(255,255,255,.18); }
+  .flag-GT { background:linear-gradient(90deg,#4997d0 0 33.3%,#fff 33.3% 66.6%,#4997d0 66.6%); }
+  .flag-CO { background:linear-gradient(180deg,#fcd116 0 50%,#003893 50% 75%,#ce1126 75%); }
+  .flag-lg { width:32px; height:22px; border-radius:3px; }
+
+  .card { background:var(--panel); box-shadow:var(--shadow-panel); border:1px solid var(--border); border-radius:10px; }
+  .eyebrow { color:var(--highlight); font-size:11px; font-weight:500; text-transform:uppercase; letter-spacing:.09em; }
+  .muted { color:var(--text-dim); } .soft { color:var(--text-soft); }
+  .num { font-variant-numeric:tabular-nums; }
+  .pill { display:inline-flex; align-items:center; gap:5px; border:1px solid var(--border); border-radius:6px; padding:2px 7px; font-size:10.5px; font-weight:500; white-space:nowrap; }
+  .pill-ok { color:var(--accent); border-color:rgba(110,231,183,.35); background:rgba(110,231,183,.08); }
+  .pill-amb { color:var(--highlight); border-color:rgba(244,193,109,.35); background:rgba(244,193,109,.08); }
+  .pill-bad { color:var(--danger); border-color:rgba(248,113,113,.35); background:rgba(248,113,113,.08); }
+  .pill-quiet { color:var(--text-soft); }
+  .dot { width:6px; height:6px; border-radius:50%; flex:none; }
+
+  .page { padding:20px 24px 50px; max-width:1500px; margin:0 auto; width:100%; }
+  .page-head { display:flex; align-items:flex-end; gap:16px; margin-bottom:16px; }
+  .page-title { font-size:21px; letter-spacing:-.015em; }
+  .page-sub { color:var(--text-dim); font-size:13px; max-width:62ch; line-height:1.5; margin-top:4px; }
+  .btn { padding:7px 12px; border-radius:8px; border:1px solid var(--border); background:rgba(15,31,43,.88); font-size:12.5px; font-weight:600; color:var(--text-dim); white-space:nowrap; }
+  .btn:hover { color:var(--text); border-color:var(--border-strong); }
+  .btn-p { background:linear-gradient(135deg,var(--accent),#34d399); color:#032617; border:none; }
+
+  /* ===== armazón del nivel 1 (cerrado) ===== */
+  .shell { display:grid; min-height:100vh; }
+  .rail { background:linear-gradient(180deg,var(--op-faint),transparent 40%),linear-gradient(180deg,rgba(6,14,21,.98),rgba(4,11,17,.98)); border-right:1px solid var(--border-strong); padding:14px 11px; display:flex; flex-direction:column; gap:10px; align-items:center; }
+  .rail.tight { padding:12px 7px; gap:7px; }
+  .tile { width:56px; height:56px; border-radius:15px; border:1px solid var(--border); background:rgba(14,30,42,.7); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; position:relative; }
+  .tile .flag { filter:saturate(.2) brightness(.55); }
+  .tile-code { font-size:10px; font-weight:700; letter-spacing:.06em; color:var(--text-soft); }
+  .tile[aria-pressed="true"] { border-color:var(--op); background:var(--op-soft); box-shadow:0 0 0 1px var(--op-line); }
+  .tile[aria-pressed="true"] .flag { filter:none; }
+  .tile[aria-pressed="true"] .tile-code { color:var(--op); }
+  .tile.dormant { border-style:dashed; opacity:.6; }
+  .rail.tight .tile { width:32px; height:32px; border-radius:10px; gap:0; }
+  .rail.tight .tile .flag { width:18px; height:12px; }
+  .rail.tight .tile-code { display:none; }
+  .col { border-right:1px solid var(--border); background:linear-gradient(180deg,var(--op-soft),var(--op-faint) 38%,transparent 72%),rgba(9,20,28,.86); padding:15px 12px; display:flex; flex-direction:column; overflow:hidden; }
+  .col-head { display:flex; align-items:flex-start; gap:10px; padding:0 2px 12px; margin-bottom:12px; border-bottom:1px solid var(--op-line); }
+  .col-name { display:block; font-size:14px; font-weight:600; }
+  .col-sub { display:block; font-size:10px; text-transform:uppercase; letter-spacing:.08em; margin-top:3px; color:var(--text-soft); }
+  .col-tel { display:block; font-size:11.5px; font-weight:600; color:var(--op); margin-top:5px; font-variant-numeric:tabular-nums; }
+  .col-tel.off { color:var(--highlight); }
+  .group { margin-bottom:12px; }
+  .group-head { display:flex; align-items:baseline; gap:7px; padding:0 10px 6px; }
+  .group.on .group-head .grouplabel { color:var(--op); }
+  .grouplabel { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.1em; color:var(--text-soft); }
+  .group-items { display:flex; flex-direction:column; gap:2px; padding-left:10px; margin-left:9px; border-left:1px solid var(--border); }
+  .group.on .group-items { border-left-color:var(--op-line); }
+  .navlink { display:flex; align-items:center; gap:9px; height:32px; padding:0 10px; border-radius:8px; border:1px solid transparent; color:var(--text-dim); font-size:13px; font-weight:500; background:none; width:100%; text-align:left; }
+  .navlink:hover { background:rgba(255,255,255,.045); color:var(--text); }
+  .navlink[aria-current="page"] { background:var(--op-soft); border-color:var(--op-line); color:var(--text); }
+  .navlink .ico { width:15px; text-align:center; opacity:.7; font-size:12px; }
+  .navlink .cnt { margin-left:auto; font-size:10.5px; color:var(--text-soft); font-variant-numeric:tabular-nums; }
+  .colfoot { margin-top:auto; padding-top:12px; border-top:1px solid var(--border); }
+  .main { min-width:0; }
+  .fold { flex:none; width:24px; height:24px; border-radius:7px; border:1px solid var(--border); background:rgba(8,19,27,.7); color:var(--text-soft); font-size:12px; display:grid; place-items:center; margin-left:auto; }
+  .strip-ico { width:32px; height:30px; border-radius:9px; border:1px solid transparent; background:none; color:var(--text-soft); font-size:12px; display:grid; place-items:center; }
+  .strip-ico[aria-current="page"] { background:var(--op-soft); border-color:var(--op-line); color:var(--op); }
+
+  /* ===== EL ORIGEN — lo que no se puede confundir =====
+     Conectado se LEE de la tienda; nativo se EDITA aquí. */
+  .src { display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:500; white-space:nowrap; }
+  .src-shopify { color:var(--shopify); }
+  .src-panel { color:var(--op); }
+  .src i { width:7px; height:7px; border-radius:2px; display:block; }
+  .src-shopify i { background:var(--shopify); }
+  .src-panel i { background:var(--op); transform:rotate(45deg); border-radius:1px; }
+
+  /* miniatura de producto: un cuadro con inicial, sin imágenes externas */
+  .thumb { width:38px; height:38px; border-radius:8px; flex:none; display:grid; place-items:center;
+           font-size:12px; font-weight:700; letter-spacing:-.02em; color:#06121b; }
+  .thumb-lg { width:64px; height:64px; border-radius:10px; font-size:18px; }
+  .thumb-xl { width:100%; height:96px; border-radius:9px; font-size:24px; }
+
+  /* ===== A · tabla densa ===== */
+  .tbl { width:100%; border-collapse:collapse; font-size:13px; }
+  .tbl thead th { text-align:left; font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.08em; color:var(--text-soft); padding:0 12px 9px; }
+  .tbl td { padding:10px 12px; border-top:1px solid var(--border); vertical-align:middle; }
+  .tbl tbody tr { cursor:pointer; }
+  .tbl tbody tr:hover td { background:rgba(255,255,255,.028); }
+  .tbl tbody tr.sel td { background:var(--op-faint); }
+  .pname { font-weight:500; letter-spacing:-.01em; }
+
+  /* ===== controles estándar de tabla (Dovetail, Twenty, Navattic, Neon) ===== */
+  .tbar { display:flex; align-items:center; gap:7px; padding:11px 13px; border-bottom:1px solid var(--border); }
+  .tsearch { flex:1; min-width:120px; padding:7px 11px; border-radius:8px; border:1px solid var(--border);
+             background:rgba(14,29,40,.9); color:var(--text); font-size:12.5px; font-family:inherit; }
+  .tsearch::placeholder { color:var(--text-soft); }
+  .tmenu { position:relative; }
+  .tbtn { padding:7px 11px; border-radius:8px; border:1px solid var(--border); background:rgba(15,31,43,.8);
+          color:var(--text-dim); font-size:12px; font-weight:500; white-space:nowrap; display:flex; align-items:center; gap:6px; }
+  .tbtn:hover, .tbtn.on { color:var(--text); border-color:var(--border-strong); }
+  .tcount { background:var(--op); color:#06121b; border-radius:99px; padding:0 5px; font-size:10px; font-weight:700; }
+  .menu { position:absolute; right:0; top:calc(100% + 5px); z-index:60; min-width:190px; padding:5px;
+          background:rgba(13,27,38,.99); border:1px solid var(--border-strong); border-radius:10px;
+          box-shadow:0 18px 44px rgba(2,8,13,.7); display:flex; flex-direction:column; gap:1px; }
+  .menu-i { display:flex; align-items:center; gap:8px; padding:7px 9px; border-radius:7px; border:none;
+            background:none; color:var(--text-dim); font-size:12.5px; text-align:left; width:100%; }
+  .menu-i::before { content:"○"; font-size:9px; opacity:.4; }
+  .menu-i.on::before { content:"●"; color:var(--op); opacity:1; }
+  .menu-i:hover { background:rgba(255,255,255,.05); color:var(--text); }
+  .menu-sep { padding:8px 9px 4px; font-size:9.5px; text-transform:uppercase; letter-spacing:.1em; color:var(--text-soft); font-weight:600; }
+
+  .chiprow { display:flex; align-items:center; gap:6px; flex-wrap:wrap; padding:9px 13px; border-bottom:1px solid var(--border); background:rgba(255,255,255,.018); }
+  .fchip { display:inline-flex; align-items:center; gap:7px; padding:4px 9px; border-radius:7px; font-size:11.5px;
+           border:1px solid var(--op-line); background:var(--op-faint); color:var(--text-dim); }
+  .fchip b { cursor:pointer; color:var(--text-soft); font-weight:400; }
+  .fchip b:hover { color:var(--text); }
+  .fclear { padding:4px 8px; border:none; background:none; color:var(--text-soft); font-size:11.5px; }
+  .fclear:hover { color:var(--text); }
+
+  .bulk { display:flex; align-items:center; gap:9px; padding:9px 13px; border-bottom:1px solid var(--op-line); background:var(--op-soft); font-size:12.5px; }
+  .bulk strong { margin-right:auto; }
+
+  .tcheck { width:34px; padding-right:0 !important; }
+  .cbox { width:15px; height:15px; border-radius:4px; border:1px solid var(--border-strong); display:block; }
+  .cbox.on { background:var(--op); border-color:var(--op); position:relative; }
+  .cbox.on::after { content:"✓"; position:absolute; inset:0; display:grid; place-items:center; font-size:10px; color:#06121b; font-weight:700; }
+  tr:hover .cbox { border-color:var(--op-line); }
+
+  .tfoot { display:flex; align-items:center; padding:10px 13px; border-top:1px solid var(--border); font-size:11.5px; }
+  .pname small { display:block; color:var(--text-soft); font-size:10.5px; margin-top:2px; font-weight:400; }
+
+  /* pila de anuncios (Whop) */
+  .stack { display:inline-flex; align-items:center; }
+  .stack b { width:20px; height:20px; border-radius:5px; margin-left:-5px; display:grid; place-items:center;
+             font-size:9px; font-weight:700; border:1.5px solid #0b1a24; background:var(--op-soft); color:var(--op); }
+  .stack b:first-child { margin-left:0; }
+
+  /* ===== B · dos secciones ===== */
+  .sect { margin-bottom:18px; }
+  .sect-h { display:flex; align-items:center; gap:10px; padding:0 2px 9px; }
+  .sect-t { font-size:12.5px; font-weight:600; }
+  .sect-d { font-size:11.5px; color:var(--text-soft); }
+  .sect-c { margin-left:auto; font-size:11px; color:var(--text-soft); }
+  .sect.shopify .sect-t { color:var(--shopify); }
+  .sect.panel .sect-t { color:var(--op); }
+  .sect-body { border-radius:10px; border:1px solid var(--border); background:var(--panel); overflow:hidden; }
+  .sect.shopify .sect-body { border-left:2px solid var(--shopify); }
+  .sect.panel .sect-body { border-left:2px solid var(--op); }
+  .srow { display:flex; align-items:center; gap:11px; padding:10px 13px; border-top:1px solid var(--border); width:100%; background:none; text-align:left; }
+  .srow:first-child { border-top:none; }
+  .srow:hover { background:rgba(255,255,255,.028); }
+  .srow.sel { background:var(--op-faint); }
+
+  /* ===== C · tarjetas ===== */
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:11px; }
+  .pcard { padding:11px; border-radius:11px; border:1px solid var(--border); background:var(--panel); text-align:left; }
+  .pcard:hover { border-color:var(--border-strong); }
+  .pcard.sel { border-color:var(--op); background:var(--op-faint); }
+  .pcard.shopify { box-shadow:inset 3px 0 0 var(--shopify); }
+  .pcard.panel { box-shadow:inset 3px 0 0 var(--op); }
+
+  /* ===== D · el anuncio manda ===== */
+  .adrow { display:grid; grid-template-columns:auto 1fr auto; gap:12px; padding:12px 14px; border-top:1px solid var(--border); align-items:center; }
+  .adrow:first-child { border-top:none; }
+  .adid { font-variant-numeric:tabular-nums; font-weight:600; font-size:12.5px; }
+  .adtargets { display:flex; gap:6px; flex-wrap:wrap; }
+  .adtarget { font-size:11px; padding:3px 8px; border-radius:6px; border:1px solid var(--border); color:var(--text-dim); }
+  /* Un anuncio compartido no puede parecer exclusivo (ticket 03). */
+  .adchip { display:flex; align-items:center; gap:9px; padding:6px 9px; border-radius:7px;
+            border:1px solid var(--border); font-size:11.5px; color:var(--text-dim); }
+  .adchip.shared { border-color:var(--op-line); background:var(--op-faint); }
+  .adshare { font-size:10.5px; color:var(--op); }
+  /* Un producto sin anuncios no es incompleto: es una fuga de reconocimiento. */
+  .leak { padding:10px 11px; border-radius:9px; font-size:11.5px; line-height:1.55;
+          border:1px solid rgba(244,193,109,.35); background:rgba(244,193,109,.07); color:#f0d6a4; }
+  .leak strong { display:block; color:var(--highlight); margin-bottom:3px; }
+  .quickadd { display:flex; gap:8px; padding:12px 14px; border-bottom:1px solid var(--border); background:rgba(167,139,250,.05); align-items:center; }
+  .qinput { flex:1; padding:8px 11px; border-radius:8px; border:1px solid var(--op-line); background:rgba(14,29,40,.9); color:var(--text); font-size:12.5px; }
+  .qinput::placeholder { color:var(--text-soft); }
+
+  /* ===== E · maestro-detalle ===== */
+  .md { display:grid; grid-template-columns:380px 1fr; gap:12px; align-items:start; }
+  .mdlist { overflow:hidden; max-height:660px; display:flex; flex-direction:column; }
+  .mdrows { overflow-y:auto; }
+
+  /* ===== el detalle del producto (compartido) ===== */
+  .det { padding:15px 16px; display:flex; flex-direction:column; gap:15px; max-height:660px; overflow-y:auto; }
+  .det-h { display:flex; gap:12px; align-items:flex-start; }
+  .det-name { font-size:15.5px; font-weight:600; letter-spacing:-.015em; }
+  .det-sec { display:flex; flex-direction:column; gap:8px; padding-top:13px; border-top:1px solid var(--border); }
+  .det-t { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.1em; color:var(--text-soft); }
+  /* El aviso de solo lectura: es lo que impide editar lo que no se edita. */
+  .readonly { display:flex; gap:9px; padding:9px 11px; border-radius:9px; font-size:11.5px; line-height:1.5;
+              border:1px solid rgba(149,191,71,.3); background:rgba(149,191,71,.07); color:#c5e08a; }
+  .fld { display:flex; flex-direction:column; gap:3px; }
+  .fld-k { font-size:10.5px; color:var(--text-soft); }
+  .fld-v { font-size:12.5px; }
+  .fld input, .fld textarea { padding:7px 10px; border-radius:7px; border:1px solid var(--border); background:rgba(14,29,40,.9); color:var(--text); font-size:12.5px; font-family:inherit; }
+  .fld.locked .fld-v { color:var(--text-dim); }
+
+  /* archivos con interruptor por archivo (Frame.io, Proton) */
+  .file { display:flex; align-items:center; gap:10px; padding:8px 0; border-top:1px solid var(--border); }
+  .file:first-of-type { border-top:none; }
+  .file-i { width:30px; height:30px; border-radius:7px; flex:none; display:grid; place-items:center; font-size:11px;
+            background:rgba(255,255,255,.05); color:var(--text-soft); }
+  .file-n { font-size:12.5px; font-weight:500; }
+  .file-m { font-size:10.5px; color:var(--text-soft); margin-top:1px; }
+  .sw { width:34px; height:19px; border-radius:99px; border:1px solid var(--border); background:rgba(8,19,27,.8); position:relative; flex:none; transition:background .16s,border-color .16s; }
+  .sw::after { content:""; position:absolute; top:2px; left:2px; width:13px; height:13px; border-radius:99px; background:var(--text-soft); transition:transform .16s,background .16s; }
+  .sw[aria-pressed="true"] { background:rgba(110,231,183,.2); border-color:rgba(110,231,183,.5); }
+  .sw[aria-pressed="true"]::after { transform:translateX(15px); background:var(--accent); }
+  .sw:disabled { opacity:.4; cursor:not-allowed; }
+  .file.bad .file-i { background:rgba(248,113,113,.12); color:var(--danger); }
+
+  .empty { display:flex; flex-direction:column; align-items:center; gap:11px; padding:56px 24px; text-align:center; }
+  .empty-mark { width:46px; height:46px; border-radius:11px; border:1px dashed var(--border-strong); display:grid; place-items:center; color:var(--text-soft); }
+
+  /* ===== instrumento ===== */
+  #picker { position:fixed; right:16px; bottom:16px; z-index:9999; width:286px; background:#16181c; border:1px solid #33373f; border-radius:12px; box-shadow:0 24px 60px rgba(0,0,0,.68); font-size:12px; color:#d6d9de; user-select:none; overflow:hidden; }
+  #picker.is-min .pk-body { display:none; }
+  .pk-head { display:flex; align-items:center; gap:9px; padding:9px 11px; background:#1e2127; border-bottom:1px solid #33373f; cursor:grab; }
+  .pk-grip { color:#6b7280; letter-spacing:2px; font-size:11px; }
+  .pk-title { font-size:10px; text-transform:uppercase; letter-spacing:.12em; color:#8b919c; font-weight:600; }
+  .pk-min { margin-left:auto; background:none; border:none; color:#8b919c; padding:2px 5px; border-radius:4px; }
+  .pk-body { padding:10px; display:flex; flex-direction:column; gap:9px; }
+  .pk-pair { display:grid; grid-template-columns:1fr 1fr; gap:9px; }
+  .pk-variant { display:flex; align-items:center; gap:8px; }
+  .pk-arrow { width:28px; height:30px; flex:none; border-radius:7px; border:1px solid #3a3f47; background:#22252b; color:#b8bdc6; font-size:13px; }
+  .pk-arrow:hover { background:#2c3037; color:#fff; }
+  .pk-vname { flex:1; min-width:0; text-align:center; }
+  .pk-vnum { font-size:9px; color:#7c828d; letter-spacing:.12em; text-transform:uppercase; }
+  .pk-vlabel { font-size:12.5px; font-weight:600; color:#f0f2f5; margin-top:1px; }
+  .pk-vtag { font-size:9.5px; color:#7c828d; margin-top:2px; line-height:1.3; }
+  .pk-ref { font-size:9px; color:#5c9c86; margin-top:3px; }
+  .pk-set { display:flex; flex-direction:column; gap:5px; }
+  .pk-legend { font-size:9px; text-transform:uppercase; letter-spacing:.11em; color:#7c828d; font-weight:600; }
+  .pk-opts { display:flex; gap:4px; flex-wrap:wrap; }
+  .pk-opt { flex:1 1 0; min-width:0; padding:6px 8px; border-radius:6px; border:1px solid #3a3f47; background:#22252b; color:#9aa0aa; font-size:11px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pk-opt:hover { background:#2c3037; color:#e3e6ea; }
+  .pk-opt[aria-pressed="true"] { background:#2f5d4f; border-color:#4b9c81; color:#b8f5dc; }
+  .pk-hint { font-size:10px; color:#6b7280; line-height:1.45; border-top:1px solid #2b2f36; padding-top:9px; }
+  .pk-hint kbd { background:#2b2f36; border:1px solid #3f444c; border-radius:3px; padding:0 4px; font-family:inherit; font-size:9.5px; color:#b8bdc6; }
+</style>
+
+<div id="app"></div>
+
+<div id="picker">
+  <div class="pk-head" id="pk-head">
+    <span class="pk-grip">⠿</span>
+    <span class="pk-title">Nivel 2 · catálogo</span>
+    <button class="pk-min" id="pk-min">—</button>
+  </div>
+  <div class="pk-body">
+    <div class="pk-variant">
+      <button class="pk-arrow" id="pk-prev">←</button>
+      <div class="pk-vname">
+        <div class="pk-vnum" id="pk-vnum">1 de 5</div>
+        <div class="pk-vlabel" id="pk-vlabel">—</div>
+        <div class="pk-vtag" id="pk-vtag">—</div>
+        <div class="pk-ref" id="pk-ref">—</div>
+      </div>
+      <button class="pk-arrow" id="pk-next">→</button>
+    </div>
+
+    <div class="pk-set">
+      <span class="pk-legend">Catálogo</span>
+      <div class="pk-opts" data-key="load">
+        <button class="pk-opt" data-val="full">Cargado</button>
+        <button class="pk-opt" data-val="empty">Vacío</button>
+      </div>
+    </div>
+
+    <div class="pk-set">
+      <span class="pk-legend">Producto abierto</span>
+      <div class="pk-opts" data-key="sel"></div>
+    </div>
+
+    <div class="pk-pair">
+      <div class="pk-set">
+        <span class="pk-legend">Operación</span>
+        <div class="pk-opts" data-key="country">
+          <button class="pk-opt" data-val="GT">Guate</button>
+          <button class="pk-opt" data-val="CO">Colombia</button>
+        </div>
+      </div>
+      <div class="pk-set">
+        <span class="pk-legend">Barras</span>
+        <div class="pk-opts" data-key="bars">
+          <button class="pk-opt" data-val="open">Abiertas</button>
+          <button class="pk-opt" data-val="collapsed">Plegadas</button>
+        </div>
+      </div>
+    </div>
+
+    <p class="pk-hint">
+      <kbd>←</kbd> <kbd>→</kbd> alternan. Las dos pruebas: <strong>¿se distingue
+      un producto de la tienda de uno del panel sin leer?</strong> y
+      <strong>¿registrar un anuncio se siente de segundos?</strong> Mirá
+      <em>Hair Recovery 3X</em> (sin anuncios) y el video de 27 MB, que la API
+      de WhatsApp rechaza.
+    </p>
+  </div>
+</div>
+
+<script>
+/* ====================================================================
+   DATOS — el catálogo real de Vorare. Los cuatro nombres casi idénticos
+   son el problema, no un detalle: con nombres genéricos el mock mentiría.
+   ==================================================================== */
+
+const OPS = {
+  GT:{code:"GT",name:"Guatemala",currency:"GTQ",cur:"Q",phone:"+502 3689 0343",store:"Vorare GT · Shopify",live:true,status:"Operando",accent:"#a78bfa"},
+  CO:{code:"CO",name:"Colombia",currency:"COP",cur:"$",phone:"+57 304 5430173",store:"sin conectar",live:false,status:"Sin operar",accent:"#38bdf8"},
+};
+const MODULES = {
+  ventas:{key:"ventas",label:"Ventas",agent:"Sebastián",
+    screens:[{key:"catalogo",label:"Catálogo",icon:"▤"},{key:"conversaciones",label:"Conversaciones",icon:"◇"},{key:"vendedor",label:"Vendedor",icon:"◉"}]},
+  confirmacion:{key:"confirmacion",label:"Confirmación",agent:"Katherine",
+    screens:[{key:"inbox",label:"Inbox",icon:"✉"},{key:"pedidos",label:"Pedidos",icon:"▦"},{key:"plantillas",label:"Plantillas",icon:"▥"}]},
+};
+
+const F = (n,t,s,send,bad) => ({n,t,s,send,bad:!!bad});
+
+const PRODUCTS = {
+  GT:[
+    {id:"p1",name:"REVITALHAIR – DHT ANTICALVICIE",src:"shopify",price:349,orders:"1.263",share:"77%",tone:"#c4b5fd",
+     desc:"Tratamiento en cápsulas para la caída por DHT. Presentación de 60 cápsulas, tratamiento de 3 meses.",
+     ads:["23851094782","23851094790","23904471123","23990117802"],
+     files:[F("ficha-producto.pdf","PDF","480 KB",true),F("antes-despues.jpg","JPG","1,2 MB",true),
+            F("testimonio.mp4","MP4","27 MB",false,true),F("margen-interno.xlsx","XLSX","44 KB",false)]},
+    {id:"p2",name:"REVITALHAIR – DHT BLOCKER ANTICALVICIE",src:"shopify",price:389,orders:"187",share:"11%",tone:"#a5b4fc",
+     desc:"Bloqueador de DHT en presentación reforzada. No confundir con el tratamiento base.",
+     ads:["23851094999","23922100455"],
+     files:[F("ficha-blocker.pdf","PDF","512 KB",true),F("dermatologo.mp4","MP4","8,4 MB",true)]},
+    {id:"p3",name:"REVITALHAIR – COMBO DHT + SERUM 360",src:"shopify",price:549,orders:"121",share:"7%",tone:"#93c5fd",
+     desc:"Combo del tratamiento en cápsulas más el serum capilar de aplicación diaria.",
+     ads:["23990117845","23990117860","24001233741"],
+     files:[F("combo-360.jpg","JPG","890 KB",true),F("instructivo.pdf","PDF","1,1 MB",true)]},
+    {id:"p4",name:"REVITALHAIR – Hair Recovery 3X",src:"shopify",price:429,orders:"18",share:"1%",tone:"#7dd3fc",
+     desc:"Fórmula reforzada de recuperación. Es el cuarto nombre de la familia y el que menos vende.",
+     ads:[],
+     files:[F("recovery-3x.jpg","JPG","640 KB",true)]},
+    {id:"p5",name:"REVITALHAIR Serum Capilar",src:"panel",price:199,orders:"9",share:"—",tone:"#6ee7b7",
+     desc:"Serum de aplicación diaria. Creado en el panel: todavía no está en la tienda.",
+     ads:["23851094999"],
+     files:[F("serum.jpg","JPG","410 KB",true),F("modo-de-uso.pdf","PDF","220 KB",true)]},
+    {id:"p6",name:"Kit Barba Vorare",src:"panel",price:279,orders:"4",share:"—",tone:"#fbbf24",
+     desc:"Producto nuevo, todavía sin anuncios y sin material cargado.",
+     ads:[],
+     files:[]},
+  ],
+  CO:[
+    {id:"q1",name:"REVITALHAIR – DHT ANTICALVICIE",src:"shopify",price:129900,orders:"0",share:"—",tone:"#c4b5fd",
+     desc:"Mismo producto, catálogo colombiano. No comparte nada con el guatemalteco.",
+     ads:["24019338451"],
+     files:[F("ficha-co.pdf","PDF","480 KB",true)]},
+    {id:"q2",name:"REVITALHAIR – DHT BLOCKER ANTICALVICIE",src:"shopify",price:144900,orders:"0",share:"—",tone:"#a5b4fc",
+     desc:"Bloqueador, catálogo colombiano.",ads:[],files:[]},
+    {id:"q3",name:"REVITALHAIR – COMBO DHT + SERUM 360",src:"panel",price:199900,orders:"0",share:"—",tone:"#93c5fd",
+     desc:"Combo creado en el panel para la apertura colombiana.",ads:[],files:[]},
+  ],
+};
+
+const VARIANTS = [
+  {id:"A",label:"Tabla densa ✓",     tag:"ELEGIDA · el origen es una columna, no una insignia",   ref:"Dovetail · Whop"},
+  {id:"B",label:"Dos secciones",     tag:"la tienda arriba, el panel abajo — no se pueden confundir", ref:"separación estructural"},
+  {id:"C",label:"Tarjetas",          tag:"lo que el vendedor manda, al frente",                   ref:"Air · Whop"},
+  {id:"D",label:"El anuncio manda",  tag:"la pantalla es de anuncios; registrar es la acción",    ref:"el ticket 03"},
+  {id:"E",label:"Maestro-detalle",   tag:"lista y ficha, la misma anatomía que conversaciones",   ref:"lo ya decidido"},
+];
+
+const state = {
+  variant:0, load:"full", country:"GT", module:"ventas", screen:"catalogo", bars:"open", sel:"p1",
+  /* Comportamientos estándar de tabla, pedidos por Daniel. El conjunto sale
+     de los referentes: Dovetail y Twenty (chips de filtro removibles),
+     Navattic (buscar + filtro + orden + paginado), Neon (columnas). */
+  q:"", filters:[], sort:{k:"orders",dir:"desc"}, menu:null,
+  cols:{ origen:true, precio:true, ads:true, files:true, orders:true },
+  picked:[],
+};
+
+const FILTERS = [
+  {k:"src:shopify", label:"Origen: Tienda",     test:p => p.src === "shopify"},
+  {k:"src:panel",   label:"Origen: Panel",      test:p => p.src === "panel"},
+  {k:"ads:none",    label:"Sin anuncios",       test:p => p.ads.length === 0},
+  {k:"ads:some",    label:"Con anuncios",       test:p => p.ads.length > 0},
+  {k:"files:none",  label:"Sin archivos enviables", test:p => !p.files.some(f => f.send)},
+];
+const SORTS = [
+  {k:"orders", label:"Volumen"}, {k:"price", label:"Precio"},
+  {k:"name", label:"Nombre"},    {k:"ads", label:"Anuncios"},
+];
+const COLS = [
+  {k:"origen", label:"Origen"}, {k:"precio", label:"Precio"}, {k:"ads", label:"Anuncios"},
+  {k:"files", label:"Archivos"}, {k:"orders", label:"Pedidos"},
+];
+
+const el=(t,c,h)=>{const n=document.createElement(t);if(c)n.className=c;if(h!=null)n.innerHTML=h;return n;};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const flag=(c,s)=>`<span class="flag flag-${c}${s?" flag-"+s:""}"></span>`;
+const op=()=>OPS[state.country];
+const mod=()=>MODULES[state.module];
+const V=()=>VARIANTS[state.variant];
+function rgba(h,a){const n=parseInt(h.slice(1),16);return `rgba(${(n>>16)&255}, ${(n>>8)&255}, ${n&255}, ${a})`;}
+
+const prodsRaw = () => state.load === "empty" ? [] : PRODUCTS[state.country];
+
+/* La lista después de buscar, filtrar y ordenar. Sin esto los controles
+   serían decorativos, que es peor que no tenerlos. */
+function prods() {
+  let list = prodsRaw();
+  const q = state.q.trim().toLowerCase();
+  if (q) list = list.filter(p => p.name.toLowerCase().includes(q) || p.ads.some(a => a.includes(q)));
+  state.filters.forEach(k => {
+    const f = FILTERS.find(x => x.k === k);
+    if (f) list = list.filter(f.test);
+  });
+  const { k, dir } = state.sort, s = dir === "asc" ? 1 : -1;
+  const val = p => k === "orders" ? parseFloat(String(p.orders).replace(/\./g,"")) || 0
+              : k === "price" ? p.price
+              : k === "ads" ? p.ads.length
+              : p.name;
+  list = [...list].sort((a,b) => {
+    const A = val(a), B = val(b);
+    return (typeof A === "string" ? A.localeCompare(B) : A - B) * s;
+  });
+  return list;
+}
+const sel = () => prods().find(p => p.id === state.sel) || prods()[0] || null;
+const money = p => `${op().cur} ${p.price.toLocaleString("es")}`;
+const initials = n => n.replace("REVITALHAIR – ","").replace("REVITALHAIR ","").trim().slice(0,2).toUpperCase();
+
+/* El origen, dicho igual en las cinco variantes. Conectado se LEE. */
+const srcMark = p => p.src === "shopify"
+  ? `<span class="src src-shopify"><i></i>Tienda</span>`
+  : `<span class="src src-panel"><i></i>Panel</span>`;
+const thumb = (p, cls) => `<div class="thumb ${cls || ""}" style="background:${p.tone}">${esc(initials(p.name))}</div>`;
+const adsMark = p => p.ads.length === 0
+  ? `<span class="pill pill-amb">sin anuncios</span>`
+  : `<span class="stack">${p.ads.slice(0,3).map(() => `<b>◈</b>`).join("")}${p.ads.length > 3 ? `<b>+${p.ads.length-3}</b>` : ""}</span>`;
+
+/* ---------- el detalle del producto, compartido por las cinco ---------- */
+function detail() {
+  const p = sel();
+  const box = el("div", "card det");
+  if (!p) { box.appendChild(el("div","empty",`<div class="empty-mark">▤</div>
+    <p class="soft" style="font-size:12.5px">Elegí un producto</p>`)); return box; }
+
+  const h = el("div", "det-h");
+  h.innerHTML = `${thumb(p,"thumb-lg")}
+    <div style="min-width:0;flex:1">
+      <div class="det-name">${esc(p.name)}</div>
+      <div style="display:flex;gap:10px;align-items:center;margin-top:6px">${srcMark(p)}
+        <span class="soft" style="font-size:11.5px">·</span>
+        <span class="num" style="font-size:13px;font-weight:600">${esc(money(p))}</span></div>
+    </div>`;
+  box.appendChild(h);
+
+  // Lo que impide editar lo que no se edita.
+  if (p.src === "shopify") {
+    box.appendChild(el("div","readonly",
+      `<span>⌁</span><span>Este producto vive en <strong>${esc(op().store)}</strong>. Nombre, descripción,
+       precio e imágenes se leen de ahí cada vez que se usan — editarlos allá se refleja acá.
+       <strong>El panel no escribe sobre la tienda.</strong></span>`));
+  }
+
+  const info = el("div","det-sec");
+  info.appendChild(el("div","det-t", p.src === "shopify" ? "Información · de la tienda" : "Información · editable aquí"));
+  if (p.src === "shopify") {
+    info.innerHTML += `<div class="fld locked"><span class="fld-k">Descripción</span>
+      <span class="fld-v muted" style="line-height:1.5">${esc(p.desc)}</span></div>`;
+  } else {
+    info.innerHTML += `<div class="fld"><span class="fld-k">Descripción</span>
+      <textarea rows="3">${esc(p.desc)}</textarea></div>`;
+  }
+  box.appendChild(info);
+
+  // Anuncios — registrar tiene que ser de segundos (ticket 03).
+  const ads = el("div","det-sec");
+  ads.appendChild(el("div","det-t", `Anuncios que apuntan aquí · ${p.ads.length}`));
+  const q = el("div");
+  q.style.cssText = "display:flex;gap:7px";
+  q.innerHTML = `<input class="qinput" placeholder="Pegá el ID del anuncio y Enter">
+                 <button class="btn btn-p">Agregar</button>`;
+  ads.appendChild(q);
+  if (p.ads.length) {
+    const list = el("div");
+    list.style.cssText = "display:flex;flex-direction:column;gap:5px;margin-top:3px";
+    p.ads.forEach(a => {
+      // El ticket 03 pide que se vea claramente a cuáles apunta un anuncio
+      // compartido. Desde la ficha del producto, un anuncio N:M parece
+      // exclusivo — y no lo es.
+      const otros = prods().filter(x => x.id !== p.id && x.ads.includes(a));
+      const chip = el("div","adchip" + (otros.length ? " shared" : ""));
+      chip.innerHTML = `<span class="num">${esc(a)}</span>
+        ${otros.length
+          ? `<span class="adshare">también apunta a ${otros.map(o => esc(o.name.replace("REVITALHAIR – ",""))).join(", ")}</span>`
+          : ""}
+        <span class="soft" style="margin-left:auto;cursor:pointer">×</span>`;
+      list.appendChild(chip);
+    });
+    ads.appendChild(list);
+  } else {
+    // Q35 · propuesta: decir la consecuencia, no la ausencia.
+    ads.appendChild(el("div","leak",
+      `<strong>Los leads de este producto no se van a reconocer.</strong>
+       Sin un anuncio registrado, el matcher tiene que adivinar entre los cuatro
+       nombres REVITALHAIR — y ahí está el 77% del volumen. Registrar el ID lo
+       resuelve para siempre.`));
+  }
+  box.appendChild(ads);
+
+  // Archivos, con interruptor por archivo.
+  const fs = el("div","det-sec");
+  fs.appendChild(el("div","det-t", `Archivos · ${p.files.filter(f=>f.send).length} de ${p.files.length} enviables`));
+  if (!p.files.length) {
+    fs.appendChild(el("p","soft",`<span style="font-size:11.5px">Sin archivos cargados.</span>`));
+  }
+  p.files.forEach(f => {
+    const row = el("div","file" + (f.bad ? " bad" : ""));
+    row.innerHTML = `<div class="file-i">${f.bad ? "⚠" : esc(f.t.slice(0,3))}</div>
+      <div style="flex:1;min-width:0">
+        <div class="file-n">${esc(f.n)}</div>
+        <div class="file-m">${esc(f.t)} · ${esc(f.s)}${f.bad ? ` — <span style="color:var(--danger)">excede el límite de WhatsApp (16 MB); no se puede enviar</span>` : ""}</div>
+      </div>`;
+    const sw = el("button","sw");
+    sw.setAttribute("aria-pressed", String(f.send));
+    sw.title = f.bad ? "Rechazado al subir: excede el límite de la API" : (f.send ? "Sebastián puede enviarlo" : "Sebastián no lo envía");
+    if (f.bad) sw.disabled = true;
+    sw.onclick = () => { if (!f.bad) { f.send = !f.send; render(); } };
+    row.appendChild(sw);
+    fs.appendChild(row);
+  });
+  const up = el("button","btn","+ Subir archivo");
+  up.style.marginTop = "4px";
+  fs.appendChild(up);
+  box.appendChild(fs);
+
+  return box;
+}
+
+function emptyCat() {
+  const c = el("div","card");
+  const o = op();
+  c.appendChild(el("div","empty",`<div class="empty-mark">▤</div>
+    <h3 style="font-size:15px">El catálogo de ${esc(o.name)} está vacío</h3>
+    <p class="soft" style="max-width:46ch;font-size:12.5px;line-height:1.55">${o.live
+      ? "Conectá un producto de la tienda para leer su información, o creá uno nativo si todavía no está allá."
+      : "Esta operación aún no vende, y su catálogo no comparte nada con el de Guatemala."}</p>
+    <div style="display:flex;gap:8px;margin-top:4px">
+      <button class="btn btn-p">Conectar de la tienda</button>
+      <button class="btn">Crear producto</button></div>`));
+  return c;
+}
+
+function head(extra) {
+  const h = el("div","page-head");
+  h.innerHTML = `<div style="flex:1">
+      <span class="eyebrow">${esc(op().name)} · catálogo</span>
+      <h2 class="page-title">Productos</h2>
+      <p class="page-sub">${esc(extra)}</p>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-p">Conectar de la tienda</button>
+      <button class="btn">Crear producto</button>
+    </div>`;
+  return h;
+}
+
+/* ================= LAS CINCO ================= */
+
+/* Menú desplegable genérico para Filtrar / Ordenar / Columnas. */
+function menu(items) {
+  const m = el("div","menu");
+  items.forEach(it => {
+    if (it.sep) { m.appendChild(el("div","menu-sep", it.sep)); return; }
+    const b = el("button","menu-i" + (it.on ? " on" : ""), it.label);
+    b.onclick = e => { e.stopPropagation(); it.act(); };
+    m.appendChild(b);
+  });
+  return m;
+}
+
+function toolbar() {
+  const bar = el("div","tbar");
+
+  const search = el("input","tsearch");
+  search.placeholder = "Buscar producto o ID de anuncio";
+  search.value = state.q;
+  search.oninput = e => { state.q = e.target.value; render(); };
+  bar.appendChild(search);
+
+  const mk = (key, label, count) => {
+    const wrap = el("div","tmenu");
+    const b = el("button","tbtn" + (state.menu === key ? " on" : ""),
+      `${esc(label)}${count ? ` <span class="tcount">${count}</span>` : ""}`);
+    b.onclick = e => { e.stopPropagation(); state.menu = state.menu === key ? null : key; render(); };
+    wrap.appendChild(b);
+    return wrap;
+  };
+
+  const fWrap = mk("filter","Filtrar", state.filters.length);
+  if (state.menu === "filter") {
+    fWrap.appendChild(menu(FILTERS.map(f => ({
+      label: f.label, on: state.filters.includes(f.k),
+      act: () => {
+        state.filters = state.filters.includes(f.k)
+          ? state.filters.filter(x => x !== f.k) : [...state.filters, f.k];
+        render();
+      }
+    }))));
+  }
+  bar.appendChild(fWrap);
+
+  const sWrap = mk("sort", `Ordenar: ${SORTS.find(s => s.k === state.sort.k).label}`);
+  if (state.menu === "sort") {
+    sWrap.appendChild(menu([
+      ...SORTS.map(s => ({ label: s.label, on: state.sort.k === s.k,
+        act: () => { state.sort = { ...state.sort, k: s.k }; state.menu = null; render(); } })),
+      { sep: "Dirección" },
+      { label: "Descendente", on: state.sort.dir === "desc", act: () => { state.sort = {...state.sort, dir:"desc"}; render(); } },
+      { label: "Ascendente",  on: state.sort.dir === "asc",  act: () => { state.sort = {...state.sort, dir:"asc"};  render(); } },
+    ]));
+  }
+  bar.appendChild(sWrap);
+
+  const cWrap = mk("cols","Columnas");
+  if (state.menu === "cols") {
+    cWrap.appendChild(menu(COLS.map(c => ({
+      label: c.label, on: state.cols[c.k],
+      act: () => { state.cols[c.k] = !state.cols[c.k]; render(); }
+    }))));
+  }
+  bar.appendChild(cWrap);
+
+  return bar;
+}
+
+/* Los filtros aplicados como chips removibles (Twenty, Aboard, Navattic).
+   Un filtro activo que no se ve es cómo se pierde media lista sin notarlo. */
+function chips() {
+  if (!state.filters.length && !state.q) return null;
+  const row = el("div","chiprow");
+  if (state.q) {
+    const c = el("span","fchip",`Busca «${esc(state.q)}» <b>×</b>`);
+    c.querySelector("b").onclick = () => { state.q = ""; render(); };
+    row.appendChild(c);
+  }
+  state.filters.forEach(k => {
+    const f = FILTERS.find(x => x.k === k);
+    const c = el("span","fchip",`${esc(f.label)} <b>×</b>`);
+    c.querySelector("b").onclick = () => { state.filters = state.filters.filter(x => x !== k); render(); };
+    row.appendChild(c);
+  });
+  const clr = el("button","fclear","Limpiar");
+  clr.onclick = () => { state.filters = []; state.q = ""; render(); };
+  row.appendChild(clr);
+  return row;
+}
+
+/* Selección múltiple. Acá no es genérica: asociar UN anuncio a VARIOS
+   productos es literalmente el N:M del ticket 03, y es su camino más corto. */
+function bulkBar() {
+  if (!state.picked.length) return null;
+  const b = el("div","bulk");
+  b.innerHTML = `<strong>${state.picked.length} seleccionados</strong>`;
+  const a = el("button","btn btn-p","Asociar un anuncio a los " + state.picked.length);
+  const q = el("button","btn","Quitar selección");
+  q.onclick = () => { state.picked = []; render(); };
+  b.appendChild(a); b.appendChild(q);
+  return b;
+}
+
+function catA() {
+  const list = prods(), total = prodsRaw().length, w = el("div");
+  w.appendChild(head("El origen es una columna, no una insignia: se lee en la misma posición en todas las filas."));
+  if (!total) { w.appendChild(emptyCat()); return w; }
+
+  const grid = el("div"); grid.style.cssText = "display:grid;grid-template-columns:1fr 340px;gap:12px;align-items:start";
+  const card = el("div","card"); card.style.overflow = "hidden";
+  card.appendChild(toolbar());
+  const ch = chips(); if (ch) card.appendChild(ch);
+  const bb = bulkBar(); if (bb) card.appendChild(bb);
+
+  if (!list.length) {
+    card.appendChild(el("div","empty",`<div class="empty-mark">⌕</div>
+      <h3 style="font-size:14px">Ningún producto coincide</h3>
+      <p class="soft" style="font-size:12px">Quitá algún filtro para ver el resto del catálogo.</p>`));
+  } else {
+    const t = el("table","tbl");
+    const th = ["<th class='tcheck'></th>","<th>Producto</th>"];
+    if (state.cols.origen) th.push("<th>Origen</th>");
+    if (state.cols.precio) th.push("<th>Precio</th>");
+    if (state.cols.ads)    th.push("<th>Anuncios</th>");
+    if (state.cols.files)  th.push("<th>Archivos</th>");
+    if (state.cols.orders) th.push(`<th>Pedidos</th>`);
+    t.innerHTML = `<thead><tr>${th.join("")}</tr></thead>`;
+    const tb = el("tbody");
+    list.forEach(p => {
+      const tr = el("tr", sel() && sel().id === p.id ? "sel" : "");
+      const td = [`<td class="tcheck"><span class="cbox${state.picked.includes(p.id)?" on":""}"></span></td>`,
+        `<td><div style="display:flex;align-items:center;gap:10px">${thumb(p)}
+          <div class="pname">${esc(p.name)}<small>${p.share !== "—" ? esc(p.share)+" del volumen" : "volumen bajo"}</small></div></div></td>`];
+      if (state.cols.origen) td.push(`<td>${srcMark(p)}</td>`);
+      if (state.cols.precio) td.push(`<td class="num" style="font-weight:500">${esc(money(p))}</td>`);
+      if (state.cols.ads)    td.push(`<td>${adsMark(p)}</td>`);
+      if (state.cols.files)  td.push(`<td class="num soft">${p.files.filter(f=>f.send).length}/${p.files.length}</td>`);
+      if (state.cols.orders) td.push(`<td class="num muted">${esc(p.orders)}</td>`);
+      tr.innerHTML = td.join("");
+      tr.onclick = e => {
+        if (e.target.closest(".tcheck")) {
+          state.picked = state.picked.includes(p.id)
+            ? state.picked.filter(x => x !== p.id) : [...state.picked, p.id];
+        } else state.sel = p.id;
+        render();
+      };
+      tb.appendChild(tr);
+    });
+    t.appendChild(tb);
+    card.appendChild(t);
+  }
+
+  const foot = el("div","tfoot");
+  foot.innerHTML = `<span class="soft">${list.length} de ${total + (state.country==="GT"?11:0)} productos${
+    list.length !== total ? " · filtrado" : ""}</span>
+    <span class="soft" style="margin-left:auto">25 por página</span>`;
+  card.appendChild(foot);
+
+  grid.appendChild(card); grid.appendChild(detail());
+  w.appendChild(grid);
+  return w;
+}
+
+function catB() {
+  const list = prods(), w = el("div");
+  w.appendChild(head("La tienda y el panel son dos secciones distintas: no hay forma de confundir cuál se edita aquí."));
+  if (!list.length) { w.appendChild(emptyCat()); return w; }
+  const grid = el("div"); grid.style.cssText = "display:grid;grid-template-columns:1fr 340px;gap:12px;align-items:start";
+  const col = el("div");
+  [["shopify","Conectados de la tienda","se leen de Shopify · no se editan aquí"],
+   ["panel","Creados en el panel","se editan aquí · todavía no están en la tienda"]].forEach(([k,t,d]) => {
+    const rows = list.filter(p => p.src === k);
+    const s = el("div","sect "+k);
+    s.appendChild(el("div","sect-h",`<span class="src src-${k}"><i></i></span>
+      <span><span class="sect-t">${esc(t)}</span> <span class="sect-d">· ${esc(d)}</span></span>
+      <span class="sect-c">${rows.length}</span>`));
+    const body = el("div","sect-body");
+    if (!rows.length) body.appendChild(el("div","soft",`<div style="padding:18px;text-align:center;font-size:12px">Ninguno todavía</div>`));
+    rows.forEach(p => {
+      const r = el("button","srow" + (sel() && sel().id === p.id ? " sel" : ""));
+      r.innerHTML = `${thumb(p)}
+        <div style="flex:1;min-width:0"><div class="pname">${esc(p.name)}</div>
+          <div class="soft" style="font-size:11px;margin-top:2px">${esc(money(p))} · ${esc(p.orders)} pedidos</div></div>
+        ${adsMark(p)}`;
+      r.onclick = () => { state.sel = p.id; render(); };
+      body.appendChild(r);
+    });
+    s.appendChild(body);
+    col.appendChild(s);
+  });
+  grid.appendChild(col); grid.appendChild(detail());
+  w.appendChild(grid);
+  return w;
+}
+
+function catC() {
+  const list = prods(), w = el("div");
+  w.appendChild(head("Las tarjetas muestran lo que el vendedor termina mandando: la imagen y el precio."));
+  if (!list.length) { w.appendChild(emptyCat()); return w; }
+  const grid = el("div"); grid.style.cssText = "display:grid;grid-template-columns:1fr 340px;gap:12px;align-items:start";
+  const g = el("div","grid");
+  list.forEach(p => {
+    const c = el("button","pcard "+p.src+(sel() && sel().id === p.id ? " sel" : ""));
+    c.innerHTML = `${thumb(p,"thumb-xl")}
+      <div style="margin-top:9px" class="pname">${esc(p.name)}</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:6px">${srcMark(p)}
+        <span class="num" style="font-size:12.5px;font-weight:600;margin-left:auto">${esc(money(p))}</span></div>
+      <div style="display:flex;align-items:center;gap:7px;margin-top:8px">${adsMark(p)}
+        <span class="soft" style="font-size:10.5px;margin-left:auto">${p.files.filter(f=>f.send).length}/${p.files.length} enviables</span></div>`;
+    c.onclick = () => { state.sel = p.id; render(); };
+    g.appendChild(c);
+  });
+  grid.appendChild(g); grid.appendChild(detail());
+  w.appendChild(grid);
+  return w;
+}
+
+function catD() {
+  const list = prods(), w = el("div");
+  w.appendChild(head("La pantalla es de anuncios, no de productos: es el trabajo que se repite cada campaña."));
+  if (!list.length) { w.appendChild(emptyCat()); return w; }
+  const grid = el("div"); grid.style.cssText = "display:grid;grid-template-columns:1fr 340px;gap:12px;align-items:start";
+  const card = el("div","card"); card.style.overflow = "hidden";
+  const q = el("div","quickadd");
+  q.innerHTML = `<input class="qinput" placeholder="Pegá el ID del anuncio de Meta">
+    <button class="btn btn-p">Asociar a producto…</button>`;
+  card.appendChild(q);
+
+  // anuncio → productos, que es N:M
+  const map = new Map();
+  list.forEach(p => p.ads.forEach(a => {
+    if (!map.has(a)) map.set(a, []);
+    map.get(a).push(p);
+  }));
+  [...map.entries()].forEach(([ad, ps]) => {
+    const r = el("div","adrow");
+    r.innerHTML = `<span class="adid num">${esc(ad)}</span>
+      <span class="adtargets">${ps.map(p => `<span class="adtarget">${esc(p.name.replace("REVITALHAIR – ",""))}</span>`).join("")}</span>
+      <span class="soft" style="font-size:11px">${ps.length > 1 ? ps.length + " productos" : "1 producto"}</span>`;
+    r.style.cursor = "pointer";
+    r.onclick = () => { state.sel = ps[0].id; render(); };
+    card.appendChild(r);
+  });
+
+  const sinAds = list.filter(p => !p.ads.length);
+  if (sinAds.length) {
+    const s = el("div");
+    s.style.cssText = "padding:12px 14px;border-top:1px solid var(--border);background:rgba(244,193,109,.05)";
+    s.innerHTML = `<div style="font-size:11.5px;color:var(--highlight);font-weight:600;margin-bottom:7px">
+        ${sinAds.length} producto${sinAds.length>1?"s":""} sin ningún anuncio registrado</div>
+      <div class="adtargets">${sinAds.map(p => `<span class="adtarget">${esc(p.name.replace("REVITALHAIR – ",""))}</span>`).join("")}</div>`;
+    card.appendChild(s);
+  }
+  grid.appendChild(card); grid.appendChild(detail());
+  w.appendChild(grid);
+  return w;
+}
+
+function catE() {
+  const list = prods(), w = el("div");
+  w.appendChild(head("Lista y ficha, la misma anatomía que la bandeja: una sola forma que aprender en todo el módulo."));
+  if (!list.length) { w.appendChild(emptyCat()); return w; }
+  const md = el("div","md");
+  const card = el("div","card mdlist");
+  const rows = el("div","mdrows");
+  list.forEach(p => {
+    const r = el("button","srow" + (sel() && sel().id === p.id ? " sel" : ""));
+    r.innerHTML = `${thumb(p)}
+      <div style="flex:1;min-width:0"><div class="pname">${esc(p.name)}</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:3px">${srcMark(p)}
+          <span class="soft" style="font-size:11px">${esc(money(p))}</span></div></div>
+      ${adsMark(p)}`;
+    r.onclick = () => { state.sel = p.id; render(); };
+    rows.appendChild(r);
+  });
+  card.appendChild(rows);
+  md.appendChild(card); md.appendChild(detail());
+  w.appendChild(md);
+  return w;
+}
+
+const CAT = { A:catA, B:catB, C:catC, D:catD, E:catE };
+
+function otherScreen(t,s,m) {
+  const w = el("div");
+  w.appendChild(el("div","page-head",`<div><span class="eyebrow">${esc(op().name)} · ${esc(t.toLowerCase())}</span>
+    <h2 class="page-title">${esc(t)}</h2><p class="page-sub">${esc(s)}</p></div>`));
+  const c = el("div","card");
+  c.innerHTML = `<div style="padding:50px 24px;text-align:center">
+    <div class="empty-mark" style="margin:0 auto 10px">${m}</div>
+    <p class="soft" style="font-size:12.5px;max-width:44ch;margin:0 auto;line-height:1.55">
+      Está aquí para ver el marco alrededor. No es lo que esta ronda decide.</p></div>`;
+  w.appendChild(c);
+  return w;
+}
+
+function content() {
+  if (state.screen === "catalogo") return CAT[V().id]();
+  if (state.screen === "conversaciones") return otherScreen("Conversaciones","La bandeja de Sebastián, ya decidida.","◇");
+  if (state.screen === "vendedor") return otherScreen("Vendedor","Configuración de Sebastián. Grupo pendiente.","◉");
+  if (state.screen === "pedidos") return otherScreen("Pedidos","Confirmación de pedidos, sin cambios.","▦");
+  if (state.screen === "plantillas") return otherScreen("Plantillas","Plantillas aprobadas de Meta.","▥");
+  return otherScreen("Inbox","La bandeja de Katherine.","✉");
+}
+
+/* ---------------- armazón ---------------- */
+const toggleBars = () => { state.bars = state.bars === "open" ? "collapsed" : "open"; render(); };
+function switchCountry(c){ if(state.country===c) return; state.country=c; state.bars="open"; state.sel=(PRODUCTS[c][0]||{}).id; render(); }
+
+function navFor(m) {
+  const box = el("div");
+  box.style.cssText = "display:flex;flex-direction:column;gap:2px";
+  MODULES[m].screens.forEach(s => {
+    const isCat = s.key === "catalogo" && m === "ventas";
+    const sinAds = prods().filter(p => !p.ads.length).length;
+    const b = el("button","navlink",`<span class="ico">${s.icon}</span>${esc(s.label)}${
+      isCat && sinAds ? `<span class="cnt">${sinAds}</span>` : ""}`);
+    if (isCat && sinAds) b.title = `${sinAds} productos sin anuncios registrados`;
+    if (state.screen === s.key && state.module === m) b.setAttribute("aria-current","page");
+    b.onclick = () => { state.module = m; state.screen = s.key; render(); };
+    box.appendChild(b);
+  });
+  return box;
+}
+
+function buildRail(tight) {
+  const rail = el("div","rail"+(tight?" tight":""));
+  Object.values(OPS).forEach(x => {
+    const t = el("button","tile"+(x.live?"":" dormant"),`${flag(x.code)}${tight?"":`<span class="tile-code">${esc(x.code)}</span>`}`);
+    t.setAttribute("aria-pressed", String(state.country===x.code));
+    t.title = `${x.name} · ${x.status}`;
+    t.onclick = () => switchCountry(x.code);
+    rail.appendChild(t);
+  });
+  if (tight) {
+    const sep = el("div"); sep.style.cssText="width:20px;height:1px;background:var(--border);margin:3px 0"; rail.appendChild(sep);
+    mod().screens.forEach(s => {
+      const b = el("button","strip-ico",s.icon);
+      b.title = `${mod().label} · ${s.label}`;
+      if (state.screen === s.key) b.setAttribute("aria-current","page");
+      b.onclick = () => { state.screen = s.key; render(); };
+      rail.appendChild(b);
+    });
+  }
+  const f = el("button","fold", state.bars==="open"?"«":"»");
+  f.style.marginTop="auto"; f.onclick=toggleBars; rail.appendChild(f);
+  return rail;
+}
+
+function buildCol() {
+  const o = op(), col = el("div","col");
+  const head = el("div","col-head");
+  head.innerHTML = `${flag(o.code,"lg")}<span style="min-width:0">
+    <span class="col-name">${esc(o.name)}</span>
+    <span class="col-sub">${esc(o.status)} · ${esc(o.currency)}</span>
+    <span class="col-tel${o.live?"":" off"}">${esc(o.phone)}</span></span>`;
+  const f = el("button","fold","«"); f.onclick = toggleBars; head.appendChild(f);
+  col.appendChild(head);
+  ["ventas","confirmacion"].forEach(k => {
+    const m = MODULES[k];
+    const g = el("div","group"+(state.module===k?" on":""));
+    g.appendChild(el("div","group-head",`<span class="grouplabel">${esc(m.label)}</span>
+      <span class="soft" style="font-size:11px">${esc(m.agent)}</span>`));
+    const items = el("div","group-items"); items.appendChild(navFor(k)); g.appendChild(items);
+    col.appendChild(g);
+  });
+  col.appendChild(el("div","colfoot",`<div class="soft" style="font-size:11px;line-height:1.5">${esc(o.store)}</div>`));
+  return col;
+}
+
+function render() {
+  const hex = op().accent, root = document.documentElement.style;
+  root.setProperty("--op",hex);
+  root.setProperty("--op-line",rgba(hex,.45));
+  root.setProperty("--op-soft",rgba(hex,.13));
+  root.setProperty("--op-faint",rgba(hex,.07));
+
+  if (!mod().screens.some(s => s.key === state.screen)) state.screen = mod().screens[0].key;
+  const ps = prods();
+  if (ps.length && !ps.some(p => p.id === state.sel)) state.sel = ps[0].id;
+
+  const shell = el("div","shell");
+  const open = state.bars === "open";
+  shell.style.gridTemplateColumns = open ? "78px 216px 1fr" : "46px 1fr";
+  shell.appendChild(buildRail(!open));
+  if (open) shell.appendChild(buildCol());
+  const main = el("div","main"), page = el("div","page");
+  page.appendChild(content()); main.appendChild(page); shell.appendChild(main);
+
+  const app = document.getElementById("app");
+  app.innerHTML=""; app.appendChild(shell);
+  syncPicker();
+}
+
+/* ---------------- instrumento ---------------- */
+function syncPicker() {
+  const v = V();
+  document.getElementById("pk-vnum").textContent = `${state.variant+1} de 5 · ${v.id}`;
+  document.getElementById("pk-vlabel").textContent = v.label;
+  document.getElementById("pk-vtag").textContent = v.tag;
+  document.getElementById("pk-ref").textContent = "ref: " + v.ref;
+
+  const box = document.querySelector('[data-key="sel"]');
+  box.innerHTML = "";
+  const ps = prods();
+  if (!ps.length) box.appendChild(el("span","soft",`<span style="font-size:11px">catálogo vacío</span>`));
+  ps.slice(0,4).forEach(p => {
+    const b = el("button","pk-opt", esc(initials(p.name)));
+    b.title = `${p.name} · ${p.src === "shopify" ? "tienda" : "panel"} · ${p.ads.length} anuncios`;
+    b.setAttribute("aria-pressed", String(state.sel === p.id));
+    b.onclick = () => { state.sel = p.id; render(); };
+    box.appendChild(b);
+  });
+  document.querySelectorAll(".pk-opts[data-key]").forEach(g => {
+    if (g.dataset.key === "sel") return;
+    g.querySelectorAll(".pk-opt").forEach(b => b.setAttribute("aria-pressed", String(state[g.dataset.key] === b.dataset.val)));
+  });
+}
+
+document.querySelectorAll('.pk-opts[data-key]').forEach(g => {
+  if (g.dataset.key === "sel") return;
+  g.querySelectorAll(".pk-opt").forEach(b => {
+    b.onclick = () => {
+      const k = g.dataset.key;
+      if (k === "country") { switchCountry(b.dataset.val); return; }
+      state[k] = b.dataset.val;
+      render();
+    };
+  });
+});
+
+// Cerrar los menús al hacer clic afuera.
+document.addEventListener("click", e => {
+  if (state.menu && !e.target.closest(".tmenu")) { state.menu = null; render(); }
+});
+
+function step(d){ state.variant=(state.variant+d+VARIANTS.length)%VARIANTS.length; state.menu=null; render(); }
+document.getElementById("pk-prev").onclick = () => step(-1);
+document.getElementById("pk-next").onclick = () => step(1);
+document.getElementById("pk-min").onclick = () => document.getElementById("picker").classList.toggle("is-min");
+addEventListener("keydown", e => {
+  if (e.target.closest("input, textarea")) return;
+  if (e.key === "ArrowLeft") { step(-1); e.preventDefault(); }
+  if (e.key === "ArrowRight") { step(1); e.preventDefault(); }
+});
+
+(function drag(){
+  const box=document.getElementById("picker"), head=document.getElementById("pk-head");
+  let dx=0,dy=0,on=false;
+  head.addEventListener("mousedown",e=>{
+    if(e.target.closest("button"))return;
+    on=true; const r=box.getBoundingClientRect();
+    dx=e.clientX-r.left; dy=e.clientY-r.top;
+    box.style.right="auto"; box.style.bottom="auto";
+    box.style.left=r.left+"px"; box.style.top=r.top+"px"; e.preventDefault();
+  });
+  addEventListener("mousemove",e=>{
+    if(!on)return;
+    box.style.left=Math.min(Math.max(0,e.clientX-dx),innerWidth-box.offsetWidth)+"px";
+    box.style.top=Math.min(Math.max(0,e.clientY-dy),innerHeight-box.offsetHeight)+"px";
+  });
+  addEventListener("mouseup",()=>{on=false;});
+})();
+
+render();
+</script>

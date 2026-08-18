@@ -1,0 +1,640 @@
+<title>Tablero del recorrido</title>
+
+<!--
+  PROTOTIPO DESECHABLE — no es código de producción, no se integra.
+
+  NIVEL 2 · último grupo: el tablero de pipeline. Lo agregó Daniel al
+  preguntar si hacía falta un visualizador tipo CRM; se evaluó dejarlo fuera
+  del spec y decidió incluirlo.
+
+  Lo que lo hace distinto de un CRM normal, y debería condicionar la forma:
+  · Las seis etapas son DERIVADAS y automáticas. Nadie arrastra nada — igual
+    que el Salesbot de Kommo, que mueve el lead solo. Un tablero con drag
+    mentiría sobre quién mueve las tarjetas.
+  · No es una herramienta de repartir trabajo: Vorare es un operador con dos
+    agentes, y el reparto ya lo hace el ruteo.
+  · Su trabajo real es ver DÓNDE SE CAE el 11,6% que no confirma. Hoy el
+    recorrido vive partido en tres pantallas y nadie ve el viaje completo.
+
+  Tensión declarada: el spec excluye «reportería y analítica de ventas», y un
+  embudo es eso. Las cinco variantes mantienen cada etapa como lista de leads
+  sobre los que se puede actuar, no como gráfico.
+
+  Referencias (Mobbin):
+  · Attio, Twenty — tablero de columnas por etapa con tarjetas.
+  · Squarespace — la conversión va ENTRE las barras, no dentro.
+  · Hotjar — nombra la caída explícitamente («dropped off»), con conteo y %.
+
+  Nivel 1 en eee80a0 · conversaciones 3e6c095 · catálogo fcd3eec · vendedor 874687a
+-->
+
+<style>
+  :root {
+    --bg:#071119; --panel:rgba(10,24,34,.82); --panel-2:rgba(18,35,48,.9);
+    --border:rgba(157,187,210,.16); --border-strong:rgba(157,187,210,.28);
+    --text:#eff7fb; --text-dim:#99adbc; --text-soft:#6f8798;
+    --accent:#6ee7b7; --highlight:#f4c16d; --danger:#f87171;
+    --shadow-panel:0 14px 42px rgba(3,10,16,.32);
+    --font:"Avenir Next","Segoe UI","Helvetica Neue",system-ui,sans-serif;
+    --op:#a78bfa; --op-line:rgba(167,139,250,.45);
+    --op-soft:rgba(167,139,250,.13); --op-faint:rgba(167,139,250,.07);
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; color:var(--text);
+    background:linear-gradient(180deg,rgba(244,193,109,.03),transparent 28%),
+               linear-gradient(180deg,#09131c 0%,#071119 45%,#050d14 100%);
+    background-attachment:fixed; font-family:var(--font); font-size:14px; -webkit-font-smoothing:antialiased; }
+  h1,h2,h3,h4 { margin:0; font-weight:600; }
+  p { margin:0; }
+  button { font-family:inherit; font-size:inherit; color:inherit; cursor:pointer; }
+  :focus-visible { outline:2px solid var(--op); outline-offset:2px; border-radius:4px; }
+  @media (prefers-reduced-motion:reduce){ *,*::before,*::after{ transition-duration:.001ms !important; } }
+
+  .flag { display:inline-block; flex:none; width:22px; height:15px; border-radius:2px; border:1px solid rgba(255,255,255,.18); }
+  .flag-GT { background:linear-gradient(90deg,#4997d0 0 33.3%,#fff 33.3% 66.6%,#4997d0 66.6%); }
+  .flag-CO { background:linear-gradient(180deg,#fcd116 0 50%,#003893 50% 75%,#ce1126 75%); }
+  .flag-lg { width:32px; height:22px; border-radius:3px; }
+  .flag-sm { width:16px; height:11px; }
+
+  .card { background:var(--panel); box-shadow:var(--shadow-panel); border:1px solid var(--border); border-radius:10px; }
+  .eyebrow { color:var(--highlight); font-size:11px; font-weight:500; text-transform:uppercase; letter-spacing:.09em; }
+  .muted { color:var(--text-dim); } .soft { color:var(--text-soft); }
+  .num { font-variant-numeric:tabular-nums; }
+  .page { padding:20px 24px 50px; max-width:1560px; margin:0 auto; width:100%; }
+  .page-head { margin-bottom:16px; }
+  .page-title { font-size:21px; letter-spacing:-.015em; }
+  .page-sub { color:var(--text-dim); font-size:13px; max-width:66ch; line-height:1.5; margin-top:4px; }
+  .pill { display:inline-flex; align-items:center; gap:5px; border:1px solid var(--border); border-radius:6px; padding:2px 7px; font-size:10.5px; font-weight:500; white-space:nowrap; }
+  .pill-amb { color:var(--highlight); border-color:rgba(244,193,109,.35); background:rgba(244,193,109,.08); }
+  .pill-esc { color:var(--danger); border-color:rgba(248,113,113,.35); background:rgba(248,113,113,.08); }
+  .dot { width:6px; height:6px; border-radius:50%; flex:none; }
+
+  /* armazón nivel 1 */
+  .shell { display:grid; min-height:100vh; }
+  .rail { background:linear-gradient(180deg,var(--op-faint),transparent 40%),linear-gradient(180deg,rgba(6,14,21,.98),rgba(4,11,17,.98)); border-right:1px solid var(--border-strong); padding:14px 11px; display:flex; flex-direction:column; gap:10px; align-items:center; }
+  .rail.tight { padding:12px 7px; gap:7px; }
+  .tile { width:56px; height:56px; border-radius:15px; border:1px solid var(--border); background:rgba(14,30,42,.7); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; }
+  .tile .flag { filter:saturate(.2) brightness(.55); }
+  .tile-code { font-size:10px; font-weight:700; letter-spacing:.06em; color:var(--text-soft); }
+  .tile[aria-pressed="true"] { border-color:var(--op); background:var(--op-soft); box-shadow:0 0 0 1px var(--op-line); }
+  .tile[aria-pressed="true"] .flag { filter:none; }
+  .tile[aria-pressed="true"] .tile-code { color:var(--op); }
+  .tile.dormant { border-style:dashed; opacity:.6; }
+  .rail.tight .tile { width:32px; height:32px; border-radius:10px; gap:0; }
+  .rail.tight .tile .flag { width:18px; height:12px; }
+  .rail.tight .tile-code { display:none; }
+  .col { border-right:1px solid var(--border); background:linear-gradient(180deg,var(--op-soft),var(--op-faint) 38%,transparent 72%),rgba(9,20,28,.86); padding:15px 12px; display:flex; flex-direction:column; overflow:hidden; }
+  .col-head { display:flex; align-items:flex-start; gap:10px; padding:0 2px 12px; margin-bottom:12px; border-bottom:1px solid var(--op-line); }
+  .col-name { display:block; font-size:14px; font-weight:600; }
+  .col-sub { display:block; font-size:10px; text-transform:uppercase; letter-spacing:.08em; margin-top:3px; color:var(--text-soft); }
+  .col-tel { display:block; font-size:11.5px; font-weight:600; color:var(--op); margin-top:5px; font-variant-numeric:tabular-nums; }
+  .col-tel.off { color:var(--highlight); }
+  .group { margin-bottom:12px; }
+  .group-head { display:flex; align-items:baseline; gap:7px; padding:0 10px 6px; }
+  .group.on .group-head .grouplabel { color:var(--op); }
+  .grouplabel { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.1em; color:var(--text-soft); }
+  .group-items { display:flex; flex-direction:column; gap:2px; padding-left:10px; margin-left:9px; border-left:1px solid var(--border); }
+  .group.on .group-items { border-left-color:var(--op-line); }
+  .navlink { display:flex; align-items:center; gap:9px; height:32px; padding:0 10px; border-radius:8px; border:1px solid transparent; color:var(--text-dim); font-size:13px; font-weight:500; background:none; width:100%; text-align:left; }
+  .navlink:hover { background:rgba(255,255,255,.045); color:var(--text); }
+  .navlink[aria-current="page"] { background:var(--op-soft); border-color:var(--op-line); color:var(--text); }
+  .navlink .ico { width:15px; text-align:center; opacity:.7; font-size:12px; }
+  .colfoot { margin-top:auto; padding-top:12px; border-top:1px solid var(--border); }
+  .main { min-width:0; }
+  .fold { flex:none; width:24px; height:24px; border-radius:7px; border:1px solid var(--border); background:rgba(8,19,27,.7); color:var(--text-soft); font-size:12px; display:grid; place-items:center; margin-left:auto; }
+  .strip-ico { width:32px; height:30px; border-radius:9px; border:1px solid transparent; background:none; color:var(--text-soft); font-size:12px; display:grid; place-items:center; }
+  .strip-ico[aria-current="page"] { background:var(--op-soft); border-color:var(--op-line); color:var(--op); }
+
+  /* ===== el aviso de que nadie arrastra ===== */
+  .auto { display:flex; gap:9px; align-items:flex-start; padding:9px 12px; border-radius:9px; margin-bottom:13px;
+          border:1px solid var(--op-line); background:var(--op-faint); font-size:11.5px; line-height:1.5; color:var(--text-dim); }
+  .auto strong { color:var(--text); }
+
+  /* ===== A · tablero de columnas (Attio, Twenty) ===== */
+  .board { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:9px; align-items:start; }
+  .lane { display:flex; flex-direction:column; min-width:0; }
+  .lane-h { padding:9px 10px; border-bottom:1px solid var(--border); }
+  .lane-n { font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.07em; }
+  .lane-c { font-size:19px; font-weight:600; margin-top:3px; letter-spacing:-.02em; }
+  .lane-b { padding:8px; display:flex; flex-direction:column; gap:7px; min-height:56px; }
+  .lead { padding:8px 9px; border-radius:8px; border:1px solid var(--border); background:rgba(14,29,40,.6); text-align:left; width:100%; }
+  .lead:hover { border-color:var(--border-strong); background:rgba(20,38,50,.7); }
+  .lead-n { font-size:12px; font-weight:600; }
+  .lead-m { font-size:10.5px; color:var(--text-soft); margin-top:2px; }
+  .lead-stall { color:var(--highlight); }
+  .more { font-size:10.5px; color:var(--text-soft); padding:3px 2px; }
+
+  /* la caída ENTRE columnas (Squarespace) */
+  .drop { position:absolute; top:22px; right:-16px; z-index:5;
+          font-size:10px; font-weight:700; padding:2px 6px; border-radius:99px;
+          background:rgba(8,19,27,.95); border:1px solid var(--border-strong); color:var(--text-soft);
+          font-variant-numeric:tabular-nums; }
+  .drop.bad { color:var(--danger); border-color:rgba(248,113,113,.5); }
+  .lane { position:relative; }
+
+  /* ===== B · embudo ===== */
+  .funnel { display:flex; align-items:flex-end; gap:0; padding:20px 16px 12px; }
+  .fstep { flex:1; min-width:0; display:flex; flex-direction:column; align-items:center; position:relative; }
+  .fbar { width:100%; border-radius:7px 7px 0 0; background:linear-gradient(180deg,var(--op),rgba(167,139,250,.35)); }
+  .fbar.sel { outline:2px solid var(--text); outline-offset:1px; }
+  .fn { font-size:10px; text-transform:uppercase; letter-spacing:.07em; color:var(--text-soft); margin-top:8px; text-align:center; }
+  .fv { font-size:15px; font-weight:600; margin-top:2px; font-variant-numeric:tabular-nums; }
+  .fdrop { position:absolute; top:-18px; right:-22px; z-index:5; font-size:10px; font-weight:700;
+           padding:2px 7px; border-radius:99px; background:rgba(8,19,27,.95);
+           border:1px solid var(--border-strong); color:var(--text-soft); font-variant-numeric:tabular-nums; }
+  .fdrop.bad { color:var(--danger); border-color:rgba(248,113,113,.5); }
+
+  /* ===== C · lista con bandas ===== */
+  .band { display:flex; align-items:center; gap:10px; padding:10px 13px; border-top:1px solid var(--border); background:rgba(255,255,255,.02); }
+  .band:first-child { border-top:none; }
+  .band-n { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; }
+  .band-c { margin-left:auto; font-size:11.5px; color:var(--text-soft); font-variant-numeric:tabular-nums; }
+  .lrow { display:grid; grid-template-columns:1fr auto auto; gap:12px; padding:9px 13px; border-top:1px solid var(--border); align-items:center; width:100%; background:none; text-align:left; }
+  .lrow:hover { background:rgba(255,255,255,.028); }
+
+  /* ===== D · carriles por operación ===== */
+  .swim { display:grid; grid-template-columns:104px repeat(6,minmax(0,1fr)); gap:8px; align-items:stretch; margin-bottom:9px; }
+  .swim-h { display:flex; align-items:center; gap:8px; padding:9px 10px; border-radius:9px; border:1px solid var(--border); background:rgba(14,29,40,.5); }
+  .swim-n { font-size:12px; font-weight:600; }
+  .cellv { padding:10px 8px; border-radius:9px; border:1px solid var(--border); background:rgba(14,29,40,.4); text-align:center; }
+  .cellv b { display:block; font-size:17px; font-weight:600; font-variant-numeric:tabular-nums; }
+  .cellv span { font-size:9.5px; color:var(--text-soft); }
+  .cellv.zero { opacity:.42; border-style:dashed; }
+
+  /* ===== E · atascados ===== */
+  .stall { display:grid; grid-template-columns:auto 1fr auto auto; gap:13px; padding:11px 14px; border-top:1px solid var(--border); align-items:center; width:100%; background:none; text-align:left; }
+  .stall:first-of-type { border-top:none; }
+  .stall:hover { background:rgba(255,255,255,.028); }
+  .days { width:44px; text-align:center; padding:5px 0; border-radius:8px; font-variant-numeric:tabular-nums; font-weight:700; font-size:15px; }
+  .days.hot { background:rgba(248,113,113,.14); color:var(--danger); border:1px solid rgba(248,113,113,.35); }
+  .days.warm { background:rgba(244,193,109,.13); color:var(--highlight); border:1px solid rgba(244,193,109,.32); }
+  .days.ok { background:rgba(255,255,255,.05); color:var(--text-soft); border:1px solid var(--border); }
+  .days small { display:block; font-size:8.5px; font-weight:600; text-transform:uppercase; letter-spacing:.06em; opacity:.8; }
+  .where { font-size:11px; padding:3px 8px; border-radius:6px; border:1px solid var(--border); color:var(--text-dim); white-space:nowrap; }
+
+  .empty { display:flex; flex-direction:column; align-items:center; gap:10px; padding:56px 24px; text-align:center; }
+  .empty-mark { width:46px; height:46px; border-radius:11px; border:1px dashed var(--border-strong); display:grid; place-items:center; color:var(--text-soft); }
+
+  /* instrumento */
+  #picker { position:fixed; right:16px; bottom:16px; z-index:9999; width:286px; background:#16181c; border:1px solid #33373f; border-radius:12px; box-shadow:0 24px 60px rgba(0,0,0,.68); font-size:12px; color:#d6d9de; user-select:none; overflow:hidden; }
+  #picker.is-min .pk-body { display:none; }
+  .pk-head { display:flex; align-items:center; gap:9px; padding:9px 11px; background:#1e2127; border-bottom:1px solid #33373f; cursor:grab; }
+  .pk-grip { color:#6b7280; letter-spacing:2px; font-size:11px; }
+  .pk-title { font-size:10px; text-transform:uppercase; letter-spacing:.12em; color:#8b919c; font-weight:600; }
+  .pk-min { margin-left:auto; background:none; border:none; color:#8b919c; padding:2px 5px; border-radius:4px; }
+  .pk-body { padding:10px; display:flex; flex-direction:column; gap:9px; }
+  .pk-pair { display:grid; grid-template-columns:1fr 1fr; gap:9px; }
+  .pk-variant { display:flex; align-items:center; gap:8px; }
+  .pk-arrow { width:28px; height:30px; flex:none; border-radius:7px; border:1px solid #3a3f47; background:#22252b; color:#b8bdc6; font-size:13px; }
+  .pk-arrow:hover { background:#2c3037; color:#fff; }
+  .pk-vname { flex:1; min-width:0; text-align:center; }
+  .pk-vnum { font-size:9px; color:#7c828d; letter-spacing:.12em; text-transform:uppercase; }
+  .pk-vlabel { font-size:12.5px; font-weight:600; color:#f0f2f5; margin-top:1px; }
+  .pk-vtag { font-size:9.5px; color:#7c828d; margin-top:2px; line-height:1.3; }
+  .pk-ref { font-size:9px; color:#5c9c86; margin-top:3px; }
+  .pk-set { display:flex; flex-direction:column; gap:5px; }
+  .pk-legend { font-size:9px; text-transform:uppercase; letter-spacing:.11em; color:#7c828d; font-weight:600; }
+  .pk-opts { display:flex; gap:4px; flex-wrap:wrap; }
+  .pk-opt { flex:1 1 0; min-width:0; padding:6px 8px; border-radius:6px; border:1px solid #3a3f47; background:#22252b; color:#9aa0aa; font-size:11px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pk-opt:hover { background:#2c3037; color:#e3e6ea; }
+  .pk-opt[aria-pressed="true"] { background:#2f5d4f; border-color:#4b9c81; color:#b8f5dc; }
+  .pk-hint { font-size:10px; color:#6b7280; line-height:1.45; border-top:1px solid #2b2f36; padding-top:9px; }
+  .pk-hint kbd { background:#2b2f36; border:1px solid #3f444c; border-radius:3px; padding:0 4px; font-family:inherit; font-size:9.5px; color:#b8bdc6; }
+</style>
+
+<div id="app"></div>
+
+<div id="picker">
+  <div class="pk-head" id="pk-head">
+    <span class="pk-grip">⠿</span>
+    <span class="pk-title">Nivel 2 · tablero</span>
+    <button class="pk-min" id="pk-min">—</button>
+  </div>
+  <div class="pk-body">
+    <div class="pk-variant">
+      <button class="pk-arrow" id="pk-prev">←</button>
+      <div class="pk-vname">
+        <div class="pk-vnum" id="pk-vnum">1 de 5</div>
+        <div class="pk-vlabel" id="pk-vlabel">—</div>
+        <div class="pk-vtag" id="pk-vtag">—</div>
+        <div class="pk-ref" id="pk-ref">—</div>
+      </div>
+      <button class="pk-arrow" id="pk-next">→</button>
+    </div>
+
+    <div class="pk-set">
+      <span class="pk-legend">Período</span>
+      <div class="pk-opts" data-key="period">
+        <button class="pk-opt" data-val="mes">Este mes</button>
+        <button class="pk-opt" data-val="hoy">Hoy</button>
+      </div>
+    </div>
+
+    <div class="pk-pair">
+      <div class="pk-set">
+        <span class="pk-legend">Operación</span>
+        <div class="pk-opts" data-key="country">
+          <button class="pk-opt" data-val="GT">Guate</button>
+          <button class="pk-opt" data-val="CO">Colombia</button>
+        </div>
+      </div>
+      <div class="pk-set">
+        <span class="pk-legend">Barras</span>
+        <div class="pk-opts" data-key="bars">
+          <button class="pk-opt" data-val="open">Abiertas</button>
+          <button class="pk-opt" data-val="collapsed">Plegadas</button>
+        </div>
+      </div>
+    </div>
+
+    <p class="pk-hint">
+      <strong>Grupo cerrado · nivel 2 completo.</strong> La variante 1 es la
+      decidida: columnas, con los cinco porcentajes de caída y el peor en rojo.
+      B–E quedan como registro. Los carriles por país (D) se aplazaron hasta
+      que Colombia facture. <kbd>←</kbd> <kbd>→</kbd> alternan.
+    </p>
+  </div>
+</div>
+
+<script>
+const OPS = {
+  GT:{code:"GT",name:"Guatemala",currency:"GTQ",cur:"Q",phone:"+502 3689 0343",store:"Vorare GT · Shopify",live:true,status:"Operando",accent:"#a78bfa"},
+  CO:{code:"CO",name:"Colombia",currency:"COP",cur:"$",phone:"+57 304 5430173",store:"sin conectar",live:false,status:"Sin operar",accent:"#38bdf8"},
+};
+const MODULES = {
+  ventas:{key:"ventas",label:"Ventas",agent:"Sebastián",
+    screens:[{key:"tablero",label:"Recorrido",icon:"▥"},{key:"conversaciones",label:"Conversaciones",icon:"◇"},{key:"catalogo",label:"Catálogo",icon:"▤"},{key:"vendedor",label:"Vendedor",icon:"◉"}]},
+  confirmacion:{key:"confirmacion",label:"Confirmación",agent:"Katherine",
+    screens:[{key:"inbox",label:"Inbox",icon:"✉"},{key:"pedidos",label:"Pedidos",icon:"▦"}]},
+};
+
+/* Las seis etapas del recorrido. Derivadas: nadie las mueve a mano. */
+const STAGES = ["Anuncio","Reconocido","Conversando","Pedido","Confirmado","Entregado"];
+
+/* Volúmenes reales del mes de Guatemala. La caída Pedido→Confirmado da el
+   88,4% que factura hoy; la grande está antes, en Conversando→Pedido. */
+const VOL = {
+  GT:{ mes:[340,291,214,128,113,98], hoy:[14,12,9,5,4,3] },
+  CO:{ mes:[3,3,3,0,0,0],            hoy:[3,3,3,0,0,0] },
+};
+
+/* Leads de ejemplo por etapa, con días en la etapa. */
+const LEADS = {
+  GT:[
+    {n:"María José Chun", s:2, d:0, tel:"+502 5512 8840", note:"Reconocida · DHT"},
+    {n:"Luis Ovalle",     s:1, d:0, tel:"+502 4471 2093", note:"Ambiguo · 3 posibles", warn:true},
+    {n:"Wendy Morales",   s:1, d:2, tel:"+502 5580 1174", note:"Ambiguo · 2 posibles", warn:true},
+    {n:"Ana Sicán",       s:2, d:0, tel:"+502 3390 5518", note:"Escalada", bad:true},
+    {n:"Byron Tzoc",      s:3, d:1, tel:"+502 4419 3302", note:"Esperando pago"},
+    {n:"Silvia Xicará",   s:5, d:0, tel:"+502 3312 7790", note:"Entregado"},
+    {n:"Karla Batz",      s:3, d:6, tel:"+502 5590 2214", note:"Pedido sin confirmar", warn:true},
+    {n:"Edgar Pérez",     s:2, d:9, tel:"+502 4402 8871", note:"Sin respuesta hace 9 días", bad:true},
+    {n:"Ligia Cabrera",   s:4, d:1, tel:"+502 3318 9902", note:"Confirmado · en ruta"},
+    {n:"Marvin Coy",      s:3, d:4, tel:"+502 5571 3340", note:"Pedido sin confirmar", warn:true},
+    {n:"Rosa Ixchop",     s:0, d:0, tel:"+502 4488 1120", note:"Clic en anuncio, sin escribir"},
+    {n:"Julio Ramírez",   s:5, d:2, tel:"+502 3345 7781", note:"Entregado"},
+  ],
+  CO:[
+    {n:"Jhon Rodríguez",  s:2, d:0, tel:"+57 310 8842 190", note:"Reconocido · DHT"},
+    {n:"Camila Restrepo", s:2, d:0, tel:"+57 320 4471 002", note:"Ambiguo · 2 posibles", warn:true},
+    {n:"Andrés Peña",     s:2, d:0, tel:"+57 315 9920 774", note:"Escalada", bad:true},
+  ],
+};
+
+const VARIANTS = [
+  {id:"A",label:"Columnas ✓",         tag:"ELEGIDA · por claridad; la caída entre columnas", ref:"Attio · Twenty"},
+  {id:"B",label:"Embudo con caída",   tag:"la conversión va entre las barras",              ref:"Squarespace · Hotjar"},
+  {id:"C",label:"Lista con bandas",   tag:"un solo scroll, la etapa como banda",            ref:"lo ya decidido"},
+  {id:"D",label:"Carriles por país",  tag:"etapas × operaciones, para cuando Colombia abra",ref:"swimlanes"},
+  {id:"E",label:"Atascados",          tag:"no dónde están: hace cuánto que no se mueven",   ref:"detector de estancamiento"},
+];
+
+const state = { variant:0, period:"mes", country:"GT", module:"ventas", screen:"tablero", bars:"open", stage:2 };
+
+const el=(t,c,h)=>{const n=document.createElement(t);if(c)n.className=c;if(h!=null)n.innerHTML=h;return n;};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const flag=(c,s)=>`<span class="flag flag-${c}${s?" flag-"+s:""}"></span>`;
+const op=()=>OPS[state.country];
+const mod=()=>MODULES[state.module];
+const V=()=>VARIANTS[state.variant];
+function rgba(h,a){const n=parseInt(h.slice(1),16);return `rgba(${(n>>16)&255}, ${(n>>8)&255}, ${n&255}, ${a})`;}
+
+const vol = () => VOL[state.country][state.period];
+const leadsAt = i => LEADS[state.country].filter(l => l.s === i);
+/* La caída entre dos etapas. Es el número que el tablero existe para mostrar. */
+const conv = i => { const v = vol(); return v[i-1] ? Math.round(v[i]/v[i-1]*100) : 0; };
+const worstStep = () => {
+  let w = 1, min = 101;
+  for (let i=1;i<STAGES.length;i++){ const c = conv(i); if (vol()[i-1] && c < min) { min = c; w = i; } }
+  return w;
+};
+
+const autoNote = () => el("div","auto",
+  `<span>⟳</span><span><strong>El recorrido se mueve solo.</strong> Las seis etapas se derivan del
+   reconocimiento, del pedido y de la confirmación — nadie arrastra tarjetas. Este tablero
+   se mira para decidir dónde intervenir, no para mover a nadie.</span>`);
+
+function leadCard(l) {
+  const b = el("button","lead");
+  b.innerHTML = `<div class="lead-n">${esc(l.n)}</div>
+    <div class="lead-m ${l.warn||l.bad?"lead-stall":""}">${esc(l.note)}${l.d>2?` · ${l.d} d`:""}</div>`;
+  return b;
+}
+
+/* ================= LAS CINCO ================= */
+
+function tA() {
+  const w = el("div"); w.appendChild(autoNote());
+  const b = el("div","board");
+  const worst = worstStep();
+  STAGES.forEach((s,i) => {
+    const lane = el("div","card lane");
+    const ls = leadsAt(i);
+    lane.appendChild(el("div","lane-h",
+      `<div class="lane-n" style="color:${i===STAGES.length-1?"var(--accent)":"var(--text-dim)"}">${esc(s)}</div>
+       <div class="lane-c num">${vol()[i]}</div>`));
+    const body = el("div","lane-b");
+    ls.slice(0,3).forEach(l => body.appendChild(leadCard(l)));
+    if (!ls.length) body.appendChild(el("div","more","—"));
+    else if (vol()[i] > ls.length) body.appendChild(el("div","more",`+${vol()[i]-ls.slice(0,3).length} más`));
+    lane.appendChild(body);
+    if (i > 0) lane.appendChild(el("div","drop" + (i===worst?" bad":""), `${conv(i)}%`));
+    b.appendChild(lane);
+  });
+  w.appendChild(b);
+  return w;
+}
+
+function tB() {
+  const w = el("div"); w.appendChild(autoNote());
+  const c = el("div","card");
+  const f = el("div","funnel");
+  const max = vol()[0] || 1, worst = worstStep();
+  STAGES.forEach((s,i) => {
+    const st = el("div","fstep");
+    const bar = el("div","fbar" + (state.stage===i?" sel":""));
+    bar.style.height = Math.max(6, Math.round(vol()[i]/max*170)) + "px";
+    st.appendChild(bar);
+    st.appendChild(el("div","fn",esc(s)));
+    st.appendChild(el("div","fv num",vol()[i]));
+    if (i>0) st.appendChild(el("div","fdrop"+(i===worst?" bad":""),`${conv(i)}%`));
+    st.style.cursor="pointer";
+    st.onclick = () => { state.stage = i; render(); };
+    f.appendChild(st);
+  });
+  c.appendChild(f);
+  const ls = leadsAt(state.stage);
+  c.appendChild(el("div","band",
+    `<span class="dot" style="background:var(--op)"></span>
+     <span class="band-n">${esc(STAGES[state.stage])}</span>
+     <span class="band-c">${vol()[state.stage]} leads</span>`));
+  if (!ls.length) c.appendChild(el("div","more",`<div style="padding:16px 14px">Ninguno para mostrar en este período.</div>`));
+  ls.forEach(l => {
+    const r = el("button","lrow");
+    r.innerHTML = `<div><div class="lead-n">${esc(l.n)}</div>
+        <div class="lead-m num">${esc(l.tel)}</div></div>
+      <span class="lead-m ${l.warn||l.bad?"lead-stall":""}">${esc(l.note)}</span>
+      <span class="lead-m num">${l.d} d</span>`;
+    c.appendChild(r);
+  });
+  w.appendChild(c);
+  return w;
+}
+
+function tC() {
+  const w = el("div"); w.appendChild(autoNote());
+  const c = el("div","card"); c.style.overflow="hidden";
+  const worst = worstStep();
+  STAGES.forEach((s,i) => {
+    c.appendChild(el("div","band",
+      `<span class="dot" style="background:${i===worst?"var(--danger)":"var(--op)"}"></span>
+       <span class="band-n" style="color:${i===worst?"var(--danger)":"var(--text-dim)"}">${esc(s)}</span>
+       ${i>0?`<span class="lead-m">${conv(i)}% de los anteriores</span>`:""}
+       <span class="band-c">${vol()[i]}</span>`));
+    leadsAt(i).forEach(l => {
+      const r = el("button","lrow");
+      r.innerHTML = `<div><div class="lead-n">${esc(l.n)}</div>
+          <div class="lead-m num">${esc(l.tel)}</div></div>
+        <span class="lead-m ${l.warn||l.bad?"lead-stall":""}">${esc(l.note)}</span>
+        <span class="lead-m num">${l.d} d</span>`;
+      c.appendChild(r);
+    });
+  });
+  w.appendChild(c);
+  return w;
+}
+
+function tD() {
+  const w = el("div"); w.appendChild(autoNote());
+  const c = el("div","card"); c.style.padding="13px";
+  const head = el("div","swim");
+  head.appendChild(el("div",null,""));
+  STAGES.forEach(s => head.appendChild(el("div","lane-n",
+    `<div style="padding:0 4px 4px;color:var(--text-soft)">${esc(s)}</div>`)));
+  c.appendChild(head);
+  Object.values(OPS).forEach(o => {
+    const row = el("div","swim");
+    row.appendChild(el("div","swim-h",
+      `${flag(o.code,"sm")}<span><span class="swim-n">${esc(o.name)}</span>
+       <span style="display:block;font-size:9.5px;color:var(--text-soft)">${esc(o.status)}</span></span>`));
+    const v = VOL[o.code][state.period];
+    v.forEach((n,i) => row.appendChild(el("div","cellv"+(n?"":" zero"),
+      `<b>${n}</b><span>${i>0&&v[i-1]?Math.round(n/v[i-1]*100)+"%":"—"}</span>`)));
+    c.appendChild(row);
+  });
+  w.appendChild(c);
+  return w;
+}
+
+function tE() {
+  const w = el("div"); w.appendChild(autoNote());
+  const c = el("div","card"); c.style.overflow="hidden";
+  /* «Sin moverse» son los que llevan al menos un día en la misma etapa. Los
+     de hoy no están atascados: están pasando. */
+  const activos = [...LEADS[state.country]].filter(l => l.s < 5);
+  const ls = activos.filter(l => l.d >= 1).sort((a,b) => b.d - a.d);
+  const frescos = activos.length - ls.length;
+  c.appendChild(el("div","band",
+    `<span class="dot" style="background:var(--danger)"></span>
+     <span class="band-n">Sin moverse</span>
+     <span class="lead-m">al menos un día en la misma etapa</span>
+     <span class="band-c">${ls.length}</span>`));
+  if (!ls.length) {
+    c.appendChild(el("div","empty",`<div class="empty-mark">✓</div>
+      <p class="soft" style="font-size:12.5px">Nada atascado en ${esc(op().name)}.</p>`));
+  }
+  ls.forEach(l => {
+    const cls = l.d >= 6 ? "hot" : l.d >= 3 ? "warm" : "ok";
+    const r = el("button","stall");
+    r.innerHTML = `<span class="days ${cls}">${l.d}<small>días</small></span>
+      <div><div class="lead-n" style="font-size:13px">${esc(l.n)}</div>
+        <div class="lead-m num">${esc(l.tel)} · ${esc(l.note)}</div></div>
+      <span class="where">${esc(STAGES[l.s])}</span>
+      <span class="lead-m">→</span>`;
+    c.appendChild(r);
+  });
+  if (frescos) c.appendChild(el("div","more",
+    `<div style="padding:11px 14px;border-top:1px solid var(--border)">
+       ${frescos} lead${frescos>1?"s":""} más se movieron hoy — esos van bien.</div>`));
+  w.appendChild(c);
+  return w;
+}
+
+const T = { A:tA, B:tB, C:tC, D:tD, E:tE };
+
+function boardScreen() {
+  const w = el("div");
+  const v = vol(), worst = worstStep();
+  w.appendChild(el("div","page-head",`
+    <span class="eyebrow">${esc(op().name)} · recorrido</span>
+    <h2 class="page-title">Recorrido de los leads</h2>
+    <p class="page-sub">${op().live
+      ? `De ${v[0]} clics en anuncios este mes llegaron ${v[5]} entregas. La caída más grande
+         está en <strong>${esc(STAGES[worst-1])} → ${esc(STAGES[worst])}</strong>.`
+      : "Esta operación todavía no vende: el recorrido está vacío después de la conversación."}</p>`));
+  w.appendChild(T[V().id]());
+  return w;
+}
+
+function otherScreen(t,s,m) {
+  const w = el("div");
+  w.appendChild(el("div","page-head",`<span class="eyebrow">${esc(op().name)} · ${esc(t.toLowerCase())}</span>
+    <h2 class="page-title">${esc(t)}</h2><p class="page-sub">${esc(s)}</p>`));
+  const c = el("div","card");
+  c.appendChild(el("div","empty",`<div class="empty-mark">${m}</div>
+    <p class="soft" style="font-size:12.5px;max-width:44ch;line-height:1.55">Ya decidido en una ronda anterior.</p>`));
+  w.appendChild(c);
+  return w;
+}
+
+function content() {
+  if (state.screen === "tablero") return boardScreen();
+  if (state.screen === "conversaciones") return otherScreen("Conversaciones","Bandeja de Sebastián.","◇");
+  if (state.screen === "catalogo") return otherScreen("Catálogo","Tabla densa.","▤");
+  if (state.screen === "vendedor") return otherScreen("Vendedor","Configuración de Sebastián.","◉");
+  if (state.screen === "pedidos") return otherScreen("Pedidos","Confirmación de pedidos.","▦");
+  return otherScreen("Inbox","Bandeja de Katherine.","✉");
+}
+
+/* armazón */
+const toggleBars = () => { state.bars = state.bars === "open" ? "collapsed" : "open"; render(); };
+function switchCountry(c){ if(state.country===c) return; state.country=c; state.bars="open"; state.stage=2; render(); }
+function navFor(m) {
+  const box = el("div");
+  box.style.cssText = "display:flex;flex-direction:column;gap:2px";
+  MODULES[m].screens.forEach(s => {
+    const b = el("button","navlink",`<span class="ico">${s.icon}</span>${esc(s.label)}`);
+    if (state.screen === s.key && state.module === m) b.setAttribute("aria-current","page");
+    b.onclick = () => { state.module = m; state.screen = s.key; render(); };
+    box.appendChild(b);
+  });
+  return box;
+}
+function buildRail(tight) {
+  const rail = el("div","rail"+(tight?" tight":""));
+  Object.values(OPS).forEach(x => {
+    const t = el("button","tile"+(x.live?"":" dormant"),`${flag(x.code)}${tight?"":`<span class="tile-code">${esc(x.code)}</span>`}`);
+    t.setAttribute("aria-pressed", String(state.country===x.code));
+    t.title = `${x.name} · ${x.status}`;
+    t.onclick = () => switchCountry(x.code);
+    rail.appendChild(t);
+  });
+  if (tight) {
+    const sep = el("div"); sep.style.cssText="width:20px;height:1px;background:var(--border);margin:3px 0"; rail.appendChild(sep);
+    mod().screens.forEach(s => {
+      const b = el("button","strip-ico",s.icon);
+      b.title = `${mod().label} · ${s.label}`;
+      if (state.screen === s.key) b.setAttribute("aria-current","page");
+      b.onclick = () => { state.screen = s.key; render(); };
+      rail.appendChild(b);
+    });
+  }
+  const f = el("button","fold", state.bars==="open"?"«":"»");
+  f.style.marginTop="auto"; f.onclick=toggleBars; rail.appendChild(f);
+  return rail;
+}
+function buildCol() {
+  const o = op(), col = el("div","col");
+  const head = el("div","col-head");
+  head.innerHTML = `${flag(o.code,"lg")}<span style="min-width:0">
+    <span class="col-name">${esc(o.name)}</span>
+    <span class="col-sub">${esc(o.status)} · ${esc(o.currency)}</span>
+    <span class="col-tel${o.live?"":" off"}">${esc(o.phone)}</span></span>`;
+  const f = el("button","fold","«"); f.onclick = toggleBars; head.appendChild(f);
+  col.appendChild(head);
+  ["ventas","confirmacion"].forEach(k => {
+    const m = MODULES[k];
+    const g = el("div","group"+(state.module===k?" on":""));
+    g.appendChild(el("div","group-head",`<span class="grouplabel">${esc(m.label)}</span>
+      <span class="soft" style="font-size:11px">${esc(m.agent)}</span>`));
+    const items = el("div","group-items"); items.appendChild(navFor(k)); g.appendChild(items);
+    col.appendChild(g);
+  });
+  col.appendChild(el("div","colfoot",`<div class="soft" style="font-size:11px;line-height:1.5">${esc(o.store)}</div>`));
+  return col;
+}
+function render() {
+  const hex = op().accent, root = document.documentElement.style;
+  root.setProperty("--op",hex);
+  root.setProperty("--op-line",rgba(hex,.45));
+  root.setProperty("--op-soft",rgba(hex,.13));
+  root.setProperty("--op-faint",rgba(hex,.07));
+  if (!mod().screens.some(s => s.key === state.screen)) state.screen = mod().screens[0].key;
+  const shell = el("div","shell");
+  const open = state.bars === "open";
+  shell.style.gridTemplateColumns = open ? "78px 216px 1fr" : "46px 1fr";
+  shell.appendChild(buildRail(!open));
+  if (open) shell.appendChild(buildCol());
+  const main = el("div","main"), page = el("div","page");
+  page.appendChild(content()); main.appendChild(page); shell.appendChild(main);
+  const app = document.getElementById("app");
+  app.innerHTML=""; app.appendChild(shell);
+  syncPicker();
+}
+function syncPicker() {
+  const v = V();
+  document.getElementById("pk-vnum").textContent = `${state.variant+1} de 5 · ${v.id}`;
+  document.getElementById("pk-vlabel").textContent = v.label;
+  document.getElementById("pk-vtag").textContent = v.tag;
+  document.getElementById("pk-ref").textContent = "ref: " + v.ref;
+  document.querySelectorAll(".pk-opts[data-key]").forEach(g => {
+    g.querySelectorAll(".pk-opt").forEach(b => b.setAttribute("aria-pressed", String(state[g.dataset.key] === b.dataset.val)));
+  });
+}
+document.querySelectorAll('.pk-opts[data-key]').forEach(g => {
+  g.querySelectorAll(".pk-opt").forEach(b => {
+    b.onclick = () => {
+      const k = g.dataset.key;
+      if (k === "country") { switchCountry(b.dataset.val); return; }
+      state[k] = b.dataset.val; render();
+    };
+  });
+});
+function step(d){ state.variant=(state.variant+d+VARIANTS.length)%VARIANTS.length; render(); }
+document.getElementById("pk-prev").onclick = () => step(-1);
+document.getElementById("pk-next").onclick = () => step(1);
+document.getElementById("pk-min").onclick = () => document.getElementById("picker").classList.toggle("is-min");
+addEventListener("keydown", e => {
+  if (e.target.closest("input, textarea")) return;
+  if (e.key === "ArrowLeft") { step(-1); e.preventDefault(); }
+  if (e.key === "ArrowRight") { step(1); e.preventDefault(); }
+});
+(function drag(){
+  const box=document.getElementById("picker"), head=document.getElementById("pk-head");
+  let dx=0,dy=0,on=false;
+  head.addEventListener("mousedown",e=>{
+    if(e.target.closest("button"))return;
+    on=true; const r=box.getBoundingClientRect();
+    dx=e.clientX-r.left; dy=e.clientY-r.top;
+    box.style.right="auto"; box.style.bottom="auto";
+    box.style.left=r.left+"px"; box.style.top=r.top+"px"; e.preventDefault();
+  });
+  addEventListener("mousemove",e=>{
+    if(!on)return;
+    box.style.left=Math.min(Math.max(0,e.clientX-dx),innerWidth-box.offsetWidth)+"px";
+    box.style.top=Math.min(Math.max(0,e.clientY-dy),innerHeight-box.offsetHeight)+"px";
+  });
+  addEventListener("mouseup",()=>{on=false;});
+})();
+render();
+</script>

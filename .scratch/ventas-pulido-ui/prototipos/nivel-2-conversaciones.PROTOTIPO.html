@@ -1,0 +1,905 @@
+<title>Ventas dentro del Inbox</title>
+
+<!--
+  PROTOTIPO DESECHABLE — no es código de producción, no se integra.
+
+  NIVEL 2 · grupo «conversaciones» · RONDA 2, con la pregunta REPLANTEADA.
+
+  La ronda 1 falló entera («ninguna me convence») y la razón no era el layout:
+  las cinco variantes le pusieron vocabulario nuevo a actos que el panel YA
+  nombra en producción. En apps/web/src/app/(app)/inbox/inbox-client.tsx:
+    · `agentMode` por contacto — el botón dice «Agente: ON / OFF»
+    · las etiquetas dicen «Automatización activa» / «Respuesta manual»
+    · needsAttention = !agentMode && unread > 0, CON filtro ya construido
+  Inventar «tomar el chat» y «vendedor pausado» encima de eso es lo que hace
+  que algo se sienta otra aplicación. Historias 12 y 13 del spec.
+
+  La pregunta nueva: ¿qué le falta al Inbox que ya existe para servir también
+  a ventas, sin romper lo que Katherine usa todos los días?
+
+  Referencias (Mobbin), una por variante:
+    A · Intercom / Gorgias / Featurebase — el agente como VISTAS en la barra
+    B · Zillow / GoDaddy                 — cintas de filtro sobre la lista
+    C · Intercom / Lemni / Gorgias       — tercer panel de contexto
+    D · ManyChat / Pipedrive             — el traspaso narrado en el hilo
+    E · la composición de las tres
+
+  El encuadre del nivel 1 va fijo. Nivel 1 cerrado en eee80a0.
+-->
+
+<style>
+  :root {
+    --bg:#071119; --panel:rgba(10,24,34,.82); --panel-2:rgba(18,35,48,.9);
+    --border:rgba(157,187,210,.16); --border-strong:rgba(157,187,210,.28);
+    --text:#eff7fb; --text-dim:#99adbc; --text-soft:#6f8798;
+    --accent:#6ee7b7; --highlight:#f4c16d; --danger:#f87171;
+    --shadow-panel:0 14px 42px rgba(3,10,16,.32);
+    --font:"Avenir Next","Segoe UI","Helvetica Neue",system-ui,sans-serif;
+    --op:#a78bfa; --op-line:rgba(167,139,250,.45);
+    --op-soft:rgba(167,139,250,.13); --op-faint:rgba(167,139,250,.07);
+  }
+  * { box-sizing:border-box; }
+  body {
+    margin:0; min-height:100vh; color:var(--text);
+    background:linear-gradient(180deg,rgba(244,193,109,.03),transparent 28%),
+               linear-gradient(180deg,#09131c 0%,#071119 45%,#050d14 100%);
+    background-attachment:fixed;
+    font-family:var(--font); font-size:14px; -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3,h4 { margin:0; font-weight:600; }
+  p { margin:0; }
+  button { font-family:inherit; font-size:inherit; color:inherit; cursor:pointer; }
+  :focus-visible { outline:2px solid var(--op); outline-offset:2px; border-radius:4px; }
+  @media (prefers-reduced-motion:reduce){ *,*::before,*::after{ animation-duration:.001ms !important; transition-duration:.001ms !important; } }
+
+  .flag { display:inline-block; flex:none; width:22px; height:15px; border-radius:2px; border:1px solid rgba(255,255,255,.18); }
+  .flag-GT { background:linear-gradient(90deg,#4997d0 0 33.3%,#fff 33.3% 66.6%,#4997d0 66.6%); }
+  .flag-CO { background:linear-gradient(180deg,#fcd116 0 50%,#003893 50% 75%,#ce1126 75%); }
+  .flag-lg { width:32px; height:22px; border-radius:3px; }
+
+  .card { background:var(--panel); box-shadow:var(--shadow-panel); border:1px solid var(--border); border-radius:10px; }
+  .eyebrow { color:var(--highlight); font-size:11px; font-weight:500; text-transform:uppercase; letter-spacing:.09em; }
+  .muted { color:var(--text-dim); } .soft { color:var(--text-soft); }
+  .num { font-variant-numeric:tabular-nums; }
+  .pill { display:inline-flex; align-items:center; gap:5px; border:1px solid var(--border); border-radius:6px; padding:2px 7px; font-size:10.5px; font-weight:500; white-space:nowrap; }
+  .pill-ok { color:var(--accent); border-color:rgba(110,231,183,.35); background:rgba(110,231,183,.08); }
+  .pill-amb { color:var(--highlight); border-color:rgba(244,193,109,.35); background:rgba(244,193,109,.08); }
+  .pill-esc { color:var(--danger); border-color:rgba(248,113,113,.35); background:rgba(248,113,113,.08); }
+  .pill-quiet { color:var(--text-soft); }
+  .dot { width:6px; height:6px; border-radius:50%; flex:none; }
+
+  .page { padding:20px 24px 50px; max-width:1500px; margin:0 auto; width:100%; }
+  .page-head { display:flex; flex-direction:column; gap:5px; margin-bottom:16px; }
+  .page-title { font-size:21px; letter-spacing:-.015em; }
+  .page-sub { color:var(--text-dim); font-size:13px; max-width:64ch; line-height:1.5; }
+
+  /* ===== armazón del nivel 1 — cerrado, no se discute ===== */
+  .shell { display:grid; min-height:100vh; }
+  .rail { background:linear-gradient(180deg,var(--op-faint),transparent 40%),linear-gradient(180deg,rgba(6,14,21,.98),rgba(4,11,17,.98)); border-right:1px solid var(--border-strong); padding:14px 11px; display:flex; flex-direction:column; gap:10px; align-items:center; }
+  .rail.tight { padding:12px 7px; gap:7px; }
+  .tile { width:56px; height:56px; border-radius:15px; border:1px solid var(--border); background:rgba(14,30,42,.7); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; position:relative; transition:all .18s cubic-bezier(.22,1,.36,1); }
+  .tile .flag { filter:saturate(.2) brightness(.55); transition:filter .18s; }
+  .tile-code { font-size:10px; font-weight:700; letter-spacing:.06em; color:var(--text-soft); }
+  .tile[aria-pressed="true"] { border-color:var(--op); background:var(--op-soft); box-shadow:0 0 0 1px var(--op-line); }
+  .tile[aria-pressed="true"] .flag { filter:none; }
+  .tile[aria-pressed="true"] .tile-code { color:var(--op); }
+  .tile.dormant { border-style:dashed; opacity:.6; }
+  .rail.tight .tile { width:32px; height:32px; border-radius:10px; gap:0; }
+  .rail.tight .tile .flag { width:18px; height:12px; }
+  .rail.tight .tile-code { display:none; }
+  .col { border-right:1px solid var(--border); background:linear-gradient(180deg,var(--op-soft),var(--op-faint) 38%,transparent 72%),rgba(9,20,28,.86); padding:15px 12px; display:flex; flex-direction:column; overflow:hidden; }
+  .col-head { display:flex; align-items:flex-start; gap:10px; padding:0 2px 12px; margin-bottom:12px; border-bottom:1px solid var(--op-line); }
+  .col-name { display:block; font-size:14px; font-weight:600; }
+  .col-sub { display:block; font-size:10px; text-transform:uppercase; letter-spacing:.08em; margin-top:3px; color:var(--text-soft); }
+  .col-tel { display:block; font-size:11.5px; font-weight:600; color:var(--op); margin-top:5px; font-variant-numeric:tabular-nums; }
+  .col-tel.off { color:var(--highlight); }
+  .group { margin-bottom:12px; }
+  .group-head { display:flex; align-items:baseline; gap:7px; padding:0 10px 6px; }
+  .group.on .group-head .grouplabel { color:var(--op); }
+  .grouplabel { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.1em; color:var(--text-soft); }
+  .group-items { display:flex; flex-direction:column; gap:2px; padding-left:10px; margin-left:9px; border-left:1px solid var(--border); }
+  .group.on .group-items { border-left-color:var(--op-line); }
+  .navlink { display:flex; align-items:center; gap:9px; height:32px; padding:0 10px; border-radius:8px; border:1px solid transparent; color:var(--text-dim); font-size:13px; font-weight:500; background:none; width:100%; text-align:left; }
+  .navlink:hover { background:rgba(255,255,255,.045); color:var(--text); }
+  .navlink[aria-current="page"] { background:var(--op-soft); border-color:var(--op-line); color:var(--text); }
+  .navlink .ico { width:15px; text-align:center; opacity:.7; font-size:12px; }
+  .navlink .cnt { margin-left:auto; font-size:10.5px; color:var(--text-soft); font-variant-numeric:tabular-nums; }
+  .colfoot { margin-top:auto; padding-top:12px; border-top:1px solid var(--border); }
+  .main { min-width:0; }
+  .fold { flex:none; width:24px; height:24px; border-radius:7px; border:1px solid var(--border); background:rgba(8,19,27,.7); color:var(--text-soft); font-size:12px; display:grid; place-items:center; margin-left:auto; }
+  .fold:hover { color:var(--text); border-color:var(--op-line); }
+  .strip-ico { width:32px; height:30px; border-radius:9px; border:1px solid transparent; background:none; color:var(--text-soft); font-size:12px; display:grid; place-items:center; }
+  .strip-ico[aria-current="page"] { background:var(--op-soft); border-color:var(--op-line); color:var(--op); }
+
+  /* ===== EL INBOX, tal como existe hoy ===== */
+  .inbox { display:grid; gap:12px; align-items:start; }
+  .ib-list { overflow:hidden; display:flex; flex-direction:column; max-height:660px; }
+  .ib-listhead { padding:10px 12px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .ib-search { flex:1; min-width:120px; padding:6px 10px; border-radius:7px; border:1px solid var(--border); background:rgba(14,29,40,.9); color:var(--text-soft); font-size:12px; }
+  .ib-rows { overflow-y:auto; }
+
+  /* La fila del Inbox de producción: nombre, preview, y la marca de
+     automatización que YA existe. Nada de vocabulario nuevo. */
+  .row { display:grid; grid-template-columns:1fr auto; gap:4px 10px; padding:10px 12px; border-top:1px solid var(--border); align-items:start; background:none; width:100%; text-align:left; border-left:2px solid transparent; }
+  .row:first-child { border-top:none; }
+  .row:hover { background:rgba(255,255,255,.028); }
+  .row.sel { background:var(--op-faint); border-left-color:var(--op); }
+  .row.attn { border-left-color:var(--highlight); }
+  .who { font-weight:600; font-size:13px; }
+  .prev { color:var(--text-dim); font-size:12px; margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .when { font-size:10.5px; color:var(--text-soft); white-space:nowrap; }
+  .rowfoot { grid-column:1/-1; display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-top:2px; }
+  .unread { background:var(--op); color:#06121b; border-radius:99px; padding:0 6px; font-size:10px; font-weight:700; font-variant-numeric:tabular-nums; }
+
+  /* el hilo */
+  .th { display:flex; flex-direction:column; min-height:520px; max-height:660px; }
+  .th-head { padding:11px 14px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:10px; }
+  .th-body { flex:1; padding:14px; display:flex; flex-direction:column; gap:8px; overflow-y:auto; }
+  .bub { max-width:76%; padding:8px 11px; border-radius:11px; font-size:12.5px; line-height:1.45; }
+  .bub-in { align-self:flex-start; background:linear-gradient(135deg,rgba(20,40,54,.96),rgba(15,29,40,.96)); border:1px solid var(--border); }
+  .bub-out { align-self:flex-end; background:linear-gradient(135deg,rgba(42,93,82,.96),rgba(29,74,67,.98)); }
+  .th-foot { padding:10px 14px; border-top:1px solid var(--border); display:flex; gap:8px; align-items:center; }
+  .composer { flex:1; padding:7px 11px; border-radius:8px; border:1px solid var(--border); background:rgba(14,29,40,.9); color:var(--text-soft); font-size:12.5px; }
+  .btn { padding:7px 12px; border-radius:8px; border:1px solid var(--border); background:rgba(15,31,43,.88); font-size:12.5px; font-weight:600; color:var(--text-dim); white-space:nowrap; }
+  .btn:hover { color:var(--text); border-color:var(--border-strong); }
+  /* «Agente: ON/OFF» es el control que ya existe. No se renombra. */
+  .btn-agent-on { background:rgba(110,231,183,.12); border-color:rgba(110,231,183,.4); color:#9df5d0; }
+  .btn-agent-off { background:rgba(244,193,109,.12); border-color:rgba(244,193,109,.42); color:#f7d9a4; }
+
+  /* D · el traspaso narrado en el hilo (ManyChat, Pipedrive) */
+  .ev { align-self:stretch; display:flex; align-items:center; gap:9px; padding:5px 0; color:var(--text-soft); font-size:11px; }
+  .ev::before, .ev::after { content:""; flex:1; height:1px; background:var(--border); }
+  .ev span { flex:none; max-width:78%; text-align:center; }
+  .ev-hot span { color:var(--highlight); }
+  .ev-ok span { color:var(--accent); }
+
+  /* B · cintas de filtro sobre la lista (Zillow, GoDaddy) */
+  .chips { display:flex; gap:6px; flex-wrap:wrap; }
+  .chip { padding:5px 11px; border-radius:99px; border:1px solid var(--border); background:rgba(14,29,40,.6); color:var(--text-soft); font-size:11.5px; font-weight:500; }
+  .chip:hover { color:var(--text-dim); border-color:var(--border-strong); }
+  .chip[aria-pressed="true"] { background:var(--op-soft); border-color:var(--op); color:var(--op); }
+  .chip .c { font-variant-numeric:tabular-nums; opacity:.75; margin-left:4px; }
+
+  /* La barra de recorrido (Salesforce). Lineal, derivada, no arrastrable. */
+  .stage-strip { padding:9px 14px; border-bottom:1px solid var(--border); background:rgba(255,255,255,.018); }
+  .stages { display:flex; gap:3px; }
+  .stg { flex:1; min-width:0; padding:5px 8px; font-size:10.5px; font-weight:600; text-align:center;
+         border-radius:5px; background:rgba(255,255,255,.035); color:var(--text-soft);
+         white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .stg.done { background:rgba(110,231,183,.12); color:rgba(110,231,183,.75); }
+  .stg.now  { background:var(--op); color:#06121b; }
+  .stages.vert { flex-direction:column; gap:2px; }
+  .stages.vert .stg { flex:none; text-align:left; padding:5px 9px; display:flex; align-items:center; gap:7px; }
+  .stages.vert .stg::before { content:""; width:5px; height:5px; border-radius:99px; flex:none; background:currentColor; opacity:.5; }
+  .stages.vert .stg.now::before { opacity:1; }
+
+  /* R · el recorrido dentro de la fila de la lista */
+  .rowstage { display:inline-flex; align-items:center; gap:4px; }
+  .rowstage i { width:9px; height:3px; border-radius:99px; background:rgba(255,255,255,.14); display:block; }
+  .rowstage i.done { background:rgba(110,231,183,.5); }
+  .rowstage i.now { background:var(--op); }
+  .rowstage em { font-style:normal; font-size:10px; color:var(--text-soft); margin-left:3px; }
+
+  /* La ficha del cliente */
+  .cust-hero { padding-bottom:10px; border-bottom:1px solid var(--border); }
+  .cust-name { font-size:14.5px; font-weight:600; letter-spacing:-.01em; }
+  .cust-grid { display:grid; grid-template-columns:1fr 1fr; gap:9px 10px; margin-top:10px; }
+  .cust-grid > div { display:flex; flex-direction:column; gap:1px; }
+  .tabs { display:flex; gap:3px; padding-bottom:10px; border-bottom:1px solid var(--border); }
+  .tab { flex:1; padding:5px 4px; border-radius:6px; border:1px solid transparent; background:none;
+         color:var(--text-soft); font-size:11px; font-weight:600; }
+  .tab[aria-selected="true"] { background:var(--op-soft); border-color:var(--op-line); color:var(--op); }
+  .tab:hover { color:var(--text-dim); }
+  .hist { display:flex; align-items:center; justify-content:space-between; gap:8px;
+          padding:8px 0; border-top:1px solid var(--border); }
+  .hist:first-of-type { border-top:none; }
+  .casc { padding:10px 11px; border-radius:9px; border:1px solid var(--op-line); background:var(--op-faint); }
+  .casc-n { font-size:9.5px; text-transform:uppercase; letter-spacing:.1em; color:var(--op); font-weight:600; }
+  .casc-t { font-size:13px; font-weight:600; margin-top:3px; }
+  .casc-d { font-size:11px; color:var(--text-soft); line-height:1.5; margin-top:5px; }
+  .cand { padding:6px 9px; margin-top:4px; border-radius:6px; font-size:11.5px;
+          border:1px solid rgba(244,193,109,.28); background:rgba(244,193,109,.06); color:var(--text-dim); }
+
+  /* C · tercer panel de contexto (Intercom, Lemni, Gorgias) */
+  .ctx { padding:13px 14px; display:flex; flex-direction:column; gap:14px; max-height:660px; overflow-y:auto; }
+  .ctx-sec { display:flex; flex-direction:column; gap:7px; }
+  .ctx-h { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.1em; color:var(--text-soft); }
+  .ctx-f { display:flex; flex-direction:column; gap:2px; }
+  .ctx-k { font-size:10.5px; color:var(--text-soft); }
+  .ctx-v { font-size:12.5px; font-weight:500; }
+  .ctx-v.strong { color:var(--text); font-weight:600; }
+
+  /* ===== instrumento ===== */
+  #picker { position:fixed; right:16px; bottom:16px; z-index:9999; width:284px; background:#16181c; border:1px solid #33373f; border-radius:12px; box-shadow:0 24px 60px rgba(0,0,0,.68); font-size:12px; color:#d6d9de; user-select:none; overflow:hidden; }
+  #picker.is-min .pk-body { display:none; }
+  .pk-head { display:flex; align-items:center; gap:9px; padding:9px 11px; background:#1e2127; border-bottom:1px solid #33373f; cursor:grab; }
+  .pk-grip { color:#6b7280; letter-spacing:2px; font-size:11px; }
+  .pk-title { font-size:10px; text-transform:uppercase; letter-spacing:.12em; color:#8b919c; font-weight:600; }
+  .pk-min { margin-left:auto; background:none; border:none; color:#8b919c; padding:2px 5px; border-radius:4px; }
+  .pk-body { padding:10px; display:flex; flex-direction:column; gap:9px; }
+  .pk-pair { display:grid; grid-template-columns:1fr 1fr; gap:9px; }
+  .pk-variant { display:flex; align-items:center; gap:8px; }
+  .pk-arrow { width:28px; height:30px; flex:none; border-radius:7px; border:1px solid #3a3f47; background:#22252b; color:#b8bdc6; font-size:13px; }
+  .pk-arrow:hover { background:#2c3037; color:#fff; }
+  .pk-vname { flex:1; min-width:0; text-align:center; }
+  .pk-vnum { font-size:9px; color:#7c828d; letter-spacing:.12em; text-transform:uppercase; }
+  .pk-vlabel { font-size:12.5px; font-weight:600; color:#f0f2f5; margin-top:1px; }
+  .pk-vtag { font-size:9.5px; color:#7c828d; margin-top:2px; line-height:1.3; }
+  .pk-ref { font-size:9px; color:#5c9c86; margin-top:3px; }
+  .pk-set { display:flex; flex-direction:column; gap:5px; }
+  .pk-legend { font-size:9px; text-transform:uppercase; letter-spacing:.11em; color:#7c828d; font-weight:600; }
+  .pk-opts { display:flex; gap:4px; flex-wrap:wrap; }
+  .pk-opt { flex:1 1 0; min-width:0; padding:6px 8px; border-radius:6px; border:1px solid #3a3f47; background:#22252b; color:#9aa0aa; font-size:11px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pk-opt:hover { background:#2c3037; color:#e3e6ea; }
+  .pk-opt[aria-pressed="true"] { background:#2f5d4f; border-color:#4b9c81; color:#b8f5dc; }
+  .pk-hint { font-size:10px; color:#6b7280; line-height:1.45; border-top:1px solid #2b2f36; padding-top:9px; }
+  .pk-hint kbd { background:#2b2f36; border:1px solid #3f444c; border-radius:3px; padding:0 4px; font-family:inherit; font-size:9.5px; color:#b8bdc6; }
+</style>
+
+<div id="app"></div>
+
+<div id="picker">
+  <div class="pk-head" id="pk-head">
+    <span class="pk-grip">⠿</span>
+    <span class="pk-title">Nivel 2 · ronda 2</span>
+    <button class="pk-min" id="pk-min">—</button>
+  </div>
+  <div class="pk-body">
+    <div class="pk-variant">
+      <button class="pk-arrow" id="pk-prev">←</button>
+      <div class="pk-vname">
+        <div class="pk-vnum" id="pk-vnum">1 de 5</div>
+        <div class="pk-vlabel" id="pk-vlabel">—</div>
+        <div class="pk-vtag" id="pk-vtag">—</div>
+        <div class="pk-ref" id="pk-ref">—</div>
+      </div>
+      <button class="pk-arrow" id="pk-next">→</button>
+    </div>
+
+    <div class="pk-set">
+      <span class="pk-legend">Vista de la bandeja</span>
+      <div class="pk-opts" data-key="view">
+        <button class="pk-opt" data-val="all">Todas</button>
+        <button class="pk-opt" data-val="attn">Atención</button>
+        <button class="pk-opt" data-val="auto">Automáticas</button>
+      </div>
+    </div>
+
+    <div class="pk-set">
+      <span class="pk-legend">Conversación abierta</span>
+      <div class="pk-opts" data-key="sel"></div>
+    </div>
+
+    <div class="pk-set">
+      <span class="pk-legend">Pestaña de la ficha (solo en la S)</span>
+      <div class="pk-opts" data-key="tab">
+        <button class="pk-opt" data-val="cliente">Cliente</button>
+        <button class="pk-opt" data-val="pedidos">Pedidos</button>
+        <button class="pk-opt" data-val="contexto">Contexto</button>
+      </div>
+    </div>
+
+    <div class="pk-pair">
+      <div class="pk-set">
+        <span class="pk-legend">Operación</span>
+        <div class="pk-opts" data-key="country">
+          <button class="pk-opt" data-val="GT">Guate</button>
+          <button class="pk-opt" data-val="CO">Colombia</button>
+        </div>
+      </div>
+      <div class="pk-set">
+        <span class="pk-legend">Barras</span>
+        <div class="pk-opts" data-key="bars">
+          <button class="pk-opt" data-val="open">Abiertas</button>
+          <button class="pk-opt" data-val="collapsed">Plegadas</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="pk-set">
+      <span class="pk-legend">Módulo</span>
+      <div class="pk-opts" data-key="module">
+        <button class="pk-opt" data-val="ventas">Sebastián</button>
+        <button class="pk-opt" data-val="confirmacion">Katherine</button>
+      </div>
+    </div>
+
+    <p class="pk-hint">
+      La bandeja ya está decidida y va fija en las cinco. Lo que se compara es
+      <strong>dónde entran la ficha de cliente y el recorrido del lead</strong>.
+      Probá con <strong>María</strong> (recompradora), <strong>Byron</strong>
+      (el pedido anterior no confirmó) y <strong>Ana</strong> (primer contacto):
+      si la ficha no cambia lo que harías, sobra. <kbd>←</kbd> <kbd>→</kbd> alternan.
+    </p>
+  </div>
+</div>
+
+<script>
+/* ====================================================================
+   DATOS reales de Vorare. Vocabulario tomado de inbox-client.tsx.
+   ==================================================================== */
+
+const OPS = {
+  GT:{code:"GT",name:"Guatemala",currency:"GTQ",phone:"+502 3689 0343",store:"Vorare GT · Shopify",live:true,status:"Operando",accent:"#a78bfa"},
+  CO:{code:"CO",name:"Colombia",currency:"COP",phone:"+57 304 5430173",store:"sin conectar",live:false,status:"Sin operar",accent:"#38bdf8"},
+};
+const MODULES = {
+  ventas:{key:"ventas",label:"Ventas",agent:"Sebastián",
+    screens:[{key:"inbox",label:"Conversaciones",icon:"✉"},{key:"catalogo",label:"Catálogo",icon:"▤"},{key:"vendedor",label:"Vendedor",icon:"◉"}]},
+  confirmacion:{key:"confirmacion",label:"Confirmación",agent:"Katherine",
+    screens:[{key:"inbox",label:"Inbox",icon:"✉"},{key:"pedidos",label:"Pedidos",icon:"▦"},{key:"plantillas",label:"Plantillas",icon:"▥"}]},
+};
+
+/* El recorrido del lead. Está FIJO y es derivado: nadie arrastra nada, igual
+   que el Salesbot de Kommo. Hoy vive partido en tres pantallas —el
+   reconocimiento en la conversación, la confirmación en Pedidos, la entrega
+   en Dropi— y nadie ve el viaje completo. */
+const STAGES = ["Anuncio","Reconocido","Conversando","Pedido","Confirmado","Entregado"];
+
+/* `agent` = agentMode de producción. true → «Automatización activa».
+   `unread` + !agent → needsAttention, que ya está calculado en el panel.
+   `cust` = lo que el hilo NO puede contar: lo que pasó antes de este chat. */
+const CHATS = {
+  GT:[
+    {id:"c1",who:"Ana Sicán",tel:"+502 3390 5518",when:"26 min",rec:"esc",agent:false,unread:3,stage:2,
+     prev:"Quiero hablar con una persona por favor",prod:"REVITALHAIR – DHT ANTICALVICIE",ad:"23851094782",camp:"DHT · antes y después",
+     by:"Sebastián escaló tras dos intentos",
+     cust:{since:"hoy",orders:0,ok:0,no:0,total:"Q 0",last:null,note:"Primer contacto"}},
+    {id:"c2",who:"Luis Ovalle",tel:"+502 4471 2093",when:"12 min",rec:"amb",agent:true,unread:1,stage:2,
+     prev:"Vi el anuncio del tratamiento para la calvicie",prod:null,ad:null,camp:"sin referencia de anuncio",
+     by:"3 productos posibles · el copy no los distingue",
+     cust:{since:"hoy",orders:0,ok:0,no:0,total:"Q 0",last:null,note:"Primer contacto"}},
+    {id:"c3",who:"María José Chun",tel:"+502 5512 8840",when:"4 min",rec:"ok",agent:true,unread:2,stage:2,
+     prev:"¿Sirve para entradas? tengo 34 años",prod:"REVITALHAIR – DHT ANTICALVICIE",ad:"23851094782",camp:"DHT · antes y después",by:null,
+     cust:{since:"12 may 2026",orders:3,ok:2,no:1,total:"Q 1.087",last:"#10318 · 2 jun · confirmado",note:"Recompradora"}},
+    {id:"c4",who:"Byron Tzoc",tel:"+502 4419 3302",when:"41 min",rec:"ok",agent:false,unread:0,stage:3,
+     prev:"Dale, mándame los datos para el pago",prod:"REVITALHAIR – COMBO DHT + SERUM 360",ad:"23990117845",camp:"COMBO 360 · testimonio",
+     by:"Daniel puso el agente en OFF",
+     cust:{since:"3 ago 2026",orders:1,ok:0,no:1,total:"Q 549",last:"#10402 · 9 ago · no confirmado",note:"El pedido anterior no confirmó"}},
+    {id:"c5",who:"Silvia Xicará",tel:"+502 3312 7790",when:"1 h",rec:"ok",agent:true,unread:0,stage:5,
+     prev:"Perfecto, gracias!",prod:"REVITALHAIR – DHT BLOCKER ANTICALVICIE",ad:"23851094999",camp:"BLOCKER · dermatólogo",by:null,
+     cust:{since:"8 feb 2026",orders:4,ok:4,no:0,total:"Q 1.516",last:"#10425 · hoy · entregado",note:"Cuatro de cuatro confirmados"}},
+    {id:"c6",who:"Wendy Morales",tel:"+502 5580 1174",when:"2 h",rec:"amb",agent:true,unread:0,stage:2,
+     prev:"Cuánto sale el combo?",prod:null,ad:null,camp:"sin referencia de anuncio",by:"2 productos posibles",
+     cust:{since:"21 jul 2026",orders:1,ok:0,no:1,total:"Q 389",last:"#10377 · 24 jul · no confirmado",note:"El pedido anterior no confirmó"}},
+  ],
+  CO:[
+    {id:"k1",who:"Andrés Peña",tel:"+57 315 9920 774",when:"21 min",rec:"esc",agent:false,unread:2,stage:2,
+     prev:"Necesito hablar con alguien real",prod:"REVITALHAIR – DHT ANTICALVICIE",ad:"24019338451",camp:"DHT CO · lanzamiento",
+     by:"Sebastián escaló tras dos intentos",
+     cust:{since:"hoy",orders:0,ok:0,no:0,total:"$ 0",last:null,note:"Primer contacto"}},
+    {id:"k2",who:"Camila Restrepo",tel:"+57 320 4471 002",when:"9 min",rec:"amb",agent:true,unread:1,stage:2,
+     prev:"El del video de la caída de pelo",prod:null,ad:null,camp:"sin referencia de anuncio",by:"2 productos posibles",
+     cust:{since:"hoy",orders:0,ok:0,no:0,total:"$ 0",last:null,note:"Primer contacto"}},
+    {id:"k3",who:"Jhon Rodríguez",tel:"+57 310 8842 190",when:"2 min",rec:"ok",agent:true,unread:1,stage:1,
+     prev:"Buenas, precio del tratamiento?",prod:"REVITALHAIR – DHT ANTICALVICIE",ad:"24019338451",camp:"DHT CO · lanzamiento",by:null,
+     cust:{since:"hoy",orders:0,ok:0,no:0,total:"$ 0",last:null,note:"Primer contacto"}},
+  ],
+};
+
+/* RONDA 3 — cómo entran la ficha de cliente y el recorrido del lead en la
+   conversación ya decidida. El encuadre y la bandeja no se discuten. */
+const VARIANTS = [
+  {id:"S",label:"Ficha con pestañas ✓",  tag:"ELEGIDA · recorrido + Cliente · Pedidos · Contexto", ref:"Copilot"},
+  {id:"P",label:"Barra arriba + ficha",  tag:"recorrido sobre el hilo, historial a la derecha", ref:"Salesforce"},
+  {id:"Q",label:"Todo en la ficha",      tag:"el hilo queda limpio; el recorrido va en el panel", ref:"Copilot"},
+  {id:"R",label:"Recorrido en la fila",  tag:"la etapa se ve sin abrir la conversación",         ref:"Attio · Twenty"},
+  {id:"T",label:"Sin barra, solo eventos",tag:"las etapas ya las narra el hilo — ¿sobra la barra?", ref:"la decisión anterior"},
+];
+
+const REC = { ok:{l:"reconocido",c:"pill-ok"}, amb:{l:"ambiguo",c:"pill-amb"}, esc:{l:"escalado",c:"pill-esc"} };
+
+const state = { variant:0, view:"all", country:"GT", module:"ventas", screen:"inbox", bars:"open", sel:"c1", tab:"cliente" };
+
+/* Los pedidos de cada cliente — lo que llena la pestaña «Pedidos». */
+const HIST = {
+  c3:[{id:"#10318",when:"2 jun",amt:"Q 349",st:"confirmado"},
+      {id:"#10276",when:"18 may",amt:"Q 389",st:"confirmado"},
+      {id:"#10241",when:"12 may",amt:"Q 349",st:"no confirmado"}],
+  c4:[{id:"#10402",when:"9 ago",amt:"Q 549",st:"no confirmado"}],
+  c5:[{id:"#10425",when:"hoy",amt:"Q 389",st:"entregado"},
+      {id:"#10344",when:"21 jun",amt:"Q 349",st:"entregado"},
+      {id:"#10298",when:"3 may",amt:"Q 429",st:"entregado"},
+      {id:"#10188",when:"8 feb",amt:"Q 349",st:"entregado"}],
+  c6:[{id:"#10377",when:"24 jul",amt:"Q 389",st:"no confirmado"}],
+};
+
+const el=(t,c,h)=>{const n=document.createElement(t);if(c)n.className=c;if(h!=null)n.innerHTML=h;return n;};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const flag=(c,s)=>`<span class="flag flag-${c}${s?" flag-"+s:""}"></span>`;
+const op=()=>OPS[state.country];
+const mod=()=>MODULES[state.module];
+const V=()=>VARIANTS[state.variant];
+function rgba(h,a){const n=parseInt(h.slice(1),16);return `rgba(${(n>>16)&255}, ${(n>>8)&255}, ${n&255}, ${a})`;}
+
+const all = () => CHATS[state.country];
+const needsAttention = c => !c.agent && c.unread > 0;
+const COUNTS = () => ({
+  all: all().length,
+  attn: all().filter(needsAttention).length,
+  auto: all().filter(c => c.agent).length,
+  amb: all().filter(c => c.rec === "amb").length,
+  esc: all().filter(c => c.rec === "esc").length,
+});
+function chats() {
+  const a = all();
+  if (state.view === "attn") return a.filter(needsAttention);
+  if (state.view === "auto") return a.filter(c => c.agent);
+  return a;
+}
+const sel = () => chats().find(c => c.id === state.sel) || chats()[0] || null;
+
+/* ---------------- la fila del Inbox ---------------- */
+
+function row(c, opts = {}) {
+  const b = el("button", "row" + (sel() && sel().id === c.id ? " sel" : "") + (needsAttention(c) ? " attn" : ""));
+  // La marca de automatización es la que ya existe en producción.
+  const agentMark = c.agent
+    ? `<span class="pill pill-ok"><span class="dot" style="background:var(--accent)"></span>Automatización activa</span>`
+    : `<span class="pill pill-amb"><span class="dot" style="background:var(--highlight)"></span>Respuesta manual</span>`;
+  // Lo que ventas AGREGA a la fila. La variante D no lo pone: lo cuenta el hilo.
+  const salesMark = opts.noSales ? "" :
+    (c.rec !== "ok" ? `<span class="pill ${REC[c.rec].c}">${REC[c.rec].l}</span>` : "") +
+    (c.prod && !opts.thin ? `<span class="soft" style="font-size:10.5px">${esc(c.prod.replace("REVITALHAIR – ", ""))}</span>` : "");
+  b.innerHTML = `
+    <div style="min-width:0">
+      <div class="who">${esc(c.who)}</div>
+      <div class="prev">${esc(c.prev)}</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px">
+      ${c.unread ? `<span class="unread">${c.unread}</span>` : ""}
+      <span class="when">${esc(c.when)}</span>
+    </div>
+    <div class="rowfoot">${agentMark}${salesMark}${
+      // R · el recorrido en la fila: la etapa se ve sin abrir (Attio, Twenty)
+      opts.stageDot ? `<span class="rowstage" title="${esc(STAGES[c.stage])}">${
+        STAGES.map((_, i) => `<i class="${i < c.stage ? "done" : i === c.stage ? "now" : ""}"></i>`).join("")
+      }<em>${esc(STAGES[c.stage])}</em></span>` : ""}</div>`;
+  b.onclick = () => { state.sel = c.id; render(); };
+  return b;
+}
+
+function listPanel(opts = {}) {
+  const box = el("div", "card ib-list");
+  const head = el("div", "ib-listhead");
+  head.appendChild(el("input", "ib-search"));
+  head.querySelector(".ib-search").placeholder = "Buscar por nombre o número";
+  if (opts.chips) {
+    const chips = el("div", "chips");
+    const K = COUNTS();
+    [["all","Todas",K.all],["attn","Necesitan atención",K.attn],["auto","Las lleva Sebastián",K.auto]].forEach(([k,l,n]) => {
+      const ch = el("button","chip",`${esc(l)}<span class="c">${n}</span>`);
+      ch.setAttribute("aria-pressed", String(state.view === k));
+      ch.onclick = () => { state.view = k; render(); };
+      chips.appendChild(ch);
+    });
+    head.appendChild(chips);
+  }
+  box.appendChild(head);
+  const rows = el("div", "ib-rows");
+  const list = chats();
+  if (!list.length) rows.appendChild(el("div","soft",`<div style="padding:34px 14px;text-align:center;font-size:12.5px">Nada en esta vista</div>`));
+  list.forEach(c => rows.appendChild(row(c, opts)));
+  box.appendChild(rows);
+  return box;
+}
+
+/* El hilo. El botón es «Agente: ON/OFF» — el que ya existe. */
+function threadPanel(opts = {}) {
+  const c = sel();
+  const box = el("div", "card th");
+  if (!c) { box.appendChild(el("div","soft",`<div style="padding:60px 20px;text-align:center;font-size:12.5px">Elegí una conversación</div>`)); return box; }
+
+  const head = el("div", "th-head");
+  head.innerHTML = `<div style="flex:1;min-width:0">
+      <div class="who" style="font-size:14px">${esc(c.who)}</div>
+      <div class="soft num" style="font-size:11.5px;margin-top:2px">${esc(c.tel)}</div>
+    </div>
+    ${c.agent
+      ? `<span class="pill pill-ok">Agente IA activo</span>`
+      : `<span class="pill pill-amb">Respuesta manual</span>`}`;
+  box.appendChild(head);
+
+  // P · el recorrido como cinta sobre el hilo (Salesforce)
+  if (opts.stageTop) {
+    const s = el("div", "stage-strip");
+    s.appendChild(stageBar(false));
+    box.appendChild(s);
+  }
+
+  const body = el("div", "th-body");
+  const ev = (txt, cls) => `<div class="ev ${cls || ""}"><span>${esc(txt)}</span></div>`;
+
+  // D y E narran el contexto de venta como eventos del hilo (ManyChat).
+  if (opts.events) {
+    body.innerHTML += c.prod
+      ? ev(`Sebastián reconoció ${c.prod} · anuncio ${c.ad}`, "ev-ok")
+      : ev(`Sebastián no pudo reconocer el producto · ${c.camp}`, "ev-hot");
+  }
+  body.innerHTML += `<div class="bub bub-in">${esc(c.prev)}</div>`;
+  body.innerHTML += c.rec === "amb"
+    ? `<div class="bub bub-out">Con gusto. ¿Te interesa el tratamiento en cápsulas, el bloqueador o el combo con serum?</div>`
+    : c.rec === "esc"
+    ? `<div class="bub bub-out">Entiendo, ya paso tu caso con una persona del equipo.</div>`
+    : `<div class="bub bub-out">Sí, funciona muy bien para entradas. El tratamiento son 3 meses.</div>`;
+  if (opts.events && c.by) body.innerHTML += ev(c.by, c.rec === "ok" ? "" : "ev-hot");
+  if (opts.events && !c.agent) body.innerHTML += ev("Automatización pausada — respondés vos", "ev-hot");
+  box.appendChild(body);
+
+  const foot = el("div", "th-foot");
+  const comp = el("div", "composer", c.agent ? "Sebastián está respondiendo…" : "Escribí tu respuesta");
+  const btn = el("button", "btn " + (c.agent ? "btn-agent-on" : "btn-agent-off"), `Agente: ${c.agent ? "ON" : "OFF"}`);
+  btn.title = c.agent ? "Apagarlo deja la conversación en respuesta manual" : "Encenderlo devuelve la conversación a Sebastián";
+  btn.onclick = () => { c.agent = !c.agent; render(); };
+  foot.appendChild(comp); foot.appendChild(btn);
+  box.appendChild(foot);
+  return box;
+}
+
+/* La barra de recorrido (Salesforce). Lineal y derivada: no se arrastra.
+   Los seis escalones ya existen en el sistema, repartidos en tres pantallas. */
+function stageBar(vertical) {
+  const c = sel();
+  // En la columna angosta el recorrido va vertical: en horizontal las
+  // etiquetas se truncan a «A… R… C…», que no es un recorrido, es ruido.
+  const bar = el("div", "stages" + (vertical ? " vert" : ""));
+  STAGES.forEach((s, i) => {
+    const st = i < c.stage ? "done" : i === c.stage ? "now" : "todo";
+    bar.appendChild(el("div", "stg " + st, `<span>${esc(s)}</span>`));
+  });
+  return bar;
+}
+
+/* La ficha del cliente: lo que el hilo no puede contar porque pasó antes.
+   Es un REGISTRO, no un evento — por eso panel y no línea en el hilo. */
+function custPanel(opts = {}) {
+  const c = sel();
+  const box = el("div", "card ctx");
+  if (!c) return box;
+  const k = c.cust;
+  const warn = k.no > 0;
+
+  if (opts.stage) {
+    const s = el("div", "ctx-sec");
+    s.appendChild(el("div", "ctx-h", "Recorrido"));
+    s.appendChild(stageBar(true));
+    s.appendChild(el("div", "soft", `<span style="font-size:11px">escalón ${c.stage + 1} de ${STAGES.length}</span>`));
+    box.appendChild(s);
+  }
+
+  if (opts.tabs) {
+    const t = el("div", "tabs");
+    [["cliente","Cliente"],["pedidos","Pedidos"],["contexto","Contexto"]].forEach(([k, l]) => {
+      const b = el("button", "tab", l);
+      b.setAttribute("aria-selected", String(state.tab === k));
+      b.onclick = () => { state.tab = k; render(); };
+      t.appendChild(b);
+    });
+    box.appendChild(t);
+
+    if (state.tab === "pedidos") {
+      const s = el("div", "ctx-sec");
+      const rows = HIST[c.id] || [];
+      s.innerHTML = `<div class="ctx-h">Pedidos de ${esc(c.who.split(" ")[0])}</div>` +
+        (rows.length
+          ? rows.map(r => `<div class="hist">
+              <div><span class="ctx-v num" style="font-weight:600">${esc(r.id)}</span>
+                   <span class="soft" style="font-size:11px;display:block;margin-top:1px">${esc(r.when)} · ${esc(r.amt)}</span></div>
+              <span class="pill ${r.st === "no confirmado" ? "pill-amb" : "pill-ok"}">${esc(r.st)}</span>
+            </div>`).join("")
+          : `<p class="soft" style="font-size:12px;line-height:1.5">Todavía no compró. Este sería su primer pedido.</p>`);
+      box.appendChild(s);
+      return box;
+    }
+
+    /* La pestaña no repite el evento del hilo: muestra CÓMO se reconoció.
+       El evento dice cuándo; la cascada dice por qué, y con qué alternativas
+       quedaron descartadas. Es información que el sistema ya calcula y que
+       hoy no se enseña en ninguna pantalla. */
+    if (state.tab === "contexto") {
+      const s = el("div", "ctx-sec");
+      const nivel = c.ad
+        ? { n: 1, t: "Por ID de anuncio", d: "El mensaje traía la referencia del anuncio. Es el nivel más confiable de la cascada." }
+        : { n: 2, t: "Match semántico", d: "El mensaje llegó sin referencia de anuncio, así que se comparó el texto contra el catálogo." };
+      s.innerHTML = `<div class="ctx-h">Cómo se reconoció</div>
+        <div class="casc">
+          <div class="casc-n">Nivel ${nivel.n} de 3</div>
+          <div class="casc-t">${esc(nivel.t)}</div>
+          <p class="casc-d">${esc(nivel.d)}</p>
+        </div>
+        ${c.ad ? `
+          <div class="ctx-f" style="margin-top:11px"><span class="ctx-k">Anuncio</span>
+            <span class="ctx-v num">${esc(c.ad)}</span></div>
+          <div class="ctx-f"><span class="ctx-k">Campaña</span><span class="ctx-v">${esc(c.camp)}</span></div>
+          <div class="ctx-f"><span class="ctx-k">Apunta a</span>
+            <span class="ctx-v strong">${esc(c.prod)}</span></div>`
+        : `
+          <div class="ctx-h" style="margin-top:13px">No se pudo distinguir entre</div>
+          ${["REVITALHAIR – DHT ANTICALVICIE","REVITALHAIR – DHT BLOCKER ANTICALVICIE","REVITALHAIR – COMBO DHT + SERUM 360"]
+            .slice(0, c.rec === "amb" ? 3 : 0)
+            .map(p => `<div class="cand">${esc(p)}</div>`).join("")}
+          <p class="casc-d" style="margin-top:9px">Los nombres son casi idénticos y el copy del anuncio no los separa.
+            Registrar el ID de este anuncio lo resolvería para siempre.</p>
+          <button class="btn" style="width:100%;margin-top:10px">Registrar el anuncio</button>`}`;
+      box.appendChild(s);
+      return box;
+    }
+  }
+
+  const head = el("div", "ctx-sec");
+  head.innerHTML = `
+    <div class="ctx-h">Cliente</div>
+    <div class="cust-hero">
+      <div class="cust-name">${esc(c.who)}</div>
+      <div class="soft num" style="font-size:11.5px;margin-top:2px">${esc(c.tel)}</div>
+      <span class="pill ${warn ? "pill-amb" : k.orders > 1 ? "pill-ok" : "pill-quiet"}" style="margin-top:7px">${esc(k.note)}</span>
+    </div>
+    <div class="cust-grid">
+      <div><span class="ctx-k">Cliente desde</span><span class="ctx-v">${esc(k.since)}</span></div>
+      <div><span class="ctx-k">Pedidos</span><span class="ctx-v num">${k.orders}</span></div>
+      <div><span class="ctx-k">Confirmados</span><span class="ctx-v num" style="color:${k.ok ? "var(--accent)" : "var(--text-soft)"}">${k.ok}</span></div>
+      <div><span class="ctx-k">Sin confirmar</span><span class="ctx-v num" style="color:${k.no ? "var(--highlight)" : "var(--text-soft)"}">${k.no}</span></div>
+      <div style="grid-column:1/-1"><span class="ctx-k">Total comprado</span><span class="ctx-v num strong">${esc(k.total)}</span></div>
+    </div>
+    ${k.last ? `<div class="ctx-f" style="margin-top:9px"><span class="ctx-k">Último pedido</span>
+      <span class="ctx-v" style="font-size:12px">${esc(k.last)}</span></div>` : ""}`;
+  box.appendChild(head);
+
+  const foot = el("div", "ctx-sec");
+  foot.style.cssText = "border-top:1px solid var(--border);padding-top:12px";
+  foot.innerHTML = `<div class="ctx-h">Operación</div>
+    <div class="ctx-f"><span class="ctx-k">Trabajando en</span><span class="ctx-v">${esc(op().name)} · ${esc(op().currency)}</span></div>`;
+  box.appendChild(foot);
+  return box;
+}
+
+/* C y E · el tercer panel (Intercom, Lemni, Gorgias) */
+function ctxPanel() {
+  const c = sel();
+  const box = el("div", "card ctx");
+  if (!c) return box;
+  box.innerHTML = `
+    <div class="ctx-sec">
+      <div class="ctx-h">Contexto de venta</div>
+      <div class="ctx-f"><span class="ctx-k">Producto reconocido</span>
+        <span class="ctx-v strong">${c.prod ? esc(c.prod) : `<span class="soft">ninguno todavía</span>`}</span></div>
+      <div class="ctx-f"><span class="ctx-k">Vino del anuncio</span>
+        <span class="ctx-v num">${c.ad ? esc(c.ad) : `<span class="soft">sin referencia</span>`}</span></div>
+      <div class="ctx-f"><span class="ctx-k">Campaña</span><span class="ctx-v">${esc(c.camp)}</span></div>
+      <div class="ctx-f"><span class="ctx-k">Reconocimiento</span>
+        <span class="ctx-v"><span class="pill ${REC[c.rec].c}">${REC[c.rec].l}</span></span></div>
+      ${c.by ? `<div class="ctx-f"><span class="ctx-k">Nota</span><span class="ctx-v soft" style="font-weight:400">${esc(c.by)}</span></div>` : ""}
+    </div>
+    <div class="ctx-sec" style="border-top:1px solid var(--border);padding-top:13px">
+      <div class="ctx-h">Contacto</div>
+      <div class="ctx-f"><span class="ctx-k">Teléfono</span><span class="ctx-v num">${esc(c.tel)}</span></div>
+      <div class="ctx-f"><span class="ctx-k">Operación</span><span class="ctx-v">${esc(op().name)} · ${esc(op().currency)}</span></div>
+      <div class="ctx-f"><span class="ctx-k">Última actividad</span><span class="ctx-v">hace ${esc(c.when)}</span></div>
+    </div>`;
+  return box;
+}
+
+/* ---------------- las cinco variantes ---------------- */
+
+function inboxScreen() {
+  const v = V().id, wrap = el("div");
+  const isVentas = state.module === "ventas";
+  wrap.appendChild(el("div", "page-head", `
+    <span class="eyebrow">${esc(op().name)} · ${isVentas ? "ventas" : "confirmación"}</span>
+    <h2 class="page-title">${isVentas ? "Conversaciones" : "Inbox"}</h2>
+    <p class="page-sub">${isVentas
+      ? "La misma bandeja del número, en la vista de Sebastián. El control del agente es el que ya conocés."
+      : "La bandeja de Katherine, sin cambios. Lo que agrega ventas no debería aparecer acá."}</p>`));
+
+  // La bandeja ya está decidida: vistas en la barra, eventos en el hilo, y
+  // la fila solo marca el reconocimiento cuando no es limpio. Lo que varía
+  // acá es cómo entran la ficha de cliente y el recorrido del lead.
+  const grid = el("div", "inbox");
+  grid.style.gridTemplateColumns = "330px 1fr 272px";
+
+  grid.appendChild(listPanel({ thin: true, stageDot: v === "R" }));
+
+  const th = threadPanel({ events: true, stageTop: v === "P" });
+  grid.appendChild(th);
+
+  grid.appendChild(custPanel({
+    stage: v === "Q" || v === "S",   // el recorrido dentro del panel
+    tabs:  v === "S",
+  }));
+  wrap.appendChild(grid);
+  return wrap;
+}
+
+function otherScreen(t, s, m) {
+  const wrap = el("div");
+  wrap.appendChild(el("div","page-head",`<span class="eyebrow">${esc(op().name)} · ${esc(t.toLowerCase())}</span>
+    <h2 class="page-title">${esc(t)}</h2><p class="page-sub">${esc(s)}</p>`));
+  const c = el("div","card");
+  c.innerHTML = `<div style="padding:50px 24px;text-align:center">
+    <div style="width:44px;height:44px;border-radius:10px;border:1px dashed var(--border-strong);display:grid;place-items:center;color:var(--text-soft);margin:0 auto 10px">${m}</div>
+    <p class="soft" style="font-size:12.5px;max-width:44ch;margin:0 auto;line-height:1.55">Grupo del nivel 2 todavía sin decidir.</p></div>`;
+  wrap.appendChild(c);
+  return wrap;
+}
+
+function content() {
+  const s = state.screen;
+  if (s === "inbox") return inboxScreen();
+  if (s === "pedidos") return otherScreen("Pedidos","Confirmación de pedidos, sin cambios.","▦");
+  if (s === "plantillas") return otherScreen("Plantillas","Las plantillas aprobadas de Meta.","▥");
+  if (s === "catalogo") return otherScreen("Catálogo","Catálogo de doble fuente.","▤");
+  return otherScreen("Vendedor","Configuración de Sebastián.","◉");
+}
+
+/* ---------------- armazón ---------------- */
+
+const toggleBars = () => { state.bars = state.bars === "open" ? "collapsed" : "open"; render(); };
+function switchCountry(code){ if(state.country===code) return; state.country=code; state.bars="open"; state.sel=(CHATS[code][0]||{}).id; render(); }
+
+/* A y E · las vistas de Sebastián viven en la barra, con contador. */
+function navFor(m) {
+  const box = el("div");
+  box.style.cssText = "display:flex;flex-direction:column;gap:2px";
+  const K = COUNTS();
+  MODULES[m].screens.forEach(s => {
+    const isConv = s.key === "inbox" && m === "ventas";
+    const b = el("button","navlink",`<span class="ico">${s.icon}</span>${esc(s.label)}${
+      isConv && K.attn ? `<span class="cnt">${K.attn}</span>` : ""}`);
+    if (state.screen === s.key && state.module === m) b.setAttribute("aria-current","page");
+    b.onclick = () => { state.module = m; state.screen = s.key; render(); };
+    box.appendChild(b);
+    // Las vistas en la barra ya están decididas: van en las cinco.
+    if (isConv && state.module === "ventas") {
+      const sub = el("div");
+      sub.style.cssText = "display:flex;flex-direction:column;gap:1px;padding-left:22px;margin:2px 0 4px";
+      [["attn","Necesitan atención",K.attn],["auto","Las lleva Sebastián",K.auto],["all","Todas",K.all]].forEach(([k,l,n]) => {
+        const v = el("button","navlink",`<span>${esc(l)}</span><span class="cnt">${n}</span>`);
+        v.style.cssText = "height:27px;font-size:12px";
+        if (state.view === k && state.screen === "inbox") v.setAttribute("aria-current","page");
+        v.onclick = e => { e.stopPropagation(); state.view = k; state.screen = "inbox"; state.module = "ventas"; render(); };
+        sub.appendChild(v);
+      });
+      box.appendChild(sub);
+    }
+  });
+  return box;
+}
+
+function buildRail(tight) {
+  const rail = el("div","rail"+(tight?" tight":""));
+  Object.values(OPS).forEach(x => {
+    const t = el("button","tile"+(x.live?"":" dormant"),`${flag(x.code)}${tight?"":`<span class="tile-code">${esc(x.code)}</span>`}`);
+    t.setAttribute("aria-pressed", String(state.country===x.code));
+    t.title = `${x.name} · ${x.status}`;
+    t.onclick = () => switchCountry(x.code);
+    rail.appendChild(t);
+  });
+  if (tight) {
+    const sep = el("div"); sep.style.cssText="width:20px;height:1px;background:var(--border);margin:3px 0"; rail.appendChild(sep);
+    mod().screens.forEach(s => {
+      const b = el("button","strip-ico",s.icon);
+      b.title = `${mod().label} · ${s.label}`;
+      if (state.screen === s.key) b.setAttribute("aria-current","page");
+      b.onclick = () => { state.screen = s.key; render(); };
+      rail.appendChild(b);
+    });
+  }
+  const f = el("button","fold", state.bars==="open"?"«":"»");
+  f.style.marginTop="auto"; f.onclick=toggleBars; rail.appendChild(f);
+  return rail;
+}
+
+function buildCol() {
+  const o = op(), col = el("div","col");
+  const head = el("div","col-head");
+  head.innerHTML = `${flag(o.code,"lg")}<span style="min-width:0">
+      <span class="col-name">${esc(o.name)}</span>
+      <span class="col-sub">${esc(o.status)} · ${esc(o.currency)}</span>
+      <span class="col-tel${o.live?"":" off"}">${esc(o.phone)}</span></span>`;
+  const f = el("button","fold","«"); f.onclick = toggleBars; head.appendChild(f);
+  col.appendChild(head);
+  ["ventas","confirmacion"].forEach(k => {
+    const m = MODULES[k];
+    const g = el("div","group"+(state.module===k?" on":""));
+    g.appendChild(el("div","group-head",`<span class="grouplabel">${esc(m.label)}</span>
+      <span class="soft" style="font-size:11px">${esc(m.agent)}</span>`));
+    const items = el("div","group-items"); items.appendChild(navFor(k)); g.appendChild(items);
+    col.appendChild(g);
+  });
+  col.appendChild(el("div","colfoot",`<div class="soft" style="font-size:11px;line-height:1.5">${esc(o.store)}</div>`));
+  return col;
+}
+
+function render() {
+  const hex = op().accent, root = document.documentElement.style;
+  root.setProperty("--op",hex);
+  root.setProperty("--op-line",rgba(hex,.45));
+  root.setProperty("--op-soft",rgba(hex,.13));
+  root.setProperty("--op-faint",rgba(hex,.07));
+
+  if (!mod().screens.some(s => s.key === state.screen)) state.screen = mod().screens[0].key;
+  const cs = chats();
+  if (!cs.some(c => c.id === state.sel)) state.sel = (cs[0]||{}).id;
+
+  const shell = el("div","shell");
+  const open = state.bars === "open";
+  shell.style.gridTemplateColumns = open ? "78px 216px 1fr" : "46px 1fr";
+  shell.appendChild(buildRail(!open));
+  if (open) shell.appendChild(buildCol());
+  const main = el("div","main"), page = el("div","page");
+  page.appendChild(content()); main.appendChild(page); shell.appendChild(main);
+
+  const app = document.getElementById("app");
+  app.innerHTML = ""; app.appendChild(shell);
+  syncPicker();
+}
+
+/* ---------------- instrumento ---------------- */
+
+function syncPicker() {
+  const v = V();
+  document.getElementById("pk-vnum").textContent = `${state.variant+1} de 5 · ${v.id}`;
+  document.getElementById("pk-vlabel").textContent = v.label;
+  document.getElementById("pk-vtag").textContent = v.tag;
+  document.getElementById("pk-ref").textContent = "ref: " + v.ref;
+
+  const box = document.querySelector('[data-key="sel"]');
+  box.innerHTML = "";
+  const cs = chats();
+  if (!cs.length) box.appendChild(el("span","soft",`<span style="font-size:11px">vista vacía</span>`));
+  cs.slice(0,4).forEach(c => {
+    const b = el("button","pk-opt",esc(c.who.split(" ")[0]));
+    b.title = `${c.who} · ${REC[c.rec].l} · agente ${c.agent?"ON":"OFF"}`;
+    b.setAttribute("aria-pressed", String(state.sel === c.id));
+    b.onclick = () => { state.sel = c.id; render(); };
+    box.appendChild(b);
+  });
+  document.querySelectorAll(".pk-opts[data-key]").forEach(g => {
+    if (g.dataset.key === "sel") return;
+    g.querySelectorAll(".pk-opt").forEach(b => b.setAttribute("aria-pressed", String(state[g.dataset.key] === b.dataset.val)));
+  });
+}
+
+document.querySelectorAll('.pk-opts[data-key]').forEach(g => {
+  if (g.dataset.key === "sel") return;
+  g.querySelectorAll(".pk-opt").forEach(b => {
+    b.onclick = () => {
+      const k = g.dataset.key;
+      if (k === "country") { switchCountry(b.dataset.val); return; }
+      state[k] = b.dataset.val;
+      if (k === "module") state.screen = MODULES[b.dataset.val].screens[0].key;
+      render();
+    };
+  });
+});
+
+function step(d){ state.variant = (state.variant+d+VARIANTS.length)%VARIANTS.length; render(); }
+document.getElementById("pk-prev").onclick = () => step(-1);
+document.getElementById("pk-next").onclick = () => step(1);
+document.getElementById("pk-min").onclick = () => document.getElementById("picker").classList.toggle("is-min");
+addEventListener("keydown", e => {
+  if (e.target.closest("input, textarea")) return;
+  if (e.key === "ArrowLeft") { step(-1); e.preventDefault(); }
+  if (e.key === "ArrowRight") { step(1); e.preventDefault(); }
+});
+
+(function drag(){
+  const box=document.getElementById("picker"), head=document.getElementById("pk-head");
+  let dx=0,dy=0,on=false;
+  head.addEventListener("mousedown",e=>{
+    if(e.target.closest("button"))return;
+    on=true; const r=box.getBoundingClientRect();
+    dx=e.clientX-r.left; dy=e.clientY-r.top;
+    box.style.right="auto"; box.style.bottom="auto";
+    box.style.left=r.left+"px"; box.style.top=r.top+"px"; e.preventDefault();
+  });
+  addEventListener("mousemove",e=>{
+    if(!on)return;
+    box.style.left=Math.min(Math.max(0,e.clientX-dx),innerWidth-box.offsetWidth)+"px";
+    box.style.top=Math.min(Math.max(0,e.clientY-dy),innerHeight-box.offsetHeight)+"px";
+  });
+  addEventListener("mouseup",()=>{on=false;});
+})();
+
+render();
+</script>

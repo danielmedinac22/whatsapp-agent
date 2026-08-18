@@ -1,0 +1,717 @@
+<title>Configuración de Sebastián</title>
+
+<!--
+  PROTOTIPO DESECHABLE — no es código de producción, no se integra.
+
+  NIVEL 2 · grupo «configuración del vendedor». Encuadre del nivel 1 fijo.
+
+  La pregunta del spec: separar visualmente lo que tiene CONSECUENCIA —el
+  límite de descuento, que puede ponerse en cero para prohibirlos— de lo que
+  es TONO, que es texto libre. «Ni todo estructurado, que es mucha UI a tarifa
+  fija, ni todo libre, que deja que una edición del cliente rompa al vendedor
+  sin que nadie se entere.»
+
+  Lo que YA existe en producción (mirado antes de proponer, que es la lección
+  de la bandeja):
+  · agent-form.tsx son cuatro <section class="app-card"> apiladas con <h2>:
+    Modelo de IA · Comportamiento y tiempos · Plantillas · Seguimiento Dropi.
+  · prompt-card.tsx es una tarjeta APARTE con el prompt libre, historial de
+    versiones y restaurar.
+  O sea: el panel ya separa lo estructurado del texto libre. Lo que no tiene
+  precedente es un campo que GASTA PLATA.
+
+  Referencias (Mobbin):
+  · Relevance AI — «Agent autonomy limit» + «When the limit is reached» con su
+    acción. Un límite sin consecuencia declarada está incompleto.
+  · Gorgias — tono con presets + texto libre + vista previa de la respuesta.
+  · Sana AI, PlayAI — pestañas / pasos. Lindy, Linear — secciones apiladas.
+
+  Nivel 1 en eee80a0 · conversaciones en 3e6c095 · catálogo en fcd3eec.
+-->
+
+<style>
+  :root {
+    --bg:#071119; --panel:rgba(10,24,34,.82); --panel-2:rgba(18,35,48,.9);
+    --border:rgba(157,187,210,.16); --border-strong:rgba(157,187,210,.28);
+    --text:#eff7fb; --text-dim:#99adbc; --text-soft:#6f8798;
+    --accent:#6ee7b7; --highlight:#f4c16d; --danger:#f87171;
+    --shadow-panel:0 14px 42px rgba(3,10,16,.32);
+    --font:"Avenir Next","Segoe UI","Helvetica Neue",system-ui,sans-serif;
+    --op:#a78bfa; --op-line:rgba(167,139,250,.45);
+    --op-soft:rgba(167,139,250,.13); --op-faint:rgba(167,139,250,.07);
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; color:var(--text);
+    background:linear-gradient(180deg,rgba(244,193,109,.03),transparent 28%),
+               linear-gradient(180deg,#09131c 0%,#071119 45%,#050d14 100%);
+    background-attachment:fixed; font-family:var(--font); font-size:14px; -webkit-font-smoothing:antialiased; }
+  h1,h2,h3,h4 { margin:0; font-weight:600; }
+  p { margin:0; }
+  button { font-family:inherit; font-size:inherit; color:inherit; cursor:pointer; }
+  input,textarea,select { font-family:inherit; }
+  :focus-visible { outline:2px solid var(--op); outline-offset:2px; border-radius:4px; }
+  @media (prefers-reduced-motion:reduce){ *,*::before,*::after{ transition-duration:.001ms !important; } }
+
+  .flag { display:inline-block; flex:none; width:22px; height:15px; border-radius:2px; border:1px solid rgba(255,255,255,.18); }
+  .flag-GT { background:linear-gradient(90deg,#4997d0 0 33.3%,#fff 33.3% 66.6%,#4997d0 66.6%); }
+  .flag-CO { background:linear-gradient(180deg,#fcd116 0 50%,#003893 50% 75%,#ce1126 75%); }
+  .flag-lg { width:32px; height:22px; border-radius:3px; }
+
+  .card { background:var(--panel); box-shadow:var(--shadow-panel); border:1px solid var(--border); border-radius:10px; }
+  .eyebrow { color:var(--highlight); font-size:11px; font-weight:500; text-transform:uppercase; letter-spacing:.09em; }
+  .muted { color:var(--text-dim); } .soft { color:var(--text-soft); }
+  .num { font-variant-numeric:tabular-nums; }
+  .page { padding:20px 24px 50px; max-width:1200px; margin:0 auto; width:100%; }
+  .page-head { margin-bottom:16px; }
+  .page-title { font-size:21px; letter-spacing:-.015em; }
+  .page-sub { color:var(--text-dim); font-size:13px; max-width:64ch; line-height:1.5; margin-top:4px; }
+  .btn { padding:7px 12px; border-radius:8px; border:1px solid var(--border); background:rgba(15,31,43,.88); font-size:12.5px; font-weight:600; color:var(--text-dim); }
+  .btn:hover { color:var(--text); border-color:var(--border-strong); }
+  .btn-p { background:linear-gradient(135deg,var(--accent),#34d399); color:#032617; border:none; }
+
+  /* armazón nivel 1 */
+  .shell { display:grid; min-height:100vh; }
+  .rail { background:linear-gradient(180deg,var(--op-faint),transparent 40%),linear-gradient(180deg,rgba(6,14,21,.98),rgba(4,11,17,.98)); border-right:1px solid var(--border-strong); padding:14px 11px; display:flex; flex-direction:column; gap:10px; align-items:center; }
+  .rail.tight { padding:12px 7px; gap:7px; }
+  .tile { width:56px; height:56px; border-radius:15px; border:1px solid var(--border); background:rgba(14,30,42,.7); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; }
+  .tile .flag { filter:saturate(.2) brightness(.55); }
+  .tile-code { font-size:10px; font-weight:700; letter-spacing:.06em; color:var(--text-soft); }
+  .tile[aria-pressed="true"] { border-color:var(--op); background:var(--op-soft); box-shadow:0 0 0 1px var(--op-line); }
+  .tile[aria-pressed="true"] .flag { filter:none; }
+  .tile[aria-pressed="true"] .tile-code { color:var(--op); }
+  .tile.dormant { border-style:dashed; opacity:.6; }
+  .rail.tight .tile { width:32px; height:32px; border-radius:10px; gap:0; }
+  .rail.tight .tile .flag { width:18px; height:12px; }
+  .rail.tight .tile-code { display:none; }
+  .col { border-right:1px solid var(--border); background:linear-gradient(180deg,var(--op-soft),var(--op-faint) 38%,transparent 72%),rgba(9,20,28,.86); padding:15px 12px; display:flex; flex-direction:column; overflow:hidden; }
+  .col-head { display:flex; align-items:flex-start; gap:10px; padding:0 2px 12px; margin-bottom:12px; border-bottom:1px solid var(--op-line); }
+  .col-name { display:block; font-size:14px; font-weight:600; }
+  .col-sub { display:block; font-size:10px; text-transform:uppercase; letter-spacing:.08em; margin-top:3px; color:var(--text-soft); }
+  .col-tel { display:block; font-size:11.5px; font-weight:600; color:var(--op); margin-top:5px; font-variant-numeric:tabular-nums; }
+  .col-tel.off { color:var(--highlight); }
+  .group { margin-bottom:12px; }
+  .group-head { display:flex; align-items:baseline; gap:7px; padding:0 10px 6px; }
+  .group.on .group-head .grouplabel { color:var(--op); }
+  .grouplabel { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.1em; color:var(--text-soft); }
+  .group-items { display:flex; flex-direction:column; gap:2px; padding-left:10px; margin-left:9px; border-left:1px solid var(--border); }
+  .group.on .group-items { border-left-color:var(--op-line); }
+  .navlink { display:flex; align-items:center; gap:9px; height:32px; padding:0 10px; border-radius:8px; border:1px solid transparent; color:var(--text-dim); font-size:13px; font-weight:500; background:none; width:100%; text-align:left; }
+  .navlink:hover { background:rgba(255,255,255,.045); color:var(--text); }
+  .navlink[aria-current="page"] { background:var(--op-soft); border-color:var(--op-line); color:var(--text); }
+  .navlink .ico { width:15px; text-align:center; opacity:.7; font-size:12px; }
+  .colfoot { margin-top:auto; padding-top:12px; border-top:1px solid var(--border); }
+  .main { min-width:0; }
+  .fold { flex:none; width:24px; height:24px; border-radius:7px; border:1px solid var(--border); background:rgba(8,19,27,.7); color:var(--text-soft); font-size:12px; display:grid; place-items:center; margin-left:auto; }
+  .strip-ico { width:32px; height:30px; border-radius:9px; border:1px solid transparent; background:none; color:var(--text-soft); font-size:12px; display:grid; place-items:center; }
+  .strip-ico[aria-current="page"] { background:var(--op-soft); border-color:var(--op-line); color:var(--op); }
+
+  /* ===== las piezas de la configuración ===== */
+  .sec { padding:15px 17px; margin-bottom:12px; }
+  .sec-h { display:flex; align-items:baseline; gap:10px; margin-bottom:12px; }
+  .sec-t { font-size:14.5px; font-weight:600; letter-spacing:-.01em; }
+  .sec-d { font-size:11.5px; color:var(--text-soft); }
+  .fld { display:flex; flex-direction:column; gap:5px; margin-bottom:13px; }
+  .fld:last-child { margin-bottom:0; }
+  .fld-k { font-size:11.5px; font-weight:500; }
+  .fld-h { font-size:11px; color:var(--text-soft); line-height:1.5; }
+  .inp, .ta { padding:8px 11px; border-radius:8px; border:1px solid var(--border);
+              background:rgba(14,29,40,.9); color:var(--text); font-size:12.5px; width:100%; }
+  .ta { line-height:1.55; resize:vertical; }
+  .row2 { display:grid; grid-template-columns:1fr 1fr; gap:13px; }
+
+  /* ===== LA CONSECUENCIA — el bloque que gasta plata =====
+     Tratamiento deliberadamente distinto del resto. Es lo que el spec pide
+     separar «de lo que es tono». */
+  .guard { border:1px solid rgba(244,193,109,.4); background:linear-gradient(180deg,rgba(244,193,109,.08),rgba(244,193,109,.03)); }
+  .guard .sec-t { color:var(--highlight); }
+  .guard-badge { font-size:9.5px; text-transform:uppercase; letter-spacing:.11em; font-weight:700;
+                 color:#06121b; background:var(--highlight); padding:2px 7px; border-radius:5px; }
+  .limit { display:flex; align-items:center; gap:12px; }
+  .limit-in { width:96px; padding:9px 11px; border-radius:8px; border:1px solid rgba(244,193,109,.45);
+              background:rgba(20,15,4,.6); color:var(--highlight); font-size:17px; font-weight:700;
+              font-variant-numeric:tabular-nums; text-align:center; }
+  .limit-eq { font-size:12px; color:var(--text-dim); line-height:1.5; }
+  .limit-eq strong { color:var(--text); }
+  .zero { border-color:rgba(110,231,183,.45) !important; background:rgba(4,20,15,.6) !important; color:var(--accent) !important; }
+  /* Lo que Relevance AI agrega y a nuestro ticket le falta. */
+  .when { margin-top:12px; padding-top:12px; border-top:1px dashed rgba(244,193,109,.3); }
+  .when-k { font-size:11px; font-weight:600; color:var(--highlight); margin-bottom:6px; }
+  .opt { display:flex; gap:9px; align-items:flex-start; padding:8px 10px; border-radius:8px;
+         border:1px solid var(--border); background:rgba(8,19,27,.4); width:100%; text-align:left; margin-bottom:5px; }
+  .opt[aria-pressed="true"] { border-color:var(--highlight); background:rgba(244,193,109,.09); }
+  .opt-r { width:13px; height:13px; border-radius:99px; border:1px solid var(--border-strong); flex:none; margin-top:2px; }
+  .opt[aria-pressed="true"] .opt-r { border-color:var(--highlight); background:var(--highlight); box-shadow:inset 0 0 0 3px rgba(20,15,4,.9); }
+  .opt-t { display:block; font-size:12.5px; font-weight:500; }
+  .opt-d { display:block; font-size:11px; color:var(--text-soft); margin-top:2px; line-height:1.45; }
+
+  /* ===== EL TONO ===== */
+  .presets { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px; }
+  .preset { padding:10px 12px; border-radius:9px; border:1px solid var(--border); background:rgba(14,29,40,.55); text-align:left; }
+  .preset:hover { border-color:var(--border-strong); }
+  .preset[aria-pressed="true"] { border-color:var(--op); background:var(--op-soft); }
+  .preset-t { font-size:12.5px; font-weight:600; }
+  .preset-d { font-size:11px; color:var(--text-soft); margin-top:2px; line-height:1.4; }
+  .prev { border-radius:10px; border:1px solid var(--border); background:rgba(8,19,27,.5); padding:13px 14px; }
+  .prev-k { font-size:9.5px; text-transform:uppercase; letter-spacing:.11em; color:var(--text-soft); font-weight:600; margin-bottom:9px; }
+  .bub { max-width:88%; padding:8px 11px; border-radius:11px; font-size:12.5px; line-height:1.45; margin-bottom:7px; }
+  .bub-in { background:linear-gradient(135deg,rgba(20,40,54,.96),rgba(15,29,40,.96)); border:1px solid var(--border); }
+  .bub-out { background:linear-gradient(135deg,rgba(42,93,82,.96),rgba(29,74,67,.98)); margin-left:auto; }
+  .hist { display:flex; align-items:center; justify-content:space-between; gap:9px; padding:7px 0; border-top:1px solid var(--border); font-size:11.5px; }
+  .hist:first-of-type { border-top:none; }
+
+  /* tabs (variante E) */
+  .tabs { display:flex; gap:4px; margin-bottom:13px; }
+  .tab { padding:8px 14px; border-radius:9px; border:1px solid var(--border); background:rgba(14,29,40,.5); color:var(--text-soft); font-size:12.5px; font-weight:600; }
+  .tab[aria-selected="true"] { background:var(--op-soft); border-color:var(--op); color:var(--op); }
+  .tab.danger[aria-selected="true"] { background:rgba(244,193,109,.11); border-color:var(--highlight); color:var(--highlight); }
+
+  .savebar { position:sticky; bottom:0; display:flex; align-items:center; gap:10px; padding:11px 16px;
+             border-radius:10px; border:1px solid var(--border); background:rgba(10,22,31,.96);
+             box-shadow:0 -6px 24px rgba(2,8,13,.4); margin-top:6px; }
+  .savebar span { font-size:11.5px; color:var(--text-soft); margin-right:auto; }
+
+  /* instrumento */
+  #picker { position:fixed; right:16px; bottom:16px; z-index:9999; width:286px; background:#16181c; border:1px solid #33373f; border-radius:12px; box-shadow:0 24px 60px rgba(0,0,0,.68); font-size:12px; color:#d6d9de; user-select:none; overflow:hidden; }
+  #picker.is-min .pk-body { display:none; }
+  .pk-head { display:flex; align-items:center; gap:9px; padding:9px 11px; background:#1e2127; border-bottom:1px solid #33373f; cursor:grab; }
+  .pk-grip { color:#6b7280; letter-spacing:2px; font-size:11px; }
+  .pk-title { font-size:10px; text-transform:uppercase; letter-spacing:.12em; color:#8b919c; font-weight:600; }
+  .pk-min { margin-left:auto; background:none; border:none; color:#8b919c; padding:2px 5px; border-radius:4px; }
+  .pk-body { padding:10px; display:flex; flex-direction:column; gap:9px; }
+  .pk-pair { display:grid; grid-template-columns:1fr 1fr; gap:9px; }
+  .pk-variant { display:flex; align-items:center; gap:8px; }
+  .pk-arrow { width:28px; height:30px; flex:none; border-radius:7px; border:1px solid #3a3f47; background:#22252b; color:#b8bdc6; font-size:13px; }
+  .pk-arrow:hover { background:#2c3037; color:#fff; }
+  .pk-vname { flex:1; min-width:0; text-align:center; }
+  .pk-vnum { font-size:9px; color:#7c828d; letter-spacing:.12em; text-transform:uppercase; }
+  .pk-vlabel { font-size:12.5px; font-weight:600; color:#f0f2f5; margin-top:1px; }
+  .pk-vtag { font-size:9.5px; color:#7c828d; margin-top:2px; line-height:1.3; }
+  .pk-ref { font-size:9px; color:#5c9c86; margin-top:3px; }
+  .pk-set { display:flex; flex-direction:column; gap:5px; }
+  .pk-legend { font-size:9px; text-transform:uppercase; letter-spacing:.11em; color:#7c828d; font-weight:600; }
+  .pk-opts { display:flex; gap:4px; flex-wrap:wrap; }
+  .pk-opt { flex:1 1 0; min-width:0; padding:6px 8px; border-radius:6px; border:1px solid #3a3f47; background:#22252b; color:#9aa0aa; font-size:11px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pk-opt:hover { background:#2c3037; color:#e3e6ea; }
+  .pk-opt[aria-pressed="true"] { background:#2f5d4f; border-color:#4b9c81; color:#b8f5dc; }
+  .pk-hint { font-size:10px; color:#6b7280; line-height:1.45; border-top:1px solid #2b2f36; padding-top:9px; }
+  .pk-hint kbd { background:#2b2f36; border:1px solid #3f444c; border-radius:3px; padding:0 4px; font-family:inherit; font-size:9.5px; color:#b8bdc6; }
+</style>
+
+<div id="app"></div>
+
+<div id="picker">
+  <div class="pk-head" id="pk-head">
+    <span class="pk-grip">⠿</span>
+    <span class="pk-title">Nivel 2 · vendedor</span>
+    <button class="pk-min" id="pk-min">—</button>
+  </div>
+  <div class="pk-body">
+    <div class="pk-variant">
+      <button class="pk-arrow" id="pk-prev">←</button>
+      <div class="pk-vname">
+        <div class="pk-vnum" id="pk-vnum">1 de 5</div>
+        <div class="pk-vlabel" id="pk-vlabel">—</div>
+        <div class="pk-vtag" id="pk-vtag">—</div>
+        <div class="pk-ref" id="pk-ref">—</div>
+      </div>
+      <button class="pk-arrow" id="pk-next">→</button>
+    </div>
+
+    <div class="pk-set">
+      <span class="pk-legend">Límite de descuento</span>
+      <div class="pk-opts" data-key="limit">
+        <button class="pk-opt" data-val="10">10 %</button>
+        <button class="pk-opt" data-val="0">0 · prohibido</button>
+      </div>
+    </div>
+
+    <div class="pk-set">
+      <span class="pk-legend">Sobre la A · lo descartado</span>
+      <div class="pk-opts" data-key="guardFirst">
+        <button class="pk-opt" data-val="false">Límite en su lugar</button>
+        <button class="pk-opt" data-val="true">Límite arriba</button>
+      </div>
+    </div>
+
+    <div class="pk-pair">
+      <div class="pk-set">
+        <span class="pk-legend">Vista previa</span>
+        <div class="pk-opts" data-key="preview">
+          <button class="pk-opt" data-val="false">No</button>
+          <button class="pk-opt" data-val="true">Sí</button>
+        </div>
+      </div>
+      <div class="pk-set">
+        <span class="pk-legend">Presets</span>
+        <div class="pk-opts" data-key="presets">
+          <button class="pk-opt" data-val="false">No</button>
+          <button class="pk-opt" data-val="true">Sí</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="pk-set">
+      <span class="pk-legend">Tono</span>
+      <div class="pk-opts" data-key="tone">
+        <button class="pk-opt" data-val="cercano">Cercano</button>
+        <button class="pk-opt" data-val="formal">Formal</button>
+        <button class="pk-opt" data-val="custom">Propio</button>
+      </div>
+    </div>
+
+    <div class="pk-pair">
+      <div class="pk-set">
+        <span class="pk-legend">Operación</span>
+        <div class="pk-opts" data-key="country">
+          <button class="pk-opt" data-val="GT">Guate</button>
+          <button class="pk-opt" data-val="CO">Colombia</button>
+        </div>
+      </div>
+      <div class="pk-set">
+        <span class="pk-legend">Barras</span>
+        <div class="pk-opts" data-key="bars">
+          <button class="pk-opt" data-val="open">Abiertas</button>
+          <button class="pk-opt" data-val="collapsed">Plegadas</button>
+        </div>
+      </div>
+    </div>
+
+    <p class="pk-hint">
+      <strong>Grupo cerrado.</strong> Queda como está al abrir: límite en su
+      lugar, sin vista previa, con presets. Los interruptores sirven para ver
+      qué se descartó. <kbd>←</kbd> <kbd>→</kbd> alternan.
+    </p>
+  </div>
+</div>
+
+<script>
+const OPS = {
+  GT:{code:"GT",name:"Guatemala",currency:"GTQ",cur:"Q",phone:"+502 3689 0343",store:"Vorare GT · Shopify",live:true,status:"Operando",accent:"#a78bfa"},
+  CO:{code:"CO",name:"Colombia",currency:"COP",cur:"$",phone:"+57 304 5430173",store:"sin conectar",live:false,status:"Sin operar",accent:"#38bdf8"},
+};
+const MODULES = {
+  ventas:{key:"ventas",label:"Ventas",agent:"Sebastián",
+    screens:[{key:"vendedor",label:"Vendedor",icon:"◉"},{key:"catalogo",label:"Catálogo",icon:"▤"},{key:"conversaciones",label:"Conversaciones",icon:"◇"}]},
+  confirmacion:{key:"confirmacion",label:"Confirmación",agent:"Katherine",
+    screens:[{key:"agente",label:"Agente",icon:"◉"},{key:"inbox",label:"Inbox",icon:"✉"},{key:"pedidos",label:"Pedidos",icon:"▦"}]},
+};
+
+const TONES = {
+  cercano:{t:"Cercano",d:"Tutea, directo, sin formalismos",
+    txt:"Cercano y directo, sin tratar de usted. Responde en guatemalteco neutro. No prometas resultados médicos.",
+    reply:"Claro que sí 😊 el tratamiento son 3 meses y sí funciona para entradas. ¿Te mando el precio con envío?"},
+  formal:{t:"Formal",d:"Trata de usted, tono profesional",
+    txt:"Trate al cliente de usted. Tono profesional y sobrio. No prometa resultados médicos.",
+    reply:"Buenas tardes. El tratamiento tiene una duración de 3 meses y está indicado para entradas. ¿Desea que le comparta el precio con envío?"},
+  custom:{t:"Propio",d:"Escribilo vos",
+    txt:"Cercano pero sin exagerar. Usa «vos». Si preguntan por envío, confirma contraentrega en toda Guatemala. Si piden descuento más allá del límite, no inventes: decí que consultás.",
+    reply:"Sí, sirve para entradas. El tratamiento son 3 meses y te llega contraentrega a toda Guatemala. ¿Te paso el precio?"},
+};
+
+const WHEN = [
+  {k:"consulta", t:"Consultar con una persona",  d:"Sebastián deja de negociar y escala el chat. Es lo que el cliente ve como «déjame confirmar»."},
+  {k:"tope",     t:"Ofrecer el máximo y cerrar", d:"Aplica el límite y sigue empujando al cierre sin escalar."},
+  {k:"nada",     t:"No mencionar descuentos",    d:"Ignora el pedido y vuelve al valor del producto."},
+];
+
+const VARIANTS = [
+  {id:"A",label:"Secciones apiladas ✓", tag:"ELEGIDA · todo en la misma pantalla",                  ref:"agent-form.tsx · Lindy"},
+  {id:"B",label:"Consecuencia | tono", tag:"dos columnas: lo que actúa, lo que suena",            ref:"separación física"},
+  {id:"C",label:"El límite arriba",    tag:"el guardarraíl primero, con su consecuencia",         ref:"Relevance AI"},
+  {id:"D",label:"Presets con preview", tag:"el tono se elige y se ve respondido",                 ref:"Gorgias"},
+  {id:"E",label:"Pestañas",            tag:"Persona · Límites · Mensajes",                        ref:"Sana AI · PlayAI"},
+];
+
+const state = { variant:0, country:"GT", module:"ventas", screen:"vendedor", bars:"open",
+                limit:"10", tone:"cercano", when:"consulta", tab:"persona",
+                /* CERRADO 18-ago-2026: el límite en su lugar natural, sin vista
+                   previa, con presets de tono. Los interruptores quedan para ver
+                   qué se descartó, no como opciones abiertas. */
+                guardFirst:false, preview:false, presets:true };
+
+const el=(t,c,h)=>{const n=document.createElement(t);if(c)n.className=c;if(h!=null)n.innerHTML=h;return n;};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const flag=(c,s)=>`<span class="flag flag-${c}${s?" flag-"+s:""}"></span>`;
+const op=()=>OPS[state.country];
+const mod=()=>MODULES[state.module];
+const V=()=>VARIANTS[state.variant];
+function rgba(h,a){const n=parseInt(h.slice(1),16);return `rgba(${(n>>16)&255}, ${(n>>8)&255}, ${n&255}, ${a})`;}
+const zero = () => state.limit === "0";
+
+/* ---------- las piezas ---------- */
+
+/* El bloque que gasta plata. Relevance AI enseñó que un límite sin su
+   consecuencia declarada está incompleto: falta qué hace el agente al tope. */
+function guardBlock(bare) {
+  const box = el("div", bare ? "" : "card sec guard");
+  if (bare) box.className = "";
+  box.appendChild(el("div","sec-h",
+    `<span class="sec-t">Límite de descuento</span>
+     <span class="guard-badge">tiene consecuencia</span>`));
+
+  const lim = el("div","limit");
+  const inp = el("input","limit-in" + (zero() ? " zero" : ""));
+  inp.value = state.limit; inp.readOnly = true;
+  lim.appendChild(inp);
+  lim.appendChild(el("div","limit-eq", zero()
+    ? `<strong>Los descuentos están prohibidos.</strong> Sebastián no puede bajar el precio
+       ni un quetzal, en ninguna conversación.`
+    : `Sebastián puede llegar hasta <strong>${state.limit}%</strong> por su cuenta —
+       hasta <strong>${op().cur} ${(349*0.10).toFixed(0)}</strong> sobre el producto de ${op().cur} 349.
+       Poné <strong>0</strong> para prohibirlos.`));
+  box.appendChild(lim);
+
+  const when = el("div","when");
+  when.appendChild(el("div","when-k", zero()
+    ? "Cuando el cliente insista con un descuento"
+    : `Cuando el cliente pida más de ${state.limit}%`));
+  WHEN.forEach(w => {
+    const b = el("button","opt");
+    b.setAttribute("aria-pressed", String(state.when === w.k));
+    b.innerHTML = `<span class="opt-r"></span>
+      <span><span class="opt-t">${esc(w.t)}</span><span class="opt-d">${esc(w.d)}</span></span>`;
+    b.onclick = () => { state.when = w.k; render(); };
+    when.appendChild(b);
+  });
+  box.appendChild(when);
+  return box;
+}
+
+function toneBlock(opts = {}) {
+  const box = el("div", opts.bare ? "" : "card sec");
+  box.appendChild(el("div","sec-h",
+    `<span class="sec-t">Tono e instrucciones</span>
+     <span class="sec-d">no tiene consecuencia · cambia cómo suena</span>`));
+
+  if (opts.presets) {
+    const g = el("div","presets");
+    Object.entries(TONES).forEach(([k,t]) => {
+      const b = el("button","preset");
+      b.setAttribute("aria-pressed", String(state.tone === k));
+      b.innerHTML = `<div class="preset-t">${esc(t.t)}</div><div class="preset-d">${esc(t.d)}</div>`;
+      b.onclick = () => { state.tone = k; render(); };
+      g.appendChild(b);
+    });
+    box.appendChild(g);
+  }
+
+  const f = el("div","fld");
+  f.innerHTML = `<span class="fld-k">Instrucciones</span>`;
+  const ta = el("textarea","ta"); ta.rows = 4; ta.value = TONES[state.tone].txt;
+  f.appendChild(ta);
+  f.appendChild(el("span","fld-h","Texto libre. Aplica en la próxima conversación, sin desplegar."));
+  box.appendChild(f);
+
+  if (opts.history) {
+    const h = el("div","fld");
+    h.innerHTML = `<span class="fld-k" style="margin-bottom:4px">Historial</span>
+      <div class="hist"><span class="muted">Hoy 14:20 · Daniel</span><span class="soft">en uso</span></div>
+      <div class="hist"><span class="muted">15 ago · Daniel</span><button class="btn" style="padding:3px 9px;font-size:11px">restaurar</button></div>`;
+    box.appendChild(h);
+  }
+  return box;
+}
+
+function previewBlock() {
+  const box = el("div","prev");
+  box.appendChild(el("div","prev-k","Así responde Sebastián"));
+  box.innerHTML += `<div class="bub bub-in">¿Sirve para entradas? tengo 34 años</div>
+    <div class="bub bub-out">${esc(TONES[state.tone].reply)}</div>
+    <div class="bub bub-in">¿Me hacés un 20%?</div>
+    <div class="bub bub-out">${esc(
+      zero() ? "El precio es fijo, no manejamos descuentos. Pero te incluyo el envío sin costo 😉"
+      : state.when === "consulta" ? `Puedo llegar hasta ${state.limit}% por mi cuenta. Dejame consultar si podemos hacer algo más y te confirmo.`
+      : state.when === "tope" ? `Te puedo dejar el ${state.limit}%, es lo máximo. ¿Te lo aparto?`
+      : "Te cuento que el tratamiento rinde 3 meses, así que el costo por día es bajísimo. ¿Te lo aparto?")}</div>`;
+  return box;
+}
+
+function identityBlock(bare) {
+  const box = el("div", bare ? "" : "card sec");
+  box.appendChild(el("div","sec-h",`<span class="sec-t">Identidad</span>
+    <span class="sec-d">lo que el cliente ve</span>`));
+  const r = el("div","row2");
+  r.innerHTML = `<div class="fld"><span class="fld-k">Nombre visible</span>
+      <input class="inp" value="Sebastián"></div>
+    <div class="fld"><span class="fld-k">Número que responde</span>
+      <input class="inp num" value="${esc(op().phone)}" readonly></div>`;
+  box.appendChild(r);
+  return box;
+}
+
+function messagesBlock(bare) {
+  const box = el("div", bare ? "" : "card sec");
+  box.appendChild(el("div","sec-h",`<span class="sec-t">Mensajes base</span>
+    <span class="sec-d">los momentos clave</span>`));
+  [["Saludo","¡Hola! Soy Sebastián de Vorare 👋 ¿En qué te ayudo?"],
+   ["Empuje al cierre","¿Te lo aparto? Pagás cuando lo recibís."],
+   ["Mensaje de embudo","Te dejo el enlace por si querés verlo con calma."]].forEach(([k,v]) => {
+    const f = el("div","fld");
+    f.innerHTML = `<span class="fld-k">${esc(k)}</span>`;
+    const i = el("input","inp"); i.value = v; f.appendChild(i);
+    box.appendChild(f);
+  });
+  return box;
+}
+
+const saveBar = () => {
+  const b = el("div","savebar");
+  b.innerHTML = `<span>Los cambios aplican en la próxima conversación, sin desplegar.</span>`;
+  b.appendChild(el("button","btn","Descartar"));
+  b.appendChild(el("button","btn btn-p","Guardar"));
+  return b;
+};
+
+/* ================= LAS CINCO ================= */
+
+function vA() { // secciones apiladas — la anatomía de Katherine
+  const w = el("div");
+  const cols = el("div");
+  cols.style.cssText = state.preview
+    ? "display:grid;grid-template-columns:1fr 340px;gap:13px;align-items:start"
+    : "display:block";
+  const L = el("div");
+  if (state.guardFirst) L.appendChild(guardBlock());
+  L.appendChild(identityBlock());
+  L.appendChild(messagesBlock());
+  if (!state.guardFirst) L.appendChild(guardBlock());
+  L.appendChild(toneBlock({ history:true, presets:state.presets }));
+  cols.appendChild(L);
+  if (state.preview) {
+    const R = el("div");
+    R.style.cssText = "position:sticky;top:16px";
+    R.appendChild(previewBlock());
+    cols.appendChild(R);
+  }
+  w.appendChild(cols);
+  w.appendChild(saveBar());
+  return w;
+}
+
+function vB() { // dos columnas: lo que actúa | lo que suena
+  const w = el("div");
+  const g = el("div");
+  g.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:13px;align-items:start";
+  const L = el("div"), R = el("div");
+  L.appendChild(el("div","grouplabel","Lo que Sebastián puede hacer"));
+  const sp = el("div"); sp.style.height="8px"; L.appendChild(sp);
+  L.appendChild(identityBlock());
+  L.appendChild(guardBlock());
+  R.appendChild(el("div","grouplabel","Cómo suena"));
+  const sp2 = el("div"); sp2.style.height="8px"; R.appendChild(sp2);
+  R.appendChild(toneBlock({ presets:true }));
+  R.appendChild(messagesBlock());
+  g.appendChild(L); g.appendChild(R);
+  w.appendChild(g);
+  w.appendChild(saveBar());
+  return w;
+}
+
+function vC() { // el guardarraíl primero
+  const w = el("div");
+  w.appendChild(guardBlock());
+  w.appendChild(identityBlock());
+  w.appendChild(messagesBlock());
+  w.appendChild(toneBlock({ history:true }));
+  w.appendChild(saveBar());
+  return w;
+}
+
+function vD() { // presets + vista previa en vivo
+  const w = el("div");
+  const g = el("div");
+  g.style.cssText = "display:grid;grid-template-columns:1fr 340px;gap:13px;align-items:start";
+  const L = el("div");
+  L.appendChild(identityBlock());
+  L.appendChild(guardBlock());
+  L.appendChild(toneBlock({ presets:true }));
+  L.appendChild(messagesBlock());
+  const R = el("div");
+  R.style.cssText = "position:sticky;top:16px";
+  R.appendChild(previewBlock());
+  g.appendChild(L); g.appendChild(R);
+  w.appendChild(g);
+  w.appendChild(saveBar());
+  return w;
+}
+
+function vE() { // pestañas
+  const w = el("div");
+  const tabs = el("div","tabs");
+  [["persona","Persona",false],["limites","Límites",true],["mensajes","Mensajes",false]].forEach(([k,l,danger]) => {
+    const b = el("button","tab" + (danger ? " danger" : ""), l);
+    b.setAttribute("aria-selected", String(state.tab === k));
+    b.onclick = () => { state.tab = k; render(); };
+    tabs.appendChild(b);
+  });
+  w.appendChild(tabs);
+  if (state.tab === "persona") { w.appendChild(identityBlock()); w.appendChild(toneBlock({presets:true, history:true})); }
+  else if (state.tab === "limites") w.appendChild(guardBlock());
+  else w.appendChild(messagesBlock());
+  w.appendChild(saveBar());
+  return w;
+}
+
+const VIEW = { A:vA, B:vB, C:vC, D:vD, E:vE };
+
+function vendorScreen() {
+  const w = el("div");
+  w.appendChild(el("div","page-head",`
+    <span class="eyebrow">${esc(op().name)} · vendedor</span>
+    <h2 class="page-title">Configuración de Sebastián</h2>
+    <p class="page-sub">Lo que tiene consecuencia se separa de lo que es tono. Los cambios aplican
+      en la próxima conversación, sin desplegar.</p>`));
+  w.appendChild(VIEW[V().id]());
+  return w;
+}
+
+function otherScreen(t,s,m) {
+  const w = el("div");
+  w.appendChild(el("div","page-head",`<span class="eyebrow">${esc(op().name)} · ${esc(t.toLowerCase())}</span>
+    <h2 class="page-title">${esc(t)}</h2><p class="page-sub">${esc(s)}</p>`));
+  const c = el("div","card");
+  c.innerHTML = `<div style="padding:50px 24px;text-align:center">
+    <div style="width:46px;height:46px;border-radius:11px;border:1px dashed var(--border-strong);display:grid;place-items:center;color:var(--text-soft);margin:0 auto 10px">${m}</div>
+    <p class="soft" style="font-size:12.5px;max-width:44ch;margin:0 auto;line-height:1.55">Está aquí para ver el marco alrededor.</p></div>`;
+  w.appendChild(c);
+  return w;
+}
+
+function content() {
+  if (state.screen === "vendedor") return vendorScreen();
+  if (state.screen === "agente") return otherScreen("Agente","La configuración de Katherine, tal como existe hoy: cuatro secciones apiladas más la tarjeta del prompt.","◉");
+  if (state.screen === "catalogo") return otherScreen("Catálogo","Tabla densa, ya decidida.","▤");
+  if (state.screen === "conversaciones") return otherScreen("Conversaciones","Bandeja de Sebastián, ya decidida.","◇");
+  if (state.screen === "pedidos") return otherScreen("Pedidos","Confirmación de pedidos.","▦");
+  return otherScreen("Inbox","Bandeja de Katherine.","✉");
+}
+
+/* ---------------- armazón ---------------- */
+const toggleBars = () => { state.bars = state.bars === "open" ? "collapsed" : "open"; render(); };
+function switchCountry(c){ if(state.country===c) return; state.country=c; state.bars="open"; render(); }
+
+function navFor(m) {
+  const box = el("div");
+  box.style.cssText = "display:flex;flex-direction:column;gap:2px";
+  MODULES[m].screens.forEach(s => {
+    const b = el("button","navlink",`<span class="ico">${s.icon}</span>${esc(s.label)}`);
+    if (state.screen === s.key && state.module === m) b.setAttribute("aria-current","page");
+    b.onclick = () => { state.module = m; state.screen = s.key; render(); };
+    box.appendChild(b);
+  });
+  return box;
+}
+function buildRail(tight) {
+  const rail = el("div","rail"+(tight?" tight":""));
+  Object.values(OPS).forEach(x => {
+    const t = el("button","tile"+(x.live?"":" dormant"),`${flag(x.code)}${tight?"":`<span class="tile-code">${esc(x.code)}</span>`}`);
+    t.setAttribute("aria-pressed", String(state.country===x.code));
+    t.title = `${x.name} · ${x.status}`;
+    t.onclick = () => switchCountry(x.code);
+    rail.appendChild(t);
+  });
+  if (tight) {
+    const sep = el("div"); sep.style.cssText="width:20px;height:1px;background:var(--border);margin:3px 0"; rail.appendChild(sep);
+    mod().screens.forEach(s => {
+      const b = el("button","strip-ico",s.icon);
+      b.title = `${mod().label} · ${s.label}`;
+      if (state.screen === s.key) b.setAttribute("aria-current","page");
+      b.onclick = () => { state.screen = s.key; render(); };
+      rail.appendChild(b);
+    });
+  }
+  const f = el("button","fold", state.bars==="open"?"«":"»");
+  f.style.marginTop="auto"; f.onclick=toggleBars; rail.appendChild(f);
+  return rail;
+}
+function buildCol() {
+  const o = op(), col = el("div","col");
+  const head = el("div","col-head");
+  head.innerHTML = `${flag(o.code,"lg")}<span style="min-width:0">
+    <span class="col-name">${esc(o.name)}</span>
+    <span class="col-sub">${esc(o.status)} · ${esc(o.currency)}</span>
+    <span class="col-tel${o.live?"":" off"}">${esc(o.phone)}</span></span>`;
+  const f = el("button","fold","«"); f.onclick = toggleBars; head.appendChild(f);
+  col.appendChild(head);
+  ["ventas","confirmacion"].forEach(k => {
+    const m = MODULES[k];
+    const g = el("div","group"+(state.module===k?" on":""));
+    g.appendChild(el("div","group-head",`<span class="grouplabel">${esc(m.label)}</span>
+      <span class="soft" style="font-size:11px">${esc(m.agent)}</span>`));
+    const items = el("div","group-items"); items.appendChild(navFor(k)); g.appendChild(items);
+    col.appendChild(g);
+  });
+  col.appendChild(el("div","colfoot",`<div class="soft" style="font-size:11px;line-height:1.5">${esc(o.store)}</div>`));
+  return col;
+}
+
+function render() {
+  const hex = op().accent, root = document.documentElement.style;
+  root.setProperty("--op",hex);
+  root.setProperty("--op-line",rgba(hex,.45));
+  root.setProperty("--op-soft",rgba(hex,.13));
+  root.setProperty("--op-faint",rgba(hex,.07));
+  if (!mod().screens.some(s => s.key === state.screen)) state.screen = mod().screens[0].key;
+
+  const shell = el("div","shell");
+  const open = state.bars === "open";
+  shell.style.gridTemplateColumns = open ? "78px 216px 1fr" : "46px 1fr";
+  shell.appendChild(buildRail(!open));
+  if (open) shell.appendChild(buildCol());
+  const main = el("div","main"), page = el("div","page");
+  page.appendChild(content()); main.appendChild(page); shell.appendChild(main);
+  const app = document.getElementById("app");
+  app.innerHTML=""; app.appendChild(shell);
+  syncPicker();
+}
+
+function syncPicker() {
+  const v = V();
+  document.getElementById("pk-vnum").textContent = `${state.variant+1} de 5 · ${v.id}`;
+  document.getElementById("pk-vlabel").textContent = v.label;
+  document.getElementById("pk-vtag").textContent = v.tag;
+  document.getElementById("pk-ref").textContent = "ref: " + v.ref;
+  document.querySelectorAll(".pk-opts[data-key]").forEach(g => {
+    g.querySelectorAll(".pk-opt").forEach(b => b.setAttribute("aria-pressed",
+      String(String(state[g.dataset.key]) === b.dataset.val)));
+  });
+}
+document.querySelectorAll('.pk-opts[data-key]').forEach(g => {
+  g.querySelectorAll(".pk-opt").forEach(b => {
+    b.onclick = () => {
+      const k = g.dataset.key;
+      if (k === "country") { switchCountry(b.dataset.val); return; }
+      state[k] = ["guardFirst","preview","presets"].includes(k)
+        ? b.dataset.val === "true" : b.dataset.val;
+      render();
+    };
+  });
+});
+function step(d){ state.variant=(state.variant+d+VARIANTS.length)%VARIANTS.length; render(); }
+document.getElementById("pk-prev").onclick = () => step(-1);
+document.getElementById("pk-next").onclick = () => step(1);
+document.getElementById("pk-min").onclick = () => document.getElementById("picker").classList.toggle("is-min");
+addEventListener("keydown", e => {
+  if (e.target.closest("input, textarea")) return;
+  if (e.key === "ArrowLeft") { step(-1); e.preventDefault(); }
+  if (e.key === "ArrowRight") { step(1); e.preventDefault(); }
+});
+(function drag(){
+  const box=document.getElementById("picker"), head=document.getElementById("pk-head");
+  let dx=0,dy=0,on=false;
+  head.addEventListener("mousedown",e=>{
+    if(e.target.closest("button"))return;
+    on=true; const r=box.getBoundingClientRect();
+    dx=e.clientX-r.left; dy=e.clientY-r.top;
+    box.style.right="auto"; box.style.bottom="auto";
+    box.style.left=r.left+"px"; box.style.top=r.top+"px"; e.preventDefault();
+  });
+  addEventListener("mousemove",e=>{
+    if(!on)return;
+    box.style.left=Math.min(Math.max(0,e.clientX-dx),innerWidth-box.offsetWidth)+"px";
+    box.style.top=Math.min(Math.max(0,e.clientY-dy),innerHeight-box.offsetHeight)+"px";
+  });
+  addEventListener("mouseup",()=>{on=false;});
+})();
+render();
+</script>
