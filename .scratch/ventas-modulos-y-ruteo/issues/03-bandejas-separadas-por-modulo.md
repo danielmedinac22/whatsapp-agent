@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 · 02 · ventas-multi-operacion 07 · Selector de operación en el panel
 
-**Status:** ready-for-agent
+**Status:** claimed — worktree `bandejas`, ola del 18-ago (2)
 
 - [ ] Cada módulo tiene su bandeja, alimentada por la función de ruteo.
 - [ ] Una conversación que cierra la venta **desaparece de la bandeja de ventas y aparece en la de operaciones**, sola.

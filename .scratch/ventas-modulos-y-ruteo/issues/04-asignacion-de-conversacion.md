@@ -4,7 +4,7 @@
 
 **Blocked by:** 03
 
-**Status:** esquema en curso — worktree `esquema-0022` deja la columna; la funcionalidad sigue abierta
+**Status:** claimed — worktree `bandejas`, ola del 18-ago (2)
 
 - [ ] Un asesor puede tomar una conversación y queda registrado como quien la trabaja.
 - [ ] El resto del equipo ve quién la tiene, **antes de escribir**.

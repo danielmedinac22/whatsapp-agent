@@ -4,7 +4,7 @@
 
 **Blocked by:** 02
 
-**Status:** en curso — worktree `catalogo`, ola del 18-ago-2026 mergeado y desplegado. **No se cierra en esta ola**: falta la lista de anuncios leída de Meta (credencial) y los archivos enviables (migración `0025`).
+**Status:** claimed — worktree `assets-0025`, ola del 18-ago (2). La pantalla base ya está en producción; falta lo que esperaba la migración `0025`
 
 - [x] El admin pega un identificador de anuncio en un solo campo y lo asocia a uno o varios productos.
 - [x] Un mismo anuncio puede quedar asociado a varios productos, y se ve claramente a cuáles.

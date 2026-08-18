@@ -4,7 +4,7 @@
 
 **Blocked by:** ventas-modulos-y-ruteo 03 · Bandejas separadas por módulo
 
-**Status:** ready-for-agent
+**Status:** claimed — worktree `bandejas`, ola del 18-ago (2)
 
 - [ ] Al abrir un chat se ve **de qué anuncio y de qué producto** viene la conversación.
 - [ ] Se ve el **estado del reconocimiento**: resuelto, ambiguo o escalado tras dos intentos.
