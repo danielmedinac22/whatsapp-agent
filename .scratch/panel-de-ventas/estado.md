@@ -33,6 +33,30 @@
 - **El pulido de comportamiento del panel** (móvil y escritorio).
 - **Los tres niveles del árbol de diseño**, cerrados con el usuario. Prototipos en `.scratch/ventas-pulido-ui/prototipos/`.
 
+## Ola 2 del 18-ago-2026 — EN CURSO
+
+Tres worktrees, nacidos de `a980f8f`. **Siete tickets.**
+
+| Worktree | Tickets | Migración |
+| -- | -- | -- |
+| `bandejas` | modulos-y-ruteo **03 + 04**, panel **04** | ninguna |
+| `assets-0025` | panel **01 + 02 + 03** (lo que faltaba) | **`0025`** |
+| `lead-nuevo` | conversacion **05** | ninguna |
+
+**Antes de repartir hubo que mudar la función de ruteo a `@wa/db`** (`e4cc81b`):
+`apps/web` no depende de `@wa/worker`, así que la bandeja no podía llamar a
+`resolveInbox`, y reescribirla en SQL habría dejado dos implementaciones de la
+misma regla. Movimiento mecánico, cero cambios de lógica, 423 tests verdes. **Lo
+hizo la sesión coordinadora** porque el archivo a tocar —`inbound/pipeline.ts`—
+es de otro ticket de la misma ola.
+
+**Decisión del usuario, ya escrita en `ventas-conversacion/05`:** un contacto
+nuevo nace con el agente encendido, **y solo si la operación tiene vendedor
+configurado**. Sin ese guardia, Katherine empezaría a contestarle a desconocidos
+que hoy no reciben nada — 109 contactos en esa situación. La forma elegida
+además **no necesita migración**: «contacto nuevo» es un momento y no un estado,
+así que un asesor que apaga el agente queda protegido por construcción.
+
 ## Ola del 18-ago-2026 — cerrada, en producción
 
 **Tres worktrees en paralelo, los tres mergeados y desplegados.** Migración
