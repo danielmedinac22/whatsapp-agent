@@ -1,0 +1,1402 @@
+<title>Registrar un anuncio</title>
+
+<!--
+  PROTOTIPO DESECHABLE — no es código de producción, no se integra.
+
+  NIVEL 3 · componente «campo de identificador de anuncio».
+
+  Lo que ya está cerrado y NO se compara acá:
+  · Nivel 1 — riel de operaciones + tinte en la barra + plegado a 46px.
+  · Nivel 2 catálogo — tabla densa, origen como columna, ficha a 340px,
+    interruptor por archivo, «también apunta a …» en el anuncio compartido.
+  · Nivel 2 conversaciones — vistas de Sebastián dentro del Inbox, el
+    contexto se narra en el hilo, `Agente: ON/OFF` (nada de «tomar el chat»).
+  · Se descartó la pantalla propia de anuncios (variante D del catálogo).
+
+  LA PREGUNTA DE ESTA RONDA, y es la única:
+  «Registrar un anuncio nuevo es de segundos, no de minutos — es la que
+   determina cuánto soporte recurrente genera el módulo después de
+   entregado.» (ticket 03 de ventas-panel, criterio 5).
+
+  EL DATO QUE REPLANTEA LA PREGUNTA — de `packages/db/src/schema.ts` y la
+  migración 0022: `conversations` ya guarda `ad_id`, `ad_headline`, `ad_body`,
+  `ad_source_url` y `ad_referral_at` de cada clic CTWA. Y la cascada de
+  `apps/worker/src/sales/recognition.ts` solo baja al nivel semántico
+  «si el anuncio NO está registrado». O sea: **el panel ya sabe cuáles son
+  los anuncios sin registrar, cuántos leads trajo cada uno y qué decía su
+  copy.** Media registración no necesita campo — necesita una lista.
+
+  Por eso las cinco variantes no son cinco formas del mismo campo: son cinco
+  respuestas distintas a QUÉ ACTO es registrar un anuncio.
+
+  Referencias (Mobbin):
+  · Wise — validación inline debajo del campo, con las reglas a la vista.
+  · Etsy / Fireflies — campo + Enter → ficha; sugerencias abajo.
+  · 7shifts «Integration Mapping» — banner «5 requieren emparejamiento»,
+    filtro «Unmapped», y por fila «Find match in Square…».
+  · Midday — el ítem queda «Pending» con «no encontramos match todavía»
+    y un combobox inline para resolverlo sin salir.
+  · Mailchimp / Wix — importar es pegar y CONFIRMAR una previsualización.
+  · Salesforce / folk — resolver duplicados es confirmar una propuesta.
+
+  VERIFICADO CONTRA PRODUCCIÓN el 18-ago-2026 (solo lectura), y el resultado
+  cambia el peso de las variantes:
+
+    conversations = 1.713 · con ad_id = 0 · con ctwa_clid = 0
+    con ad_headline = 0 · con ad_referral_raw = 0
+    products = 0 · product_ads = 0 · operations = 1
+
+  **La referencia CTWA nunca se capturó ni una sola vez.** La ruta de captura
+  sí está viva (`inbound/pipeline.ts:237` escribe y registra `ruta`), pero la
+  migración 0022 aterrizó el 17-ago y desde entonces entraron ~28
+  conversaciones — muestra chica, y no consta que haya pauta CTWA corriendo.
+  O sea: el cero no prueba que Kapso no mande el `referral`; prueba que
+  **nadie lo vio llegar nunca**.
+
+  Consecuencia para esta ronda: B, D y E se apoyan en un dato que todavía no
+  existe («el panel ya sabe qué anuncios están sin registrar»). F no — la
+  lista de Meta funciona el día uno, con cero tráfico. Los 91 leads sin
+  reconocer del mock son, hoy, hipotéticos.
+
+  Nivel 1 en a646486 · nivel 2 cerrado en 9328437.
+-->
+
+<style>
+  :root {
+    --bg:#071119; --panel:rgba(10,24,34,.82); --panel-2:rgba(18,35,48,.9);
+    --border:rgba(157,187,210,.16); --border-strong:rgba(157,187,210,.28);
+    --text:#eff7fb; --text-dim:#99adbc; --text-soft:#6f8798;
+    --accent:#6ee7b7; --highlight:#f4c16d; --danger:#f87171;
+    --shopify:#95bf47;
+    --font:"Avenir Next","Segoe UI","Helvetica Neue",system-ui,sans-serif;
+    --op:#a78bfa; --op-line:rgba(167,139,250,.45);
+    --op-soft:rgba(167,139,250,.13); --op-faint:rgba(167,139,250,.07);
+  }
+  * { box-sizing:border-box; }
+  body {
+    margin:0; min-height:100vh; color:var(--text);
+    background:linear-gradient(180deg,rgba(244,193,109,.03),transparent 28%),
+               linear-gradient(180deg,#09131c 0%,#071119 45%,#050d14 100%);
+    background-attachment:fixed;
+    font-family:var(--font); font-size:14px; -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3,h4 { margin:0; font-weight:600; }
+  p { margin:0; }
+  button { font-family:inherit; font-size:inherit; color:inherit; cursor:pointer; }
+  input,textarea { font-family:inherit; }
+  :focus-visible { outline:2px solid var(--op); outline-offset:2px; border-radius:4px; }
+  @media (prefers-reduced-motion:reduce){ *,*::before,*::after{ animation-duration:.001ms !important; transition-duration:.001ms !important; } }
+
+  .num { font-variant-numeric:tabular-nums; }
+  .soft { color:var(--text-soft); }
+  .dim  { color:var(--text-dim); }
+
+  .flag { display:inline-block; flex:none; width:22px; height:15px; border-radius:2px; border:1px solid rgba(255,255,255,.18); }
+  .flag-GT { background:linear-gradient(90deg,#4997d0 0 33.3%,#fff 33.3% 66.6%,#4997d0 66.6%); }
+  .flag-CO { background:linear-gradient(180deg,#fcd116 0 50%,#003893 50% 75%,#ce1126 75%); }
+  .flag-lg { width:32px; height:22px; border-radius:3px; }
+
+  /* ===== armazón del nivel 1 (cerrado — se copia, no se rediseña) ===== */
+  .shell { display:grid; min-height:100vh; }
+  .rail { background:linear-gradient(180deg,var(--op-faint),transparent 40%),linear-gradient(180deg,rgba(6,14,21,.98),rgba(4,11,17,.98)); border-right:1px solid var(--border-strong); padding:14px 11px; display:flex; flex-direction:column; gap:10px; align-items:center; }
+  .rail.tight { padding:12px 7px; gap:7px; }
+  .tile { width:56px; height:56px; border-radius:15px; border:1px solid var(--border); background:rgba(14,30,42,.7); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; }
+  .tile .flag { filter:saturate(.2) brightness(.55); }
+  .tile-code { font-size:10px; font-weight:700; letter-spacing:.06em; color:var(--text-soft); }
+  .tile[aria-pressed="true"] { border-color:var(--op); background:var(--op-soft); box-shadow:0 0 0 1px var(--op-line); }
+  .tile[aria-pressed="true"] .flag { filter:none; }
+  .tile[aria-pressed="true"] .tile-code { color:var(--op); }
+  .tile.dormant { border-style:dashed; opacity:.6; }
+  .rail.tight .tile { width:32px; height:32px; border-radius:10px; gap:0; }
+  .rail.tight .tile .flag { width:18px; height:12px; }
+  .rail.tight .tile-code { display:none; }
+  .col { border-right:1px solid var(--border); background:linear-gradient(180deg,var(--op-soft),var(--op-faint) 38%,transparent 72%),rgba(9,20,28,.86); padding:15px 12px; display:flex; flex-direction:column; overflow:hidden; }
+  .col-head { display:flex; align-items:flex-start; gap:10px; padding:0 2px 12px; margin-bottom:12px; border-bottom:1px solid var(--op-line); }
+  .col-name { display:block; font-size:14px; font-weight:600; }
+  .col-sub { display:block; font-size:10px; text-transform:uppercase; letter-spacing:.08em; margin-top:3px; color:var(--text-soft); }
+  .col-tel { display:block; font-size:11.5px; font-weight:600; color:var(--op); margin-top:5px; font-variant-numeric:tabular-nums; }
+  .col-tel.off { color:var(--highlight); }
+  .group { margin-bottom:12px; }
+  .group-head { display:flex; align-items:baseline; gap:7px; padding:0 10px 6px; }
+  .group.on .group-head .grouplabel { color:var(--op); }
+  .grouplabel { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.1em; color:var(--text-soft); }
+  .group-items { display:flex; flex-direction:column; gap:2px; padding-left:10px; margin-left:9px; border-left:1px solid var(--border); }
+  .group.on .group-items { border-left-color:var(--op-line); }
+  .navlink { display:flex; align-items:center; gap:9px; height:32px; padding:0 10px; border-radius:8px; border:1px solid transparent; color:var(--text-dim); font-size:13px; font-weight:500; background:none; width:100%; text-align:left; }
+  .navlink:hover { background:rgba(255,255,255,.045); color:var(--text); }
+  .navlink[aria-current="page"] { background:var(--op-soft); border-color:var(--op-line); color:var(--text); }
+  .navlink .ico { width:15px; text-align:center; opacity:.7; font-size:12px; }
+  .navlink .cnt { margin-left:auto; font-size:10.5px; font-variant-numeric:tabular-nums; color:var(--text-soft); }
+  .navlink .cnt.warn { color:var(--highlight); font-weight:700; }
+  .colfoot { margin-top:auto; padding-top:12px; border-top:1px solid var(--border); }
+  .main { min-width:0; }
+  .fold { flex:none; width:24px; height:24px; border-radius:7px; border:1px solid var(--border); background:rgba(8,19,27,.7); color:var(--text-soft); font-size:12px; display:grid; place-items:center; margin-left:auto; }
+  .strip-ico { width:32px; height:30px; border-radius:9px; border:1px solid transparent; background:none; color:var(--text-soft); font-size:12px; display:grid; place-items:center; position:relative; }
+  .strip-ico[aria-current="page"] { background:var(--op-soft); border-color:var(--op-line); color:var(--op); }
+  .strip-ico .dot { position:absolute; top:3px; right:3px; width:6px; height:6px; border-radius:50%; background:var(--highlight); }
+
+  .page { padding:20px 22px 30px; max-width:1180px; }
+  .eyebrow { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.14em; color:var(--op); }
+  .h1 { font-size:20px; letter-spacing:-.01em; margin-top:4px; }
+  .lede { font-size:12.5px; color:var(--text-dim); line-height:1.55; margin-top:6px; max-width:74ch; }
+  .card { background:var(--panel); border:1px solid var(--border); border-radius:13px; }
+
+  /* origen — decidido en el nivel 2 */
+  .src { display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:500; white-space:nowrap; }
+  .src-shopify { color:var(--shopify); }
+  .src-panel { color:var(--op); }
+  .src i { width:7px; height:7px; border-radius:2px; display:block; }
+  .src-shopify i { background:var(--shopify); }
+  .src-panel i { background:var(--op); transform:rotate(45deg); border-radius:1px; }
+  .thumb { width:34px; height:34px; border-radius:8px; flex:none; display:grid; place-items:center; font-size:11px; font-weight:700; color:#06121b; }
+
+  /* tabla del catálogo — decidida en el nivel 2, va de contexto */
+  table.cat { width:100%; border-collapse:collapse; font-size:12.5px; }
+  table.cat th { text-align:left; font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.08em; color:var(--text-soft); padding:8px 10px; border-bottom:1px solid var(--border); }
+  table.cat td { padding:8px 10px; border-bottom:1px solid rgba(157,187,210,.07); vertical-align:middle; }
+  table.cat tr[aria-selected="true"] td { background:var(--op-soft); }
+  table.cat tr.row:hover td { background:rgba(255,255,255,.03); }
+  .pname { display:flex; align-items:center; gap:9px; }
+  .pname b { font-weight:600; }
+  .adcount { font-variant-numeric:tabular-nums; font-weight:600; }
+  .adcount.none { color:var(--danger); }
+
+  /* ===== botones ===== */
+  .btn { border-radius:8px; border:1px solid var(--border-strong); background:rgba(14,30,42,.7); color:var(--text-dim); font-size:12px; font-weight:500; padding:0 11px; height:31px; display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }
+  .btn:hover { background:rgba(255,255,255,.06); color:var(--text); }
+  .btn-p { background:var(--op-soft); border-color:var(--op-line); color:var(--text); font-weight:600; }
+  .btn-p:hover { background:var(--op-soft); filter:brightness(1.25); }
+  .btn-sm { height:26px; font-size:11.5px; padding:0 9px; border-radius:7px; }
+
+  /* ===== la ficha (nivel 2: 340 px) ===== */
+  .det { position:sticky; top:16px; display:flex; flex-direction:column; gap:12px; padding:13px; }
+  .det-hd { display:flex; gap:10px; align-items:flex-start; }
+  .det-sec { display:flex; flex-direction:column; gap:8px; padding-top:11px; border-top:1px solid var(--border); }
+  .det-t { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.1em; color:var(--text-soft); }
+  .fold-line { font-size:11.5px; color:var(--text-soft); display:flex; justify-content:space-between; gap:8px; }
+
+  /* ===== A · el campo con eco ===== */
+  .field { display:flex; gap:7px; }
+  .qinput { flex:1; min-width:0; height:32px; border-radius:8px; border:1px solid var(--border-strong); background:rgba(4,12,18,.75); color:var(--text); padding:0 10px; font-size:12.5px; font-variant-numeric:tabular-nums; }
+  .qinput::placeholder { color:var(--text-soft); }
+  .qinput.bad { border-color:var(--danger); }
+  .qinput.good { border-color:var(--accent); }
+  .echo { font-size:11.5px; line-height:1.5; display:flex; gap:7px; align-items:flex-start; padding:8px 10px; border-radius:8px; border:1px solid var(--border); background:rgba(4,12,18,.5); }
+  .echo.ok   { border-color:rgba(110,231,183,.4); background:rgba(110,231,183,.08); }
+  .echo.err  { border-color:rgba(248,113,113,.42); background:rgba(248,113,113,.09); }
+  .echo.info { border-color:var(--op-line); background:var(--op-soft); }
+  .echo .mk { flex:none; font-weight:700; }
+  .echo.ok .mk { color:var(--accent); }
+  .echo.err .mk { color:var(--danger); }
+  .echo.info .mk { color:var(--op); }
+  .rules { font-size:10.5px; color:var(--text-soft); line-height:1.6; }
+
+  .adchip { display:flex; flex-wrap:wrap; align-items:center; gap:4px 8px; padding:7px 9px; border-radius:8px; border:1px solid var(--border); background:rgba(4,12,18,.45); font-size:11.5px; }
+  .adchip.shared { border-color:var(--op-line); background:var(--op-faint); }
+  .adchip.fresh { border-color:rgba(110,231,183,.45); background:rgba(110,231,183,.07); }
+  .adchip .id { font-variant-numeric:tabular-nums; font-weight:600; letter-spacing:.01em; }
+  .adchip .copy { flex-basis:100%; color:var(--text-soft); font-size:10.5px; line-height:1.45; }
+  .adchip .share { color:var(--op); font-size:10.5px; }
+  .adchip .x { margin-left:auto; color:var(--text-soft); cursor:pointer; }
+
+  .leak { font-size:11.5px; line-height:1.55; color:var(--text-dim); border:1px solid rgba(248,113,113,.35); background:rgba(248,113,113,.07); border-radius:9px; padding:9px 10px; }
+  .leak strong { color:var(--danger); }
+
+  /* ===== B/E · la bandeja de pendientes ===== */
+  .banner { display:flex; gap:11px; align-items:flex-start; border-radius:11px; padding:11px 13px; font-size:12.5px; line-height:1.55;
+            border:1px solid rgba(244,193,109,.4); background:rgba(244,193,109,.08); }
+  .banner.clean { border-color:rgba(110,231,183,.4); background:rgba(110,231,183,.07); }
+  .banner b { color:var(--highlight); }
+  .banner.clean b { color:var(--accent); }
+  .pend { display:flex; align-items:center; gap:12px; padding:11px 13px; border-bottom:1px solid rgba(157,187,210,.08); }
+  .pend:last-child { border-bottom:none; }
+  .pend-id { width:112px; flex:none; font-variant-numeric:tabular-nums; font-weight:600; font-size:12.5px; }
+  .pend-copy { min-width:0; flex:1; }
+  .pend-head { display:block; font-size:12.5px; line-height:1.35; }
+  .pend-body { display:block; font-size:10.5px; color:var(--text-soft); margin-top:3px; line-height:1.4; }
+  .pend-leads { width:96px; flex:none; text-align:right; font-variant-numeric:tabular-nums; }
+  .pend-leads b { display:block; font-size:15px; color:var(--highlight); }
+  .pend-leads span { font-size:10px; color:var(--text-soft); }
+  .pend-act { width:238px; flex:none; display:flex; justify-content:flex-end; }
+  .pend.done { opacity:.55; }
+  .pend.done .pend-leads b { color:var(--accent); }
+
+  .assign { position:relative; }
+  .pop { position:absolute; right:0; top:34px; z-index:40; width:290px; background:#0d1c26; border:1px solid var(--border-strong); border-radius:11px; box-shadow:0 20px 50px rgba(2,8,13,.6); padding:9px; display:flex; flex-direction:column; gap:3px; }
+  .pop-t { font-size:10px; text-transform:uppercase; letter-spacing:.1em; color:var(--text-soft); font-weight:700; padding:3px 5px 6px; }
+  .pop-row { display:flex; align-items:center; gap:8px; padding:7px 6px; border-radius:7px; border:1px solid transparent; background:none; text-align:left; width:100%; font-size:12px; }
+  .pop-row:hover { background:rgba(255,255,255,.05); }
+  .pop-row[aria-pressed="true"] { background:var(--op-soft); border-color:var(--op-line); }
+  .pop-box { width:14px; height:14px; flex:none; border-radius:4px; border:1px solid var(--border-strong); display:grid; place-items:center; font-size:9px; }
+  .pop-row[aria-pressed="true"] .pop-box { background:var(--op); border-color:var(--op); color:#08131c; }
+  .pop-foot { display:flex; gap:6px; padding-top:7px; margin-top:4px; border-top:1px solid var(--border); }
+
+  /* ===== E · la propuesta ===== */
+  .prop { display:flex; align-items:center; gap:8px; font-size:12px; }
+  .prop .arrow { color:var(--text-soft); }
+  .prop .name { font-weight:600; }
+  .prop .why { font-size:10px; color:var(--text-soft); }
+  .amb { font-size:11.5px; color:var(--highlight); line-height:1.45; }
+
+  /* ===== C · el pegado masivo ===== */
+  .paste { width:100%; min-height:118px; resize:vertical; border-radius:10px; border:1px solid var(--border-strong); background:rgba(4,12,18,.7); color:var(--text); padding:10px 11px; font-size:12.5px; line-height:1.65; font-variant-numeric:tabular-nums; }
+  .prev { display:flex; align-items:center; gap:10px; padding:7px 11px; border-bottom:1px solid rgba(157,187,210,.08); font-size:12px; }
+  .prev:last-child { border-bottom:none; }
+  .prev .pid { width:150px; flex:none; font-variant-numeric:tabular-nums; }
+  .prev .st { flex:1; min-width:0; }
+  .prev .mk { width:16px; flex:none; text-align:center; font-weight:700; }
+  .prev.new .mk { color:var(--accent); }
+  .prev.dup .mk { color:var(--text-soft); }
+  .prev.bad .mk { color:var(--danger); }
+  .prev.bad .pid { color:var(--danger); text-decoration:line-through; }
+  .target { display:flex; flex-wrap:wrap; gap:6px; }
+  .tchip { display:inline-flex; align-items:center; gap:6px; font-size:11.5px; padding:5px 9px; border-radius:20px; border:1px solid var(--op-line); background:var(--op-soft); }
+  .tchip .x { color:var(--text-soft); cursor:pointer; }
+
+  /* ===== D · en el hilo ===== */
+  .thread { display:grid; grid-template-columns:250px 1fr; gap:0; border-radius:13px; overflow:hidden; border:1px solid var(--border); background:var(--panel); }
+  .tlist { border-right:1px solid var(--border); background:rgba(6,16,23,.5); display:flex; flex-direction:column; }
+  .trow { display:flex; flex-direction:column; gap:3px; padding:10px 12px; border-bottom:1px solid rgba(157,187,210,.07); text-align:left; background:none; border-left:2px solid transparent; }
+  .trow[aria-current="true"] { background:var(--op-soft); border-left-color:var(--op); }
+  .trow .who { font-size:12.5px; font-weight:600; }
+  .trow .prev2 { font-size:11px; color:var(--text-soft); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .trow .marks { display:flex; gap:5px; margin-top:2px; }
+  .mark { font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; padding:2px 6px; border-radius:5px; }
+  .mark.amb { color:var(--highlight); background:rgba(244,193,109,.14); }
+  .mark.esc { color:var(--danger); background:rgba(248,113,113,.14); }
+  .mark.auto { color:var(--text-soft); background:rgba(157,187,210,.1); }
+  .tpane { display:flex; flex-direction:column; min-height:430px; }
+  .tphead { display:flex; align-items:center; gap:10px; padding:11px 14px; border-bottom:1px solid var(--border); }
+  .agentsw { margin-left:auto; display:inline-flex; align-items:center; gap:7px; font-size:11.5px; color:var(--text-dim); border:1px solid var(--border-strong); border-radius:20px; padding:4px 10px; }
+  .agentsw i { width:7px; height:7px; border-radius:50%; background:var(--accent); display:block; }
+  .tbody { flex:1; padding:14px; display:flex; flex-direction:column; gap:10px; }
+  .msg { max-width:74%; font-size:12.5px; line-height:1.5; padding:8px 11px; border-radius:12px; }
+  .msg.them { align-self:flex-start; background:rgba(157,187,210,.1); border-bottom-left-radius:4px; }
+  .msg.us { align-self:flex-end; background:var(--op-soft); border:1px solid var(--op-line); border-bottom-right-radius:4px; }
+  .evt { align-self:center; max-width:88%; font-size:11.5px; line-height:1.55; color:var(--text-dim); text-align:center; padding:7px 12px; border-radius:9px; border:1px dashed var(--border-strong); background:rgba(4,12,18,.45); }
+  .evt.warn { border-color:rgba(244,193,109,.4); background:rgba(244,193,109,.07); }
+  .evt b { color:var(--text); }
+  .evt .act { margin-top:7px; display:flex; gap:6px; justify-content:center; }
+
+
+  /* ===== F · elegir de la cuenta publicitaria de Meta ===== */
+  .scrim { position:fixed; inset:0; z-index:60; background:rgba(3,9,14,.72); display:grid; place-items:center; padding:30px; }
+  .modal { width:min(760px,100%); max-height:82vh; display:flex; flex-direction:column; background:#0c1a24; border:1px solid var(--border-strong); border-radius:14px; box-shadow:0 30px 80px rgba(2,7,12,.7); overflow:hidden; }
+  .m-head { display:flex; align-items:center; gap:11px; padding:13px 15px; border-bottom:1px solid var(--border); }
+  .m-title { font-size:14px; font-weight:600; }
+  .m-acct { font-size:10.5px; color:var(--text-soft); margin-top:2px; font-variant-numeric:tabular-nums; display:flex; align-items:center; gap:6px; }
+  .m-acct i { width:6px; height:6px; border-radius:50%; background:var(--accent); display:block; }
+  .m-x { margin-left:auto; background:none; border:none; color:var(--text-soft); font-size:16px; padding:3px 7px; border-radius:6px; }
+  .m-tools { display:flex; gap:7px; padding:11px 15px; border-bottom:1px solid var(--border); }
+  .m-search { flex:1; min-width:0; height:31px; border-radius:8px; border:1px solid var(--border-strong); background:rgba(4,12,18,.7); color:var(--text); padding:0 10px; font-size:12.5px; }
+  .m-list { overflow-y:auto; flex:1; }
+  .m-row { display:flex; align-items:center; gap:11px; width:100%; text-align:left; background:none; border:none; border-bottom:1px solid rgba(157,187,210,.07); padding:10px 15px; }
+  .m-row:hover { background:rgba(255,255,255,.04); }
+  .m-row[aria-pressed="true"] { background:var(--op-soft); }
+  .pill { flex:none; font-size:9px; font-weight:700; letter-spacing:.07em; padding:3px 6px; border-radius:5px; text-transform:uppercase; }
+  .pill.on  { color:#062018; background:var(--accent); }
+  .pill.off { color:var(--text-soft); background:rgba(157,187,210,.13); }
+  .m-name { min-width:0; flex:1; }
+  .m-name b { display:block; font-size:12.5px; font-weight:600; line-height:1.35; }
+  .m-name span { display:block; font-size:10.5px; color:var(--text-soft); margin-top:2px; }
+  .m-id { flex:none; width:118px; text-align:right; font-size:11px; color:var(--text-soft); font-variant-numeric:tabular-nums; }
+  .m-lead { flex:none; width:74px; text-align:right; font-size:11px; font-variant-numeric:tabular-nums; }
+  .m-lead b { color:var(--highlight); }
+  .m-foot { display:flex; align-items:center; gap:9px; padding:12px 15px; border-top:1px solid var(--border); }
+  .m-warn { display:flex; gap:9px; align-items:flex-start; margin:11px 15px 0; padding:9px 11px; border-radius:9px; font-size:11.5px; line-height:1.5;
+            border:1px solid rgba(244,193,109,.38); background:rgba(244,193,109,.07); color:var(--text-dim); }
+  .m-warn b { color:var(--highlight); }
+  .foreign { opacity:.5; }
+  .foreign .m-name b::after { content:" · otra operación"; color:var(--highlight); font-weight:500; font-size:10.5px; }
+  .noconn { display:flex; flex-direction:column; gap:9px; align-items:flex-start; padding:13px; border-radius:10px;
+            border:1px dashed rgba(248,113,113,.4); background:rgba(248,113,113,.06); font-size:11.5px; line-height:1.55; color:var(--text-dim); }
+  .noconn b { color:var(--danger); }
+
+  /* ===== instrumento ===== */
+  #picker { position:fixed; right:16px; bottom:16px; z-index:9999; width:296px; background:#16181c; border:1px solid #33373f; border-radius:12px; box-shadow:0 24px 60px rgba(0,0,0,.68); font-size:12px; color:#d6d9de; user-select:none; overflow:hidden; }
+  #picker.is-min .pk-body { display:none; }
+  .pk-head { display:flex; align-items:center; gap:9px; padding:9px 11px; background:#1e2127; border-bottom:1px solid #33373f; cursor:grab; }
+  .pk-grip { color:#6b7280; letter-spacing:2px; font-size:11px; }
+  .pk-title { font-size:10px; text-transform:uppercase; letter-spacing:.12em; color:#8b919c; font-weight:600; }
+  .pk-min { margin-left:auto; background:none; border:none; color:#8b919c; padding:2px 5px; border-radius:4px; }
+  .pk-body { padding:10px; display:flex; flex-direction:column; gap:9px; }
+  .pk-pair { display:grid; grid-template-columns:1fr 1fr; gap:9px; }
+  .pk-variant { display:flex; align-items:center; gap:8px; }
+  .pk-arrow { width:28px; height:30px; flex:none; border-radius:7px; border:1px solid #3a3f47; background:#22252b; color:#b8bdc6; font-size:13px; }
+  .pk-arrow:hover { background:#2c3037; color:#fff; }
+  .pk-vname { flex:1; min-width:0; text-align:center; }
+  .pk-vnum { font-size:9px; color:#7c828d; letter-spacing:.12em; text-transform:uppercase; }
+  .pk-vlabel { font-size:12.5px; font-weight:600; color:#f0f2f5; margin-top:1px; }
+  .pk-vtag { font-size:9.5px; color:#7c828d; margin-top:2px; line-height:1.3; }
+  .pk-ref { font-size:9px; color:#5c9c86; margin-top:3px; }
+  .pk-set { display:flex; flex-direction:column; gap:5px; }
+  .pk-legend { font-size:9px; text-transform:uppercase; letter-spacing:.11em; color:#7c828d; font-weight:600; }
+  .pk-opts { display:flex; gap:4px; flex-wrap:wrap; }
+  .pk-opt { flex:1 1 0; min-width:0; padding:6px 8px; border-radius:6px; border:1px solid #3a3f47; background:#22252b; color:#9aa0aa; font-size:11px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pk-opt:hover { background:#2c3037; color:#e3e6ea; }
+  .pk-opt[aria-pressed="true"] { background:#2f5d4f; border-color:#4b9c81; color:#b8f5dc; }
+  .pk-hint { font-size:10px; color:#6b7280; line-height:1.45; border-top:1px solid #2b2f36; padding-top:9px; }
+  .pk-hint kbd { background:#2b2f36; border:1px solid #3f444c; border-radius:3px; padding:0 4px; font-family:inherit; font-size:9.5px; color:#b8bdc6; }
+  .pk-hint strong { color:#c8cdd4; }
+</style>
+
+<div id="app"></div>
+
+<div id="picker">
+  <div class="pk-head" id="pk-head">
+    <span class="pk-grip">⠿</span>
+    <span class="pk-title">Nivel 3 · el anuncio</span>
+    <button class="pk-min" id="pk-min">—</button>
+  </div>
+  <div class="pk-body">
+    <div class="pk-variant">
+      <button class="pk-arrow" id="pk-prev">←</button>
+      <div class="pk-vname">
+        <div class="pk-vnum" id="pk-vnum">1 de 5</div>
+        <div class="pk-vlabel" id="pk-vlabel">—</div>
+        <div class="pk-vtag" id="pk-vtag">—</div>
+        <div class="pk-ref" id="pk-ref">—</div>
+      </div>
+      <button class="pk-arrow" id="pk-next">→</button>
+    </div>
+
+    <div class="pk-set">
+      <span class="pk-legend">Anuncios sin registrar</span>
+      <div class="pk-opts" data-key="pend">
+        <button class="pk-opt" data-val="some">5 · 91 leads</button>
+        <button class="pk-opt" data-val="none">Ninguno</button>
+      </div>
+    </div>
+
+    <div class="pk-set">
+      <span class="pk-legend">Cuenta publicitaria de Meta <span style="color:#5c9c86">(solo F)</span></span>
+      <div class="pk-opts" data-key="meta">
+        <button class="pk-opt" data-val="on">Conectada</button>
+        <button class="pk-opt" data-val="off">Sin conectar</button>
+      </div>
+    </div>
+
+    <div class="pk-set">
+      <span class="pk-legend">Producto abierto</span>
+      <div class="pk-opts" data-key="sel"></div>
+    </div>
+
+    <div class="pk-pair">
+      <div class="pk-set">
+        <span class="pk-legend">Operación</span>
+        <div class="pk-opts" data-key="country">
+          <button class="pk-opt" data-val="GT">Guate</button>
+          <button class="pk-opt" data-val="CO">Colombia</button>
+        </div>
+      </div>
+      <div class="pk-set">
+        <span class="pk-legend">Barras</span>
+        <div class="pk-opts" data-key="bars">
+          <button class="pk-opt" data-val="open">Abiertas</button>
+          <button class="pk-opt" data-val="collapsed">Plegadas</button>
+        </div>
+      </div>
+    </div>
+
+    <p class="pk-hint">
+      <kbd>←</kbd> <kbd>→</kbd> alternan entre las seis. La prueba es una sola:
+      <strong>¿registrar un anuncio se siente de segundos?</strong>
+      Probalo de verdad — los campos funcionan. Pegá
+      <strong>24019338702</strong>, o una URL entera, o
+      <strong>24022114900</strong>, que es el que el texto no distingue entre
+      cuatro productos. <strong>B, D y E suponen un dato que producción nunca
+      capturó</strong> (0 referrals de 1.713 conversaciones); <strong>F no
+      supone nada</strong>, pero estrena una dependencia — vela «Sin conectar».
+    </p>
+  </div>
+</div>
+
+<script>
+/* ====================================================================
+   DATOS — el catálogo real de Vorare. Los cuatro nombres casi idénticos
+   son el problema, no un detalle.
+   ==================================================================== */
+
+const OPS = {
+  GT:{code:"GT",name:"Guatemala",currency:"GTQ",cur:"Q",phone:"+502 3689 0343",store:"Vorare GT · Shopify",live:true,status:"Operando",accent:"#a78bfa"},
+  CO:{code:"CO",name:"Colombia",currency:"COP",cur:"$",phone:"+57 304 5430173",store:"sin conectar",live:false,status:"Sin operar",accent:"#38bdf8"},
+};
+const MODULES = {
+  ventas:{key:"ventas",label:"Ventas",agent:"Sebastián",
+    screens:[{key:"catalogo",label:"Catálogo",icon:"▤"},{key:"conversaciones",label:"Conversaciones",icon:"◇"},{key:"vendedor",label:"Vendedor",icon:"◉"}]},
+  confirmacion:{key:"confirmacion",label:"Confirmación",agent:"Katherine",
+    screens:[{key:"inbox",label:"Inbox",icon:"✉"},{key:"pedidos",label:"Pedidos",icon:"▦"},{key:"plantillas",label:"Plantillas",icon:"▥"}]},
+};
+
+const PRODUCTS = {
+  GT:[
+    {id:"p1",ini:"DHT",name:"REVITALHAIR – DHT ANTICALVICIE",short:"DHT ANTICALVICIE",src:"shopify",orders:"1.263",share:"77%",tone:"#c4b5fd",ads:["23851094782","23851094790","23904471123","23990117802"]},
+    {id:"p2",ini:"BLK",name:"REVITALHAIR – DHT BLOCKER ANTICALVICIE",short:"DHT BLOCKER",src:"shopify",orders:"187",share:"11%",tone:"#a5b4fc",ads:["23851094999","23922100455"]},
+    {id:"p3",ini:"CMB",name:"REVITALHAIR – COMBO DHT + SERUM 360",short:"COMBO DHT + SERUM 360",src:"shopify",orders:"121",share:"7%",tone:"#93c5fd",ads:["23990117845","23990117860","24001233741"]},
+    {id:"p4",ini:"R3X",name:"REVITALHAIR – Hair Recovery 3X",short:"Hair Recovery 3X",src:"shopify",orders:"18",share:"1%",tone:"#7dd3fc",ads:[]},
+    {id:"p5",ini:"SER",name:"REVITALHAIR Serum Capilar",short:"Serum Capilar",src:"panel",orders:"9",share:"—",tone:"#6ee7b7",ads:["23851094999"]},
+    {id:"p6",ini:"KIT",name:"Kit Barba Vorare",short:"Kit Barba",src:"panel",orders:"4",share:"—",tone:"#fbbf24",ads:[]},
+  ],
+  CO:[
+    {id:"q1",ini:"DHT",name:"REVITALHAIR – DHT ANTICALVICIE",short:"DHT ANTICALVICIE",src:"shopify",orders:"0",share:"—",tone:"#c4b5fd",ads:["24019338451"]},
+    {id:"q2",ini:"BLK",name:"REVITALHAIR – DHT BLOCKER ANTICALVICIE",short:"DHT BLOCKER",src:"shopify",orders:"0",share:"—",tone:"#a5b4fc",ads:[]},
+    {id:"q3",ini:"CMB",name:"REVITALHAIR – COMBO DHT + SERUM 360",short:"COMBO DHT + SERUM 360",src:"panel",orders:"0",share:"—",tone:"#93c5fd",ads:[]},
+  ],
+};
+
+/* Anuncios que YA trajeron leads y NO están en `product_ads`. Esto no es
+   invención: `conversations.ad_id / ad_headline / ad_body / ad_referral_at`
+   existen desde la migración 0022, y la cascada solo baja al nivel semántico
+   cuando el anuncio no está registrado. El panel ya tiene esta lista.
+
+   `cands` son los candidatos del matcher con su confianza. El umbral del
+   sistema es 0,8 y la regla es de CARDINALIDAD, no de ranking: uno arriba
+   del umbral → resuelto; dos o más → ambiguo; ninguno → desconocido.
+   (`SEMANTIC_CONFIDENCE_THRESHOLD`, apps/worker/src/sales/recognition.ts) */
+const THRESHOLD = 0.8;
+const PENDING = {
+  GT:[
+    {ad:"24019338702", head:"DHT ANTICALVICIE — resultados en 3 meses",  body:"Tratamiento en cápsulas, 60 unidades. Pago contra entrega.", leads:41, last:"hace 2 h",  cands:[["p1",.94]]},
+    {ad:"24022114900", head:"REVITALHAIR — el tratamiento que funciona",  body:"Miles de guatemaltecos ya recuperaron su pelo.",              leads:22, last:"hace 5 h",  cands:[["p1",.86],["p2",.83]]},
+    {ad:"24019338715", head:"¿Se te cae el pelo? Bloqueá el DHT",          body:"Presentación reforzada del bloqueador.",                     leads:17, last:"ayer",     cands:[["p2",.91]]},
+    {ad:"23990117899", head:"COMBO: cápsulas + serum 360, envío gratis",   body:"Los dos productos juntos, precio de combo.",                 leads:8,  last:"hace 2 d", cands:[["p3",.93]]},
+    {ad:"24022004488", head:"Recuperá tu pelo — Hair Recovery 3X",         body:"Fórmula reforzada de recuperación.",                         leads:3,  last:"hace 3 d", cands:[["p4",.88]]},
+  ],
+  CO:[
+    {ad:"24030019955", head:"REVITALHAIR Colombia — pago contra entrega",  body:"Envíos a todo el país.",                                     leads:2,  last:"hace 6 h", cands:[["q1",.84],["q2",.81]]},
+  ],
+};
+
+
+/* Los anuncios tal como los devolvería `GET /act_2042265076620189/ads`.
+   UNA sola cuenta publicitaria («CP - Vorare», en COP y zona Bogotá) sirve a
+   las DOS operaciones: la lista NO viene separada por país, y eso es un
+   problema del diseño, no un detalle del mock. */
+const AD_ACCOUNT = { id:"act_2042265076620189", name:"CP - Vorare", currency:"COP" };
+const META_ADS = [
+  {id:"24019338702", name:"DHT ANTICALVICIE · Video · testimonial", camp:"CP · Prospecting GT", set:"Hombres 28-55 GT", on:true,  op:"GT", leads:41},
+  {id:"24022114900", name:"REVITALHAIR · genérico · Imagen",         camp:"CP · Prospecting GT", set:"Amplio GT",        on:true,  op:"GT", leads:22},
+  {id:"24019338715", name:"DHT BLOCKER · Video · dermatólogo",       camp:"CP · Prospecting GT", set:"Hombres 30-60 GT", on:true,  op:"GT", leads:17},
+  {id:"23990117899", name:"COMBO 360 · Carrusel",                    camp:"CP · Retargeting GT", set:"Visitantes 30d",   on:false, op:"GT", leads:8},
+  {id:"24022004488", name:"Hair Recovery 3X · Video",                camp:"CP · Prospecting GT", set:"Lookalike 2% GT",  on:true,  op:"GT", leads:3},
+  {id:"23851094782", name:"DHT ANTICALVICIE · Imagen · antes/después", camp:"CP · Prospecting GT", set:"Hombres 28-55 GT", on:true, op:"GT", leads:0},
+  {id:"24030019955", name:"REVITALHAIR CO · contra entrega",         camp:"CP · Apertura CO",    set:"Amplio Bogotá",    on:true,  op:"CO", leads:2},
+  {id:"24030019961", name:"REVITALHAIR CO · Video · lanzamiento",    camp:"CP · Apertura CO",    set:"Amplio Medellín",  on:false, op:"CO", leads:0},
+];
+
+const VARIANTS = [
+  {id:"A",label:"El campo con eco",  tag:"un campo, pero contesta QUÉ anuncio pegaste",             ref:"Wise · Etsy · Fireflies"},
+  {id:"B",label:"La bandeja",        tag:"no se escribe: el panel ya los vio, se asignan",          ref:"7shifts · Midday"},
+  {id:"C",label:"El pegado masivo",  tag:"una campaña entera de una vez, con previsualización",     ref:"Mailchimp · Wix"},
+  {id:"D",label:"En el hilo",        tag:"se registra donde duele, dentro de la conversación",      ref:"Midday inline"},
+  {id:"E",label:"Confirmar, no registrar", tag:"el panel propone el producto; vos aprobás",        ref:"Salesforce · folk"},
+  {id:"F",label:"De la lista de Meta ✓",   tag:"ELEGIDA · se elige por su nombre; no se escribe ningún ID",  ref:"ManyChat · Klaviyo"},
+];
+
+const state = {
+  variant:5, country:"GT", module:"ventas", screen:"catalogo", bars:"open", sel:"p1",
+  pend:"some",
+  extra:{},        // productId → [ids agregados a mano]
+  resolved:{},     // adId → [productIds]  (lo que se resolvió en esta sesión)
+  echo:null,       // último resultado del campo de A
+  draft:"24019338702\n24019338715\nhttps://facebook.com/ads/23990117899\n23851094782\ncampaña-dht-julio",        // el textarea de C — arranca con un pegado real
+  targets:["p1"],  // productos destino de C
+  meta:"on", metaOpen:false, metaQ:"", metaOnly:"todos",  // F
+  openPop:null,    // fila con el selector abierto
+  popPick:[],
+  thread:"c1",
+};
+
+const el=(t,c,h)=>{const n=document.createElement(t);if(c)n.className=c;if(h!=null)n.innerHTML=h;return n;};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const flag=(c,s)=>`<span class="flag flag-${c}${s?" flag-"+s:""}"></span>`;
+const op=()=>OPS[state.country];
+const mod=()=>MODULES[state.module];
+const V=()=>VARIANTS[state.variant];
+function rgba(h,a){const n=parseInt(h.slice(1),16);return `rgba(${(n>>16)&255}, ${(n>>8)&255}, ${n&255}, ${a})`;}
+
+/* Los anuncios de un producto = los del catálogo + los resueltos acá. */
+function adsOf(p){
+  const extra = state.extra[p.id] || [];
+  const fromPending = Object.keys(state.resolved).filter(a => state.resolved[a].includes(p.id));
+  return [...new Set([...p.ads, ...extra, ...fromPending])];
+}
+const prods = () => PRODUCTS[state.country];
+const sel = () => prods().find(p => p.id === state.sel) || prods()[0];
+const initials = p => p.ini;
+const srcMark = p => p.src === "shopify"
+  ? `<span class="src src-shopify"><i></i>Tienda</span>`
+  : `<span class="src src-panel"><i></i>Panel</span>`;
+const thumb = p => `<div class="thumb" style="background:${p.tone}">${esc(p.ini)}</div>`;
+
+/* Los pendientes que quedan sin resolver. */
+function pending(){
+  if (state.pend === "none") return [];
+  return (PENDING[state.country] || []).filter(x => !state.resolved[x.ad]);
+}
+const pendingLeads = () => pending().reduce((n,x) => n + x.leads, 0);
+
+/* Quién queda arriba del umbral. La regla es de cardinalidad: el panel no
+   compara candidatos entre sí ni elige «el mejor». */
+function proposal(row){
+  const over = row.cands.filter(([,c]) => c >= THRESHOLD);
+  return { over, kind: over.length === 1 ? "resuelto" : over.length > 1 ? "ambiguo" : "desconocido" };
+}
+const byId = id => prods().find(p => p.id === id);
+
+/* ====================================================================
+   El acto compartido: registrar un anuncio en uno o varios productos.
+   ==================================================================== */
+function registrar(adId, productIds){
+  const known = (PENDING[state.country] || []).some(x => x.ad === adId);
+  if (known) state.resolved[adId] = productIds;
+  productIds.forEach(pid => {
+    state.extra[pid] = [...new Set([...(state.extra[pid] || []), adId])];
+  });
+}
+
+/* Normalizar el pegado. La cascada ya compara sin los espacios que deja el
+   pegado; acá además se acepta una URL entera, que es lo que de verdad se
+   copia del administrador de anuncios. */
+function normalizar(raw){
+  const s = String(raw).trim();
+  if (!s) return {ok:false, why:"vacio"};
+  const url = s.match(/[?&](?:ad_id|id)=(\d{6,20})/) || s.match(/\/(\d{10,20})(?:[/?#]|$)/);
+  const digits = url ? url[1] : s.replace(/[\s.,-]/g, "");
+  if (!/^\d+$/.test(digits)) return {ok:false, why:"letras", raw:s};
+  if (digits.length < 8)  return {ok:false, why:"corto", raw:digits};
+  if (digits.length > 20) return {ok:false, why:"largo", raw:digits};
+  return {ok:true, id:digits, fromUrl:!!url};
+}
+
+/* ====================================================================
+   ARMAZÓN — nivel 1, cerrado. Se copia tal cual.
+   ==================================================================== */
+const toggleBars = () => { state.bars = state.bars === "open" ? "collapsed" : "open"; render(); };
+function switchCountry(c){
+  if (state.country === c) return;
+  state.country = c; state.bars = "open"; state.echo = null; state.openPop = null;
+  state.sel = PRODUCTS[c][0].id;
+  state.targets = [PRODUCTS[c][0].id];
+  render();
+}
+
+function navFor(m){
+  const box = el("div"); box.style.cssText = "display:flex;flex-direction:column;gap:2px";
+  MODULES[m].screens.forEach(s => {
+    const isCat = s.key === "catalogo" && m === "ventas";
+    const n = pending().length;
+    const b = el("button","navlink",
+      `<span class="ico">${s.icon}</span>${esc(s.label)}${isCat && n ? `<span class="cnt warn">${n}</span>` : ""}`);
+    if (isCat && n) b.title = `${n} anuncios sin registrar · ${pendingLeads()} leads sin reconocer`;
+    if (state.screen === s.key && state.module === m) b.setAttribute("aria-current","page");
+    b.onclick = () => { state.module = m; state.screen = s.key; render(); };
+    box.appendChild(b);
+  });
+  return box;
+}
+
+function buildRail(tight){
+  const rail = el("div","rail" + (tight ? " tight" : ""));
+  Object.values(OPS).forEach(x => {
+    const t = el("button","tile" + (x.live ? "" : " dormant"),
+      `${flag(x.code)}${tight ? "" : `<span class="tile-code">${esc(x.code)}</span>`}`);
+    t.setAttribute("aria-pressed", String(state.country === x.code));
+    t.title = `${x.name} · ${x.status}`;
+    t.onclick = () => switchCountry(x.code);
+    rail.appendChild(t);
+  });
+  if (tight){
+    const sep = el("div"); sep.style.cssText = "width:20px;height:1px;background:var(--border);margin:3px 0";
+    rail.appendChild(sep);
+    mod().screens.forEach(s => {
+      const alerta = s.key === "catalogo" && pending().length;
+      const b = el("button","strip-ico", s.icon + (alerta ? `<span class="dot"></span>` : ""));
+      b.title = `${mod().label} · ${s.label}`;
+      if (state.screen === s.key) b.setAttribute("aria-current","page");
+      b.onclick = () => { state.screen = s.key; render(); };
+      rail.appendChild(b);
+    });
+  }
+  const f = el("button","fold", state.bars === "open" ? "«" : "»");
+  f.style.marginTop = "auto"; f.onclick = toggleBars; rail.appendChild(f);
+  return rail;
+}
+
+function buildCol(){
+  const o = op(), col = el("div","col");
+  const head = el("div","col-head");
+  head.innerHTML = `${flag(o.code,"lg")}<span style="min-width:0">
+    <span class="col-name">${esc(o.name)}</span>
+    <span class="col-sub">${esc(o.status)} · ${esc(o.currency)}</span>
+    <span class="col-tel${o.live ? "" : " off"}">${esc(o.phone)}</span></span>`;
+  const f = el("button","fold","«"); f.onclick = toggleBars; head.appendChild(f);
+  col.appendChild(head);
+  ["ventas","confirmacion"].forEach(k => {
+    const m = MODULES[k];
+    const g = el("div","group" + (state.module === k ? " on" : ""));
+    g.appendChild(el("div","group-head",
+      `<span class="grouplabel">${esc(m.label)}</span><span class="soft" style="font-size:11px">${esc(m.agent)}</span>`));
+    const items = el("div","group-items"); items.appendChild(navFor(k)); g.appendChild(items);
+    col.appendChild(g);
+  });
+  col.appendChild(el("div","colfoot",
+    `<div class="soft" style="font-size:11px;line-height:1.5">${esc(o.store)}</div>`));
+  return col;
+}
+
+/* Nivel 1 · decisión 10 — la pantalla que ESCRIBE lleva el país en su propio
+   encabezado, para que el plegado quede libre. */
+function head(title, lede){
+  const h = el("div");
+  h.style.cssText = "margin-bottom:16px";
+  h.innerHTML = `<div class="eyebrow">${esc(op().name.toUpperCase())} · ${esc(title.toUpperCase())}</div>`;
+  h.appendChild(el("h1","h1", esc(V().label)));
+  h.appendChild(el("p","lede", lede));
+  return h;
+}
+
+/* ====================================================================
+   A · EL CAMPO CON ECO
+   Un solo campo, como pide el ticket. Lo que cambia es que CONTESTA:
+   si el anuncio ya trajo leads, el panel lo sabe y lo dice.
+   ==================================================================== */
+function campo(p){
+  const box = el("div"); box.style.cssText = "display:flex;flex-direction:column;gap:8px";
+  const f = el("div","field");
+  const input = el("input","qinput" + (state.echo?.tone === "err" ? " bad" : state.echo?.tone === "ok" ? " good" : ""));
+  input.placeholder = "Pegá el ID del anuncio";
+  input.setAttribute("aria-label","Identificador del anuncio");
+  const add = el("button","btn btn-p","Registrar");
+
+  const commit = () => {
+    const r = normalizar(input.value);
+    if (!r.ok){
+      state.echo = {tone:"err", mk:"✕", html:
+        r.why === "vacio" ? "Pegá el ID del anuncio, o su enlace." :
+        r.why === "letras" ? `Un ID de anuncio de Meta son solo dígitos. Pegaste <b>${esc(r.raw.slice(0,34))}</b>.` :
+        r.why === "corto" ? `<b>${esc(r.raw)}</b> es muy corto para un ID de anuncio.` :
+        `<b>${esc(r.raw.slice(0,24))}…</b> es muy largo para un ID de anuncio.`};
+      render(); return;
+    }
+    const id = r.id;
+    if (adsOf(p).includes(id)){
+      state.echo = {tone:"info", mk:"·", html:`<b class="num">${esc(id)}</b> ya está registrado en este producto.`};
+      render(); return;
+    }
+    const otros = prods().filter(x => x.id !== p.id && adsOf(x).includes(id));
+    const visto = (PENDING[state.country] || []).find(x => x.ad === id);
+    registrar(id, [p.id]);
+    state.echo = {tone:"ok", mk:"✓", html:
+      (r.fromUrl ? `Del enlace saqué <b class="num">${esc(id)}</b>. ` : "") +
+      (visto
+        ? `Es <b>«${esc(visto.head)}»</b>. Ya trajo <b>${visto.leads} leads</b> que Sebastián no pudo reconocer — desde ahora sí.`
+        : `Registrado. Todavía no trajo leads: el primero que llegue queda reconocido.`) +
+      (otros.length ? ` También apunta a <b>${esc(otros.map(o => o.short).join(", "))}</b>.` : "")};
+    input.value = "";
+    render();
+  };
+
+  input.onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); commit(); } };
+  add.onclick = commit;
+  f.appendChild(input); f.appendChild(add);
+  box.appendChild(f);
+
+  if (state.echo){
+    box.appendChild(el("div","echo " + state.echo.tone,
+      `<span class="mk">${state.echo.mk}</span><span>${state.echo.html}</span>`));
+  } else {
+    box.appendChild(el("p","rules",
+      `Del administrador de anuncios de Meta, el ID o el enlace del anuncio.
+       Los espacios del pegado no importan.`));
+  }
+  setTimeout(() => { const i = document.querySelector(".qinput"); if (i && !i.value) i.focus(); }, 0);
+  return box;
+}
+
+function listaAnuncios(p){
+  const wrap = el("div"); wrap.style.cssText = "display:flex;flex-direction:column;gap:5px";
+  const ads = adsOf(p);
+  if (!ads.length){
+    wrap.appendChild(el("div","leak",
+      `<strong>Los leads de este producto no se van a reconocer.</strong>
+       Sin un anuncio registrado, el matcher tiene que adivinar entre los cuatro
+       nombres REVITALHAIR — y ahí está el 77% del volumen.`));
+    return wrap;
+  }
+  ads.forEach(a => {
+    const otros = prods().filter(x => x.id !== p.id && adsOf(x).includes(a));
+    const nuevo = (state.extra[p.id] || []).includes(a);
+    const visto = (PENDING[state.country] || []).find(x => x.ad === a);
+    const chip = el("div","adchip" + (otros.length ? " shared" : "") + (nuevo ? " fresh" : ""));
+    chip.innerHTML = `<span class="id num">${esc(a)}</span>
+      ${otros.length ? `<span class="share">también apunta a ${esc(otros.map(o => o.short).join(", "))}</span>` : ""}
+      <span class="x">×</span>
+      ${nuevo && visto ? `<span class="copy">«${esc(visto.head)}» · ${visto.leads} leads recuperados</span>` : ""}`;
+    wrap.appendChild(chip);
+  });
+  return wrap;
+}
+
+function ficha(p, adsNode){
+  const d = el("div","card det");
+  const hd = el("div","det-hd");
+  hd.innerHTML = `${thumb(p)}<div style="min-width:0">
+    <div style="font-size:13.5px;font-weight:600;line-height:1.3">${esc(p.name)}</div>
+    <div style="margin-top:5px;display:flex;gap:10px;align-items:center">${srcMark(p)}
+      <span class="soft" style="font-size:11px">${esc(p.orders)} pedidos · ${esc(p.share)}</span></div></div>`;
+  d.appendChild(hd);
+  d.appendChild(el("div","det-sec",
+    `<div class="fold-line"><span>Descripción y precio</span><span>▾</span></div>
+     <div class="fold-line"><span>Archivos · 2 de 4 enviables</span><span>▾</span></div>`));
+  const s = el("div","det-sec");
+  s.appendChild(el("div","det-t", `Anuncios que apuntan aquí · ${adsOf(p).length}`));
+  if (adsNode) s.appendChild(adsNode);
+  s.appendChild(listaAnuncios(p));
+  d.appendChild(s);
+  return d;
+}
+
+function tablaCat(compact){
+  const c = el("div","card"); c.style.overflow = "hidden";
+  const t = el("table","cat");
+  t.innerHTML = `<thead><tr><th>Producto</th><th>Origen</th><th>Anuncios</th>${compact ? "" : "<th>Pedidos</th>"}</tr></thead>`;
+  const tb = el("tbody");
+  prods().forEach(p => {
+    const n = adsOf(p).length;
+    const tr = el("tr","row");
+    if (p.id === state.sel) tr.setAttribute("aria-selected","true");
+    tr.innerHTML = `<td><span class="pname">${thumb(p)}<b>${esc(p.name)}</b></span></td>
+      <td>${srcMark(p)}</td>
+      <td><span class="adcount${n ? "" : " none"}">${n || "sin anuncios"}</span></td>
+      ${compact ? "" : `<td class="num dim">${esc(p.orders)}</td>`}`;
+    tr.onclick = () => { state.sel = p.id; state.echo = null; render(); };
+    tb.appendChild(tr);
+  });
+  t.appendChild(tb); c.appendChild(t);
+  return c;
+}
+
+function vistaA(){
+  const w = el("div");
+  w.appendChild(head("catálogo",
+    `Un solo campo, como pide el ticket — pero el campo <strong>contesta</strong>.
+     El panel ya recibió el titular y el cuerpo de cada anuncio que trajo un lead
+     (<code>conversations.ad_headline</code>), así que puede confirmar
+     <em>qué</em> anuncio pegaste y cuántos leads acaba de rescatar. Sin eso,
+     pegar 18 dígitos y ver 18 dígitos no es confirmación de nada.`));
+  const g = el("div");
+  g.style.cssText = "display:grid;grid-template-columns:1fr 340px;gap:12px;align-items:start";
+  g.appendChild(tablaCat(false));
+  g.appendChild(ficha(sel(), campo(sel())));
+  w.appendChild(g);
+  return w;
+}
+
+/* ====================================================================
+   B · LA BANDEJA DE ANUNCIOS SIN REGISTRAR
+   Nadie escribe un ID: el panel ya los vio llegar. Registrar es asignar.
+   ==================================================================== */
+function popover(row){
+  const pop = el("div","pop");
+  pop.onclick = e => e.stopPropagation();
+  pop.appendChild(el("div","pop-t","Un anuncio puede apuntar a varios productos"));
+  prods().forEach(p => {
+    const on = state.popPick.includes(p.id);
+    const b = el("button","pop-row",
+      `<span class="pop-box">${on ? "✓" : ""}</span>${thumb(p)}<span>${esc(p.name)}</span>`);
+    b.setAttribute("aria-pressed", String(on));
+    b.onclick = () => {
+      state.popPick = on ? state.popPick.filter(x => x !== p.id) : [...state.popPick, p.id];
+      render();
+    };
+    pop.appendChild(b);
+  });
+  const foot = el("div","pop-foot");
+  const ok = el("button","btn btn-p btn-sm",
+    state.popPick.length ? `Registrar en ${state.popPick.length}` : "Registrar");
+  ok.disabled = !state.popPick.length;
+  if (!state.popPick.length) ok.style.opacity = ".45";
+  ok.onclick = () => {
+    if (!state.popPick.length) return;
+    registrar(row.ad, state.popPick);
+    state.openPop = null; state.popPick = []; render();
+  };
+  const no = el("button","btn btn-sm","Cancelar");
+  no.onclick = () => { state.openPop = null; state.popPick = []; render(); };
+  foot.appendChild(ok); foot.appendChild(no);
+  pop.appendChild(foot);
+  return pop;
+}
+
+function filaPendiente(row, modo){
+  const r = el("div","pend");
+  r.innerHTML = `<span class="pend-id">${esc(row.ad)}</span>
+    <span class="pend-copy">
+      <span class="pend-head">«${esc(row.head)}»</span>
+      <span class="pend-body">${esc(row.body)} · último clic ${esc(row.last)}</span>
+    </span>
+    <span class="pend-leads"><b>${row.leads}</b><span>leads sin reconocer</span></span>`;
+
+  const act = el("div","pend-act assign");
+
+  if (modo === "propuesta"){
+    /* E · el panel propone. La regla es de cardinalidad, no de ranking. */
+    const {over, kind} = proposal(row);
+    if (kind === "resuelto"){
+      const p = byId(over[0][0]);
+      const wrap = el("div");
+      wrap.style.cssText = "display:flex;flex-direction:column;gap:5px;align-items:flex-end";
+      wrap.appendChild(el("div","prop",
+        `<span class="arrow">→</span><span class="name">${esc(p.short)}</span>`));
+      const bts = el("div"); bts.style.cssText = "display:flex;gap:5px";
+      const ok = el("button","btn btn-p btn-sm","Confirmar");
+      ok.onclick = () => { registrar(row.ad, [p.id]); render(); };
+      const ch = el("button","btn btn-sm","Cambiar");
+      ch.onclick = e => {
+        e.stopPropagation();
+        state.openPop = row.ad; state.popPick = [p.id]; render();
+      };
+      bts.appendChild(ok); bts.appendChild(ch);
+      wrap.appendChild(bts);
+      act.appendChild(wrap);
+    } else {
+      const wrap = el("div");
+      wrap.style.cssText = "display:flex;flex-direction:column;gap:5px;align-items:flex-end;text-align:right";
+      wrap.appendChild(el("div","amb", kind === "ambiguo"
+        ? `El texto no distingue entre <b>${over.length}</b>. El panel no elige.`
+        : `El texto no se parece a ningún producto.`));
+      const b = el("button","btn btn-p btn-sm","Elegir producto");
+      b.onclick = e => { e.stopPropagation(); state.openPop = row.ad; state.popPick = []; render(); };
+      wrap.appendChild(b);
+      act.appendChild(wrap);
+    }
+  } else {
+    const b = el("button","btn btn-p btn-sm","Asignar producto ▾");
+    b.onclick = e => {
+      e.stopPropagation();
+      state.openPop = state.openPop === row.ad ? null : row.ad;
+      state.popPick = [];
+      render();
+    };
+    act.appendChild(b);
+  }
+
+  if (state.openPop === row.ad) act.appendChild(popover(row));
+  r.appendChild(act);
+  return r;
+}
+
+function bandeja(modo){
+  const w = el("div");
+  const lede = modo === "propuesta"
+    ? `El panel ya tiene el titular y el cuerpo de cada anuncio, y ya corre el
+       matcher contra el catálogo. Así que no te pide registrar: te pide
+       <strong>confirmar</strong>. Donde el texto no distingue —los cuatro
+       nombres REVITALHAIR— <strong>no propone nada</strong>, porque elegir a
+       medias es mandarle el SKU equivocado a un cliente.`
+    : `Registrar deja de ser escribir. Cada uno de estos anuncios <strong>ya
+       trajo leads</strong> que Sebastián no pudo reconocer: el panel guardó su
+       ID, su titular y su copy al primer clic. Lo único que falta es decir a qué
+       producto apunta.`;
+  w.appendChild(head("catálogo", lede));
+
+  const pend = pending();
+  if (!pend.length){
+    w.appendChild(el("div","banner clean",
+      `<b>✓</b><span>Ningún anuncio sin registrar. Todo clic que llega se
+       reconoce contra un producto — que es el estado en el que este módulo no
+       genera soporte.</span>`));
+  } else {
+    w.appendChild(el("div","banner",
+      `<b>!</b><span><b>${pend.length === 1
+         ? `Un anuncio trajo ${pendingLeads()} leads`
+         : `${pend.length} anuncios trajeron ${pendingLeads()} leads`} que Sebastián
+       no pudo reconocer.</b> Están ordenados por lo que cuesta dejarlos así.</span>`));
+    const c = el("div","card");
+    c.style.cssText = "margin-top:12px;overflow:visible";
+    pend.slice().sort((a,b) => b.leads - a.leads).forEach(row => c.appendChild(filaPendiente(row, modo)));
+    w.appendChild(c);
+  }
+
+  const hechos = Object.keys(state.resolved);
+  if (hechos.length){
+    const c = el("div","card"); c.style.cssText = "margin-top:12px;overflow:hidden";
+    c.appendChild(el("div","det-t","Registrados recién"));
+    hechos.forEach(a => {
+      const row = (PENDING[state.country] || []).find(x => x.ad === a);
+      if (!row) return;
+      const to = state.resolved[a].map(id => byId(id)).filter(Boolean).map(p => p.short).join(", ");
+      const r = el("div","pend done");
+      r.innerHTML = `<span class="pend-id">${esc(a)}</span>
+        <span class="pend-copy"><span class="pend-head">«${esc(row.head)}»</span>
+          <span class="pend-body">ahora apunta a ${esc(to)}</span></span>
+        <span class="pend-leads"><b>${row.leads}</b><span>leads recuperados</span></span>
+        <span class="pend-act"></span>`;
+      c.appendChild(r);
+    });
+    w.appendChild(c);
+  }
+
+  const t = el("p","lede");
+  t.style.marginTop = "14px";
+  t.innerHTML = `Esto no cubre el anuncio recién lanzado que <em>todavía no
+    trajo a nadie</em>. Para ése sigue haciendo falta un campo — la pregunta es
+    si ese caso justifica que el campo sea la forma principal.`;
+  w.appendChild(t);
+  return w;
+}
+
+/* ====================================================================
+   C · EL PEGADO MASIVO
+   Una campaña no es un anuncio: son seis conjuntos. Pegarlos de a uno es
+   seis veces la misma interacción.
+   ==================================================================== */
+function vistaC(){
+  const w = el("div");
+  w.appendChild(head("catálogo",
+    `Una campaña de Meta no es un anuncio, son varios conjuntos — y la
+     interacción que el ticket quiere de segundos hoy se repite una vez por
+     cada uno. Acá se pegan todos juntos, en cualquier formato, y lo que se
+     confirma es una <strong>previsualización</strong>: qué es nuevo, qué ya
+     estaba, qué no es un ID.`));
+
+  const g = el("div");
+  g.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start";
+
+  const left = el("div","card");
+  left.style.cssText = "padding:13px;display:flex;flex-direction:column;gap:10px";
+  left.appendChild(el("div","det-t","Pegá los IDs — uno por línea, o separados por coma"));
+  const ta = el("textarea","paste");
+  ta.value = state.draft;
+  ta.placeholder = "24019338702\n24019338715\nhttps://facebook.com/ads/23990117899\n24022004488";
+  ta.oninput = e => { state.draft = e.target.value; render(); };
+  left.appendChild(ta);
+
+  left.appendChild(el("div","det-t","Se registran en"));
+  const tgt = el("div","target");
+  state.targets.forEach(id => {
+    const p = byId(id); if (!p) return;
+    const c = el("span","tchip", `${esc(p.short)} <span class="x">×</span>`);
+    c.querySelector(".x").onclick = () => { state.targets = state.targets.filter(x => x !== id); render(); };
+    tgt.appendChild(c);
+  });
+  const more = el("button","btn btn-sm","+ producto");
+  more.onclick = () => {
+    const falta = prods().find(p => !state.targets.includes(p.id));
+    if (falta) { state.targets = [...state.targets, falta.id]; render(); }
+  };
+  tgt.appendChild(more);
+  left.appendChild(tgt);
+  left.appendChild(el("p","rules",
+    `Varios productos a la vez es el N:M del ticket: un anuncio de familia
+     apunta a los cuatro REVITALHAIR sin inventar un producto falso.`));
+
+  const right = el("div","card");
+  right.style.cssText = "overflow:hidden";
+  const lines = state.draft.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean);
+  const vistos = new Set();
+  let nuevos = 0;
+  const rows = lines.map(l => {
+    const r = normalizar(l);
+    if (!r.ok) return {cls:"bad", mk:"✕", id:l, txt:"no es un ID de anuncio"};
+    if (vistos.has(r.id)) return {cls:"dup", mk:"·", id:r.id, txt:"repetido en el pegado"};
+    vistos.add(r.id);
+    const ya = state.targets.some(t => { const p = byId(t); return p && adsOf(p).includes(r.id); });
+    if (ya) return {cls:"dup", mk:"·", id:r.id, txt:"ya estaba registrado"};
+    nuevos++;
+    const visto = (PENDING[state.country] || []).find(x => x.ad === r.id);
+    return {cls:"new", mk:"+", id:r.id,
+      txt: visto ? `«${visto.head}» · rescata ${visto.leads} leads`
+                 : (r.fromUrl ? "del enlace · todavía sin leads" : "nuevo · todavía sin leads")};
+  });
+
+  const hd = el("div");
+  hd.style.cssText = "padding:11px 13px;border-bottom:1px solid var(--border)";
+  hd.appendChild(el("div","det-t", lines.length ? `Se va a registrar · ${nuevos} de ${lines.length}` : "Previsualización"));
+  right.appendChild(hd);
+
+  if (!lines.length){
+    const e2 = el("p","lede");
+    e2.style.cssText = "padding:16px 13px";
+    e2.innerHTML = `Pegá algo a la izquierda. Nada se registra hasta que lo
+      confirmes — que es lo que separa un pegado masivo de un accidente masivo.`;
+    right.appendChild(e2);
+  } else {
+    rows.forEach(r => right.appendChild(el("div","prev " + r.cls,
+      `<span class="mk">${r.mk}</span><span class="pid">${esc(r.id)}</span><span class="st soft">${esc(r.txt)}</span>`)));
+    const foot = el("div");
+    foot.style.cssText = "padding:11px 13px;border-top:1px solid var(--border);display:flex;gap:7px;align-items:center";
+    const b = el("button","btn btn-p",
+      `Registrar ${nuevos} ${nuevos === 1 ? "anuncio" : "anuncios"} en ${state.targets.length} ${state.targets.length === 1 ? "producto" : "productos"}`);
+    if (!nuevos || !state.targets.length) b.style.opacity = ".45";
+    b.onclick = () => {
+      if (!nuevos || !state.targets.length) return;
+      rows.filter(r => r.cls === "new").forEach(r => registrar(r.id, state.targets));
+      state.draft = ""; render();
+    };
+    foot.appendChild(b);
+    right.appendChild(foot);
+  }
+
+  g.appendChild(left); g.appendChild(right);
+  w.appendChild(g);
+  return w;
+}
+
+/* ====================================================================
+   D · EN EL HILO
+   El anuncio sin registrar se siente en la conversación, no en el catálogo.
+   Vocabulario del Inbox que ya existe: `Agente: ON/OFF`, nada de «tomar».
+   ==================================================================== */
+const CHATS = [
+  {id:"c1", who:"+502 5512 8840", prev:"hola vi el anuncio del tratamiento",
+   marks:[["amb","reconocimiento ambiguo"]], ad:"24022114900"},
+  {id:"c2", who:"+502 4471 9032", prev:"cuánto sale con envío?",
+   marks:[["auto","automática"]], ad:"24019338702"},
+  {id:"c3", who:"+502 3390 1188", prev:"quiero hablar con una persona",
+   marks:[["esc","escalada"]], ad:null},
+];
+
+function vistaD(){
+  const w = el("div");
+  w.appendChild(head("conversaciones",
+    `El anuncio sin registrar no se siente en el catálogo: se siente acá, en el
+     chat que Sebastián no supo contestar. Registrar desde el hilo cierra el
+     recorrido donde apareció el problema — sin navegar a otra pantalla y sin
+     inventar vocabulario: el control del agente sigue siendo
+     <strong>Agente: ON/OFF</strong>.`));
+
+  const t = el("div","thread");
+  const list = el("div","tlist");
+  CHATS.forEach(c => {
+    const b = el("button","trow");
+    if (c.id === state.thread) b.setAttribute("aria-current","true");
+    b.innerHTML = `<span class="who">${esc(c.who)}</span>
+      <span class="prev2">${esc(c.prev)}</span>
+      <span class="marks">${c.marks.map(([k,l]) => `<span class="mark ${k}">${esc(l)}</span>`).join("")}</span>`;
+    b.onclick = () => { state.thread = c.id; render(); };
+    list.appendChild(b);
+  });
+  t.appendChild(list);
+
+  const chat = CHATS.find(c => c.id === state.thread) || CHATS[0];
+  const pane = el("div","tpane");
+  pane.appendChild(el("div","tphead",
+    `<div><div style="font-size:13px;font-weight:600">${esc(chat.who)}</div>
+      <div class="soft" style="font-size:11px">Ventas · Sebastián</div></div>
+     <span class="agentsw"><i></i>Agente: ON</span>`));
+
+  const body = el("div","tbody");
+  body.appendChild(el("div","msg them", esc(chat.prev)));
+
+  const row = chat.ad ? (PENDING[state.country] || []).find(x => x.ad === chat.ad) : null;
+  const yaHecho = chat.ad && state.resolved[chat.ad];
+
+  if (!chat.ad){
+    body.appendChild(el("div","evt",
+      `<b>Sebastián escaló tras dos intentos.</b> El cliente no llegó por un
+       anuncio, así que no hay nada que registrar.`));
+  } else if (yaHecho){
+    const to = state.resolved[chat.ad].map(id => byId(id)).filter(Boolean).map(p => p.short).join(", ");
+    body.appendChild(el("div","evt",
+      `<b>Sebastián reconoció ${esc(to)}</b> · anuncio
+       <span class="num">${esc(chat.ad)}</span>, registrado recién desde acá.`));
+    body.appendChild(el("div","msg us",
+      `Claro, te cuento del ${esc(to)} — el tratamiento es de 3 meses…`));
+  } else if (row){
+    const ev = el("div","evt warn");
+    ev.innerHTML = `<b>Sebastián no supo de qué producto le hablan.</b>
+      Llegó del anuncio <span class="num">${esc(chat.ad)}</span> —
+      «${esc(row.head)}» — que no está registrado. Es el mismo anuncio de otros
+      <b>${row.leads - 1}</b> chats de esta semana.`;
+    const act = el("div","act");
+    const b = el("button","btn btn-p btn-sm","Registrar este anuncio ▾");
+    b.onclick = e => { e.stopPropagation(); state.openPop = chat.ad; state.popPick = []; render(); };
+    const wrap = el("div"); wrap.className = "assign"; wrap.style.display = "inline-block";
+    wrap.appendChild(b);
+    if (state.openPop === chat.ad) wrap.appendChild(popover(row));
+    act.appendChild(wrap);
+    ev.appendChild(act);
+    body.appendChild(ev);
+    body.appendChild(el("div","msg us",
+      `Contame un poco más, ¿es para la caída por DHT o para recuperación?`));
+  }
+  pane.appendChild(body);
+  t.appendChild(pane);
+  w.appendChild(t);
+
+  const n = el("p","lede");
+  n.style.marginTop = "14px";
+  n.innerHTML = `Lo que esta forma <em>no</em> resuelve: el anuncio se registra
+    una vez por chat que aparece, y quien mira el Inbox puede no ser quien
+    administra el catálogo.`;
+  w.appendChild(n);
+  return w;
+}
+
+
+/* ====================================================================
+   F · ELEGIR DE LA CUENTA PUBLICITARIA
+   La única forma en la que no se escribe ningún identificador: el anuncio
+   se elige por su NOMBRE, que es como lo llama quien lo creó.
+
+   Lo que esta variante cuesta y las otras cinco no: una integración con
+   Meta que hoy NO existe (no hay credencial en el entorno), un token de
+   usuario de sistema con `ads_read` y su renovación, y un modo de falla
+   nuevo — el de abajo, cuando la conexión no está.
+   ==================================================================== */
+function metaModal(p){
+  const scrim = el("div","scrim");
+  scrim.onclick = () => { state.metaOpen = false; render(); };
+  const m = el("div","modal");
+  m.onclick = e => e.stopPropagation();
+
+  const hd = el("div","m-head");
+  hd.innerHTML = `<div><div class="m-title">Elegir el anuncio</div>
+    <div class="m-acct"><i></i>${esc(AD_ACCOUNT.name)} · ${esc(AD_ACCOUNT.id)}</div></div>`;
+  const x = el("button","m-x","✕");
+  x.onclick = () => { state.metaOpen = false; render(); };
+  hd.appendChild(x);
+  m.appendChild(hd);
+
+  const tools = el("div","m-tools");
+  const q = el("input","m-search");
+  q.placeholder = "Buscar por nombre, campaña o conjunto";
+  q.value = state.metaQ;
+  q.oninput = e => { state.metaQ = e.target.value; render(); };
+  tools.appendChild(q);
+  [["todos","Todos"],["on","Activos"],["off","Pausados"]].forEach(([k,l]) => {
+    const b = el("button","btn btn-sm", l);
+    if (state.metaOnly === k) b.classList.add("btn-p");
+    b.onclick = () => { state.metaOnly = k; render(); };
+    tools.appendChild(b);
+  });
+  m.appendChild(tools);
+
+  /* Una sola cuenta para dos operaciones: el problema real de esta forma. */
+  const ajenos = META_ADS.filter(a => a.op !== state.country).length;
+  if (ajenos) m.appendChild(el("div","m-warn",
+    `<b>!</b><span>La cuenta publicitaria es una sola para las dos operaciones y
+     está en <b>COP, zona Bogotá</b>. ${ajenos} de estos anuncios no son de
+     ${esc(op().name)} — el panel los deduce del nombre, que es una convención,
+     no un dato. Meta no dice a qué país pertenece un anuncio.</span>`));
+
+  const list = el("div","m-list");
+  const txt = state.metaQ.toLowerCase();
+  const rows = META_ADS
+    .filter(a => state.metaOnly === "todos" || (state.metaOnly === "on") === a.on)
+    .filter(a => !txt || (a.name + " " + a.camp + " " + a.set + " " + a.id).toLowerCase().includes(txt));
+
+  if (!rows.length){
+    list.appendChild(el("p","lede", `Ningún anuncio coincide. Los que no aparecen
+      pueden estar en otra cuenta publicitaria — hay seis portafolios accesibles
+      con este token.`));
+  }
+  rows.forEach(a => {
+    const ya = adsOf(p).includes(a.id);
+    const r = el("button","m-row" + (a.op !== state.country ? " foreign" : ""));
+    r.setAttribute("aria-pressed", String(ya));
+    r.innerHTML = `<span class="pill ${a.on ? "on" : "off"}">${a.on ? "Activo" : "Pausado"}</span>
+      <span class="m-name"><b>${esc(a.name)}</b><span>${esc(a.camp)} · ${esc(a.set)}</span></span>
+      <span class="m-lead">${a.leads ? `<b>${a.leads}</b> leads` : `<span class="soft">sin leads</span>`}</span>
+      <span class="m-id">${esc(a.id)}</span>`;
+    if (ya){ r.style.opacity = ".55"; r.title = "Ya registrado en este producto"; }
+    else r.onclick = () => { registrar(a.id,[p.id]); state.metaOpen = false; render(); };
+    list.appendChild(r);
+  });
+  m.appendChild(list);
+
+  const foot = el("div","m-foot");
+  foot.innerHTML = `<span class="soft" style="font-size:11px">${rows.length} de
+    ${META_ADS.length} anuncios · leídos de Meta, no escritos a mano</span>`;
+  m.appendChild(foot);
+
+  scrim.appendChild(m);
+  return scrim;
+}
+
+function metaField(p){
+  const box = el("div");
+  box.style.cssText = "display:flex;flex-direction:column;gap:8px";
+
+  if (state.meta === "off"){
+    /* El modo de falla que esta variante estrena: hoy registrar no depende
+       de nadie; con Meta de por medio, sí. */
+    const n = el("div","noconn");
+    n.innerHTML = `<span><b>La cuenta publicitaria no está conectada.</b>
+      Sin ella no se puede elegir un anuncio por su nombre — y el token de
+      usuario de sistema vence, así que este estado va a pasar solo.</span>`;
+    const b = el("button","btn btn-p btn-sm","Conectar con Meta");
+    n.appendChild(b);
+    box.appendChild(n);
+    box.appendChild(el("p","rules",
+      `Mientras tanto queda el campo a mano — que es por qué esta variante
+       probablemente no reemplaza a las otras, las envuelve.`));
+    return box;
+  }
+
+  const b = el("button","btn btn-p","Elegir de la cuenta publicitaria");
+  b.onclick = e => { e.stopPropagation(); state.metaOpen = true; render(); };
+  box.appendChild(b);
+  box.appendChild(el("p","rules",
+    `Se listan los anuncios de <b>${esc(AD_ACCOUNT.name)}</b> con su nombre,
+     campaña y estado. No se escribe ningún identificador: el ID lo pone el
+     panel, así que la clase entera de error del pegado desaparece.`));
+  return box;
+}
+
+function vistaF(){
+  const w = el("div");
+  w.appendChild(head("catálogo",
+    `La única forma que no pide escribir un identificador. El anuncio se elige
+     por el <strong>nombre que le puso quien lo creó</strong> — «DHT ANTICALVICIE ·
+     Video · testimonial» — y el ID lo pone el panel. Elimina de raíz el error
+     de pegado, y es la única que funciona el día uno, sin esperar a que
+     alguien haga clic.`));
+  const g = el("div");
+  g.style.cssText = "display:grid;grid-template-columns:1fr 340px;gap:12px;align-items:start";
+  g.appendChild(tablaCat(false));
+  g.appendChild(ficha(sel(), metaField(sel())));
+  w.appendChild(g);
+  if (state.metaOpen && state.meta === "on") w.appendChild(metaModal(sel()));
+  return w;
+}
+
+/* ====================================================================
+   ==================================================================== */
+function otra(t, s){
+  const w = el("div");
+  w.appendChild(head(t, `Fuera de esta ronda: acá se compara solo el registro del anuncio.`));
+  const c = el("div","card");
+  c.style.cssText = "padding:26px;text-align:center";
+  c.innerHTML = `<div class="soft" style="font-size:12.5px">${esc(s)}</div>`;
+  w.appendChild(c);
+  return w;
+}
+
+function content(){
+  if (state.module === "confirmacion")
+    return otra(state.screen, "El módulo de Katherine, sin cambios.");
+  if (state.screen === "vendedor")
+    return otra("vendedor", "Decidido en el nivel 2: secciones apiladas.");
+
+  const v = V().id;
+  if (v === "D") return vistaD();
+  if (state.screen === "conversaciones")
+    return otra("conversaciones", "Decidido en el nivel 2: vistas de Sebastián dentro del Inbox.");
+  if (v === "A") return vistaA();
+  if (v === "B") return bandeja("asignar");
+  if (v === "C") return vistaC();
+  if (v === "F") return vistaF();
+  return bandeja("propuesta");
+}
+
+function render(){
+  const hex = op().accent, root = document.documentElement.style;
+  root.setProperty("--op", hex);
+  root.setProperty("--op-line", rgba(hex,.45));
+  root.setProperty("--op-soft", rgba(hex,.13));
+  root.setProperty("--op-faint", rgba(hex,.07));
+
+  if (!mod().screens.some(s => s.key === state.screen)) state.screen = mod().screens[0].key;
+  if (!prods().some(p => p.id === state.sel)) state.sel = prods()[0].id;
+  state.targets = state.targets.filter(id => byId(id));
+  if (!state.targets.length) state.targets = [prods()[0].id];
+
+  const shell = el("div","shell");
+  const open = state.bars === "open";
+  shell.style.gridTemplateColumns = open ? "78px 216px 1fr" : "46px 1fr";
+  shell.appendChild(buildRail(!open));
+  if (open) shell.appendChild(buildCol());
+  const main = el("div","main"), page = el("div","page");
+  page.appendChild(content()); main.appendChild(page); shell.appendChild(main);
+
+  const app = document.getElementById("app");
+  app.innerHTML = ""; app.appendChild(shell);
+  syncPicker();
+}
+
+/* ---------------- instrumento ---------------- */
+function syncPicker(){
+  const v = V();
+  document.getElementById("pk-vnum").textContent = `${state.variant+1} de ${VARIANTS.length} · ${v.id}`;
+  document.getElementById("pk-vlabel").textContent = v.label;
+  document.getElementById("pk-vtag").textContent = v.tag;
+  document.getElementById("pk-ref").textContent = "ref: " + v.ref;
+
+  const box = document.querySelector('[data-key="sel"]');
+  box.innerHTML = "";
+  prods().slice(0,4).forEach(p => {
+    const b = el("button","pk-opt", esc(p.ini));
+    b.title = `${p.name} · ${adsOf(p).length} anuncios`;
+    b.setAttribute("aria-pressed", String(state.sel === p.id));
+    b.onclick = () => { state.sel = p.id; state.echo = null; render(); };
+    box.appendChild(b);
+  });
+
+  const pb = document.querySelector('[data-key="pend"]');
+  pb.querySelector('[data-val="some"]').textContent =
+    pending().length ? `${pending().length} · ${pendingLeads()} leads` : "Con pendientes";
+
+  document.querySelectorAll(".pk-opts[data-key]").forEach(g => {
+    if (g.dataset.key === "sel") return;
+    g.querySelectorAll(".pk-opt").forEach(b =>
+      b.setAttribute("aria-pressed", String(state[g.dataset.key] === b.dataset.val)));
+  });
+}
+
+document.querySelectorAll('.pk-opts[data-key]').forEach(g => {
+  if (g.dataset.key === "sel") return;
+  g.querySelectorAll(".pk-opt").forEach(b => {
+    b.onclick = () => {
+      const k = g.dataset.key;
+      if (k === "country") { switchCountry(b.dataset.val); return; }
+      if (k === "pend" && b.dataset.val === "some") state.resolved = {};
+      state[k] = b.dataset.val;
+      render();
+    };
+  });
+});
+
+document.addEventListener("click", () => {
+  if (state.openPop) { state.openPop = null; state.popPick = []; render(); }
+});
+
+function step(d){
+  state.variant = (state.variant + d + VARIANTS.length) % VARIANTS.length;
+  state.openPop = null; state.echo = null; state.metaOpen = false;
+  state.screen = V().id === "D" ? "conversaciones" : "catalogo";
+  render();
+}
+document.getElementById("pk-prev").onclick = () => step(-1);
+document.getElementById("pk-next").onclick = () => step(1);
+document.getElementById("pk-min").onclick = () => document.getElementById("picker").classList.toggle("is-min");
+addEventListener("keydown", e => {
+  if (e.target.closest("input, textarea")) return;
+  if (e.key === "ArrowLeft"){ step(-1); e.preventDefault(); }
+  if (e.key === "ArrowRight"){ step(1); e.preventDefault(); }
+});
+
+(function drag(){
+  const box = document.getElementById("picker"), head = document.getElementById("pk-head");
+  let dx = 0, dy = 0, on = false;
+  head.addEventListener("mousedown", e => {
+    if (e.target.closest("button")) return;
+    on = true; const r = box.getBoundingClientRect();
+    dx = e.clientX - r.left; dy = e.clientY - r.top;
+    box.style.right = "auto"; box.style.bottom = "auto";
+    box.style.left = r.left + "px"; box.style.top = r.top + "px";
+    e.preventDefault();
+  });
+  addEventListener("mousemove", e => {
+    if (!on) return;
+    box.style.left = Math.min(Math.max(0, e.clientX - dx), innerWidth - box.offsetWidth) + "px";
+    box.style.top  = Math.min(Math.max(0, e.clientY - dy), innerHeight - box.offsetHeight) + "px";
+  });
+  addEventListener("mouseup", () => { on = false; });
+})();
+
+state.screen = V().id === "D" ? "conversaciones" : "catalogo";
+render();
+</script>
