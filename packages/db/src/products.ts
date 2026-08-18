@@ -1,11 +1,19 @@
 import { and, asc, eq, gte, inArray, sql } from "drizzle-orm";
+import {
+  etiquetaDeTipo,
+  excedeLimiteDeWhatsapp,
+  puedeEnviarse,
+  rechazoDeSubida,
+} from "@wa/shared";
 import { getDb } from "./client";
 import type { Operation } from "./schema";
 import {
   conversations,
   productAds,
+  productMedia,
   products,
   type Product,
+  type ProductMedia,
 } from "./schema";
 
 /**
@@ -685,4 +693,276 @@ export function readAdReferralSignal(
   return signal.registeredClicksInWindow > 0
     ? "el_mapa_se_esta_consultando"
     : "llegan_clics_sin_registrar";
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Los archivos enviables de un producto
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Viven en este archivo y no en uno propio porque son **el mismo accesor**: un
+ * archivo no existe sin su producto, la regla de aislamiento es la misma y el
+ * que la rompa la rompe para los dos. Partirlos habría dado dos lugares donde
+ * escribir «filtrá por operación» y uno donde olvidarlo.
+ *
+ * **Los bytes no salen de acá sin que se los pidan.** Todo lo que lee para la
+ * pantalla devuelve `ProductMediaMeta` —la fila sin la columna binaria—, porque
+ * dibujar la lista de archivos de 17 productos no puede significar traerse los
+ * archivos. Los bytes se leen de a uno y solo en el camino que los va a mandar.
+ */
+
+/** Lo mínimo que la resolución necesita de un archivo para decidir. */
+export interface ScopedProductMediaRow {
+  operationId: string;
+  productId: string;
+}
+
+/** Una fila de `product_media` **sin los bytes**: lo que la pantalla necesita. */
+export type ProductMediaMeta = Omit<ProductMedia, "bytes">;
+
+/** Las columnas de la metadata, sin `bytes`. Una sola definición para las tres consultas. */
+const MEDIA_META_COLUMNS = {
+  id: productMedia.id,
+  operationId: productMedia.operationId,
+  productId: productMedia.productId,
+  filename: productMedia.filename,
+  mime: productMedia.mime,
+  byteSize: productMedia.byteSize,
+  sendable: productMedia.sendable,
+  metaMediaId: productMedia.metaMediaId,
+  createdAt: productMedia.createdAt,
+  updatedAt: productMedia.updatedAt,
+} as const;
+
+/**
+ * Los archivos de un producto **dentro de la operación**, puro.
+ *
+ * La clave foránea compuesta ya impide en la base que un archivo cuelgue de un
+ * producto de otra operación. Esto no es la barrera: es la regla escrita donde
+ * se puede probar con fixtures, y la que sostiene la misma garantía cuando las
+ * filas no vienen de una consulta —que es como corren los tests.
+ */
+export function resolveProductMedia<T extends ScopedProductMediaRow>(
+  rows: readonly T[],
+  op: Operation,
+  productId: string,
+): T[] {
+  return rows.filter(
+    (r) => r.operationId === op.id && r.productId === productId,
+  );
+}
+
+/**
+ * De los archivos de un producto, **los que de verdad le pueden llegar al
+ * cliente**.
+ *
+ * Es la función que hace verdadero el criterio del ticket 03: «los archivos no
+ * marcados nunca se envían, aunque estén cargados». Filtra por las tres cosas
+ * a la vez —operación, producto y {@link puedeEnviarse}— porque las tres tienen
+ * la misma consecuencia si fallan: un archivo saliendo hacia un cliente al que
+ * nadie decidió mandárselo.
+ *
+ * El tamaño se vuelve a mirar acá aunque el rechazo ya se haya hecho al subir.
+ * No es desconfianza del panel: el límite es de WhatsApp y puede bajar, y
+ * entonces filas guardadas como enviables dejan de serlo sin que nadie las
+ * toque. Esta es la última pregunta antes de mandar.
+ */
+export function sendableProductMedia<
+  T extends ScopedProductMediaRow & { mime: string; byteSize: number; sendable: boolean },
+>(rows: readonly T[], op: Operation, productId: string): T[] {
+  return resolveProductMedia(rows, op, productId).filter(puedeEnviarse);
+}
+
+/**
+ * Los archivos de la operación agrupados por producto, para dibujar la tabla y
+ * las fichas de una sola lectura.
+ *
+ * Solo entran los archivos de la operación **y de un producto que el catálogo
+ * tiene**, igual que {@link buildCatalog} con los mapeos: un archivo huérfano
+ * no puede aparecer colgado del producto equivocado.
+ */
+export function groupMediaByProduct<T extends ScopedProductMediaRow>(
+  rows: readonly T[],
+  op: Operation,
+  productIds: readonly string[],
+): Map<string, T[]> {
+  const known = new Set(productIds);
+  const out = new Map<string, T[]>();
+  for (const id of productIds) out.set(id, []);
+  for (const row of rows) {
+    if (row.operationId !== op.id || !known.has(row.productId)) continue;
+    out.get(row.productId)?.push(row);
+  }
+  return out;
+}
+
+/** La metadata de los archivos de un producto, en orden de subida. */
+export async function listProductMedia(
+  op: Operation,
+  productId: string,
+): Promise<ProductMediaMeta[]> {
+  if (!isUuid(productId)) return [];
+  const rows = await getDb()
+    .select(MEDIA_META_COLUMNS)
+    .from(productMedia)
+    .where(
+      and(
+        eq(productMedia.operationId, op.id),
+        eq(productMedia.productId, productId),
+      ),
+    )
+    .orderBy(asc(productMedia.createdAt));
+  return resolveProductMedia(rows, op, productId);
+}
+
+/** La metadata de **todos** los archivos de la operación, para la tabla del catálogo. */
+export async function listCatalogMedia(
+  op: Operation,
+): Promise<ProductMediaMeta[]> {
+  return getDb()
+    .select(MEDIA_META_COLUMNS)
+    .from(productMedia)
+    .where(eq(productMedia.operationId, op.id))
+    .orderBy(asc(productMedia.createdAt));
+}
+
+/**
+ * Los archivos que el vendedor puede mandar por este producto, **con sus
+ * bytes**.
+ *
+ * Es el camino de lectura del envío, y por eso es el único que trae la columna
+ * binaria. **Sin caché, a propósito**: es lo que hace verdadero el criterio
+ * «un archivo desmarcado deja de enviarse desde la siguiente conversación, sin
+ * reinicio ni despliegue». Una caché acá convertiría desmarcar un archivo en
+ * «desmarcado, pero sigue saliendo un rato», que es la clase de demora que
+ * nadie asocia con lo que acaba de tocar.
+ *
+ * El `where` ya filtra por operación, producto y marca; el filtro en memoria
+ * agrega el tamaño y es el que los tests ejercen.
+ */
+export async function listSendableProductMedia(
+  op: Operation,
+  productId: string,
+): Promise<ProductMedia[]> {
+  if (!isUuid(productId)) return [];
+  const rows = await getDb()
+    .select()
+    .from(productMedia)
+    .where(
+      and(
+        eq(productMedia.operationId, op.id),
+        eq(productMedia.productId, productId),
+        eq(productMedia.sendable, true),
+      ),
+    )
+    .orderBy(asc(productMedia.createdAt));
+  return sendableProductMedia(rows, op, productId);
+}
+
+/** Lo que el panel manda al subir un archivo. */
+export interface ProductMediaInput {
+  filename: string;
+  mime: string;
+  bytes: Buffer;
+}
+
+/**
+ * Guarda un archivo de un producto de esta operación.
+ *
+ * **Rechaza por tamaño acá también**, aunque el navegador ya lo haya hecho: lo
+ * que llega a una ruta llega de afuera, y el criterio del ticket —«se rechaza
+ * al subir, no al enviar»— no puede depender de que el que sube sea la
+ * pantalla. El motivo vuelve redactado, que es lo que el admin necesita leer.
+ *
+ * **Nace apagado.** El interruptor no se puede pasar en la subida: marcar un
+ * archivo como enviable es un acto aparte y explícito, porque el error que
+ * evita —mandarle al cliente la hoja de márgenes internos— no se deshace.
+ */
+export async function addProductMedia(
+  op: Operation,
+  productId: string,
+  input: ProductMediaInput,
+): Promise<ProductMediaMeta> {
+  const product = await getProduct(op, productId);
+  if (!product) throw new Error("el producto no existe en esta operación");
+
+  const filename = input.filename.trim() || "archivo";
+  const mime = input.mime.trim().toLowerCase() || "application/octet-stream";
+  const rechazo = rechazoDeSubida({
+    filename,
+    mime,
+    byteSize: input.bytes.byteLength,
+  });
+  if (rechazo) throw new Error(rechazo.texto);
+
+  const [row] = await getDb()
+    .insert(productMedia)
+    .values({
+      operationId: op.id,
+      productId,
+      filename,
+      mime,
+      bytes: input.bytes,
+      byteSize: input.bytes.byteLength,
+    })
+    .returning(MEDIA_META_COLUMNS);
+  if (!row) throw new Error("no se pudo guardar el archivo");
+  return row;
+}
+
+/**
+ * Marca o desmarca un archivo como enviable.
+ *
+ * Marcar uno que excede el límite de WhatsApp **falla y dice por qué**: la
+ * pantalla ya deshabilita ese interruptor, y esto es lo que sostiene la regla
+ * cuando la petición no viene de la pantalla. Desmarcar siempre se puede — el
+ * camino de apagar algo no se bloquea nunca.
+ *
+ * Devuelve `null` si el archivo no es de esta operación, que es lo mismo que
+ * decir que no existe: un id de archivo viaja en el cuerpo de una petición.
+ */
+export async function setProductMediaSendable(
+  op: Operation,
+  mediaId: string,
+  sendable: boolean,
+): Promise<ProductMediaMeta | null> {
+  if (!isUuid(mediaId)) return null;
+  const [current] = await getDb()
+    .select(MEDIA_META_COLUMNS)
+    .from(productMedia)
+    .where(
+      and(eq(productMedia.operationId, op.id), eq(productMedia.id, mediaId)),
+    )
+    .limit(1);
+  if (!current) return null;
+
+  if (sendable && excedeLimiteDeWhatsapp(current.mime, current.byteSize)) {
+    throw new Error(
+      `${current.filename} excede el límite de WhatsApp para ${etiquetaDeTipo(current.mime)}: no se puede marcar como enviable.`,
+    );
+  }
+
+  const [row] = await getDb()
+    .update(productMedia)
+    .set({ sendable, updatedAt: new Date() })
+    .where(
+      and(eq(productMedia.operationId, op.id), eq(productMedia.id, mediaId)),
+    )
+    .returning(MEDIA_META_COLUMNS);
+  return row ?? null;
+}
+
+/** Borra un archivo del producto. Los bytes se van con la fila. */
+export async function deleteProductMedia(
+  op: Operation,
+  mediaId: string,
+): Promise<boolean> {
+  if (!isUuid(mediaId)) return false;
+  const rows = await getDb()
+    .delete(productMedia)
+    .where(
+      and(eq(productMedia.operationId, op.id), eq(productMedia.id, mediaId)),
+    )
+    .returning({ id: productMedia.id });
+  return rows.length > 0;
 }

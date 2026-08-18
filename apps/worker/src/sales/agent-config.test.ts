@@ -30,6 +30,7 @@ const EN_BLANCO: SalesAgentSettingsInput = {
   funnelMessage: "",
   toneInstructions: "",
   discountLimitPct: 0,
+  discountLimitBehavior: "consultar",
   model: "openai/gpt-5.4-mini",
   reasoningEffort: "low",
 };
@@ -41,6 +42,7 @@ const COMPLETA: SalesAgentSettingsInput = {
   funnelMessage: "Te dejo el enlace por si quieres verlo con calma.",
   toneInstructions: "Cercano y directo, sin tratar de usted.",
   discountLimitPct: 10,
+  discountLimitBehavior: "consultar",
   model: "openai/gpt-5.4-mini",
   reasoningEffort: "low",
 };

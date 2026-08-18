@@ -1,4 +1,4 @@
-import { SALES_AGENT_DEFAULTS } from "@wa/shared";
+import { parseSalesDiscountBehavior, SALES_AGENT_DEFAULTS } from "@wa/shared";
 import { loadVendedorScreen } from "@/lib/vendedor";
 import { VendedorForm } from "./vendedor-form";
 
@@ -40,6 +40,11 @@ export default async function VendedorPage() {
             settings?.toneInstructions ?? SALES_AGENT_DEFAULTS.toneInstructions,
           discountLimitPct:
             settings?.discountLimitPct ?? SALES_AGENT_DEFAULTS.discountLimitPct,
+          // La columna es `text` con un `check`: el conjunto cerrado se arma
+          // en un solo lugar, y sin fila se usa el default de la columna.
+          discountLimitBehavior: parseSalesDiscountBehavior(
+            settings?.discountLimitBehavior,
+          ),
           model: settings?.model ?? SALES_AGENT_DEFAULTS.model,
           reasoningEffort:
             settings?.reasoningEffort ?? SALES_AGENT_DEFAULTS.reasoningEffort,

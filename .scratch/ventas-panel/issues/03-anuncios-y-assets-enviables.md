@@ -4,12 +4,12 @@
 
 **Blocked by:** 02
 
-**Status:** claimed — worktree `assets-0025`, ola del 18-ago (2). La pantalla base ya está en producción; falta lo que esperaba la migración `0025`
+**Status:** **abierto** — la mitad de archivos entró con la `0025` (worktree `assets-0025`, ola del 18-ago (2)); la lista de anuncios de Meta sigue esperando el token del cliente, y el envío es `ventas-conversacion/03`
 
 - [x] El admin pega un identificador de anuncio en un solo campo y lo asocia a uno o varios productos.
 - [x] Un mismo anuncio puede quedar asociado a varios productos, y se ve claramente a cuáles.
-- [ ] El admin marca por archivo si es enviable, y solo esos llegan al cliente.
-- [ ] Un archivo desmarcado deja de enviarse desde la siguiente conversación.
+- [ ] El admin marca por archivo si es enviable, y solo esos llegan al cliente. *(el interruptor, el conteo y la lectura que filtra, sí — migración `0025`; **el envío todavía no existe**: es `ventas-conversacion/03`)*
+- [ ] Un archivo desmarcado deja de enviarse desde la siguiente conversación. *(verificado en la lectura, sin caché; de punta a punta no se puede ver hasta que haya envío)*
 - [ ] **La interacción de registrar un anuncio nuevo es de segundos, no de minutos** *(el campo a mano lo cumple; elegir por nombre de la lista de Meta espera la credencial)* — es la que determina cuánto soporte recurrente genera el módulo después de entregado.
 
 ## Answer — el alcance sin la credencial de Meta (18-ago-2026)
@@ -137,3 +137,76 @@ Dos cosas, ninguna de código:
 
 Cuando llegue el token, lo que se agrega es la lista; el campo a mano y todo el
 N:M ya construido no cambian.
+
+---
+
+## Answer — la mitad de archivos, y por qué el ticket sigue abierto (18-ago-2026, worktree `assets-0025`)
+
+### El interruptor existe, y arranca apagado
+
+Cada archivo de un producto tiene el suyo, con el conteo en la cabecera de la
+ficha —«2 de 3 enviables»— y en la tabla como columna. **Nace apagado y eso es la
+mitad del criterio**: marcar es un acto explícito y aparte de subir, porque el
+error que evita —mandarle al cliente la hoja de márgenes internos que el admin
+cargó para tenerla a mano— no se deshace. El caso está sembrado en la base de
+ensayo a propósito: `margen-interno.xlsx` cargado y sin marcar.
+
+El conteo cuenta **lo que le llega al cliente**, no lo que está marcado. Un
+archivo marcado que excede el límite de WhatsApp no sale, y contarlo haría que la
+cabecera prometa de más.
+
+El filtro **«Sin archivos enviables»** de la tabla mira lo mismo: un producto con
+cuatro archivos, todos desmarcados, le manda al cliente exactamente lo mismo que
+uno sin ninguno, y esconderlo detrás de «tiene archivos» sería un producto que se
+ve completo y no manda nada.
+
+### «Solo esos llegan al cliente» — lo que se puede afirmar hoy, y lo que no
+
+Con precisión, porque acá es fácil sonar más terminado de lo que se está:
+
+- **Lo que decide qué sale ya está construido y probado.**
+  `listSendableProductMedia(op, productId)` filtra por operación, por producto,
+  por la marca **y por el tamaño**, y **no tiene caché**. Que no la tenga es lo
+  que hace verdadera la frase «desde la siguiente conversación, sin reinicio ni
+  despliegue»: comprobado en un solo proceso, desmarcar un archivo lo saca de la
+  lectura siguiente sin reiniciar nada.
+- **Lo que manda el archivo no existe todavía.** Es `ventas-conversacion/03`
+  —«Envía los apoyos visuales»—, con sus propios criterios: que quede registrado
+  en el hilo y que un fallo de envío no interrumpa la venta. Ese ticket está
+  `ready-for-agent` y no se tocó desde acá: meterse en `jobs/outbound.ts`, que es
+  el camino por el que salen los mensajes de Guatemala, no es un efecto colateral
+  aceptable de un ticket de panel.
+
+Por eso los dos criterios de archivo quedan **sin marcar** aunque su mitad de
+panel esté terminada. Marcarlos diría que un archivo autorizado le llega al
+cliente, y hoy no le llega ninguno: no hay quien los mande.
+
+**El tamaño se vuelve a preguntar en la lectura** y no solo al subir. No es
+desconfianza del panel: el límite es de Meta y puede bajar, y entonces filas
+guardadas como enviables dejan de serlo sin que nadie las toque. Esa es la última
+pregunta antes de mandar, y está donde el que mande la va a hacer.
+
+### La mitad de Meta sigue bloqueada, y no cambió nada
+
+**La lista de anuncios leída de la cuenta publicitaria sigue sin construirse.**
+Necesita un token de usuario de sistema con `ads_read` sobre
+`act_2042265076620189`, que no existe en el entorno y lo trae el cliente. El
+campo a mano —el camino de respaldo que el propio diseño dejó, «F no reemplaza a
+las otras, las envuelve»— funciona y no se tocó, igual que todo el N:M en los dos
+sentidos y el estado «cuenta publicitaria sin conectar».
+
+Tampoco cambió lo que el nivel 3 dejó anotado como la trampa: **F resuelve
+registrar, no reconocer.** La señal de «llegaron N clics de anuncio» sigue siendo
+lo primero que se ve en `/catalogo` y sigue diciendo, con el estado de producción
+de hoy, que nunca llegó una referencia de anuncio al panel.
+
+### Qué falta para cerrarlo
+
+Dos cosas, ninguna de esquema:
+
+1. **El token de Meta** (`ads_read` sobre `act_2042265076620189`). Lo trae Daniel.
+   Cuando llegue, lo que se agrega es la lista; el campo a mano y el N:M ya
+   construido no cambian.
+2. **El envío de los archivos**, que es `ventas-conversacion/03`. La lectura que
+   ese ticket necesita ya está hecha y probada; lo que falta es mandar el archivo
+   y registrarlo en el hilo.

@@ -4,7 +4,7 @@
 
 **Blocked by:** ventas-conversacion 01 · Sebastián responde con su persona
 
-**Status:** claimed — worktree `assets-0025`, ola del 18-ago (2). La pantalla base ya está en producción; falta lo que esperaba la migración `0025`
+**Status:** listo para cerrar — worktree `assets-0025`, ola del 18-ago (2). El borde del límite entró con la migración `0025`, que está **generada y sin aplicar**
 
 - [x] Campos estructurados para nombre visible, mensajes base (saludo, empuje al cierre, mensaje de embudo) y límite de descuento.
 - [x] Campo de texto libre para tono e instrucciones de personalidad.
@@ -12,7 +12,7 @@
 - [x] Un cambio guardado aplica en la siguiente conversación, sin reinicio ni despliegue.
 - [x] **El panel no expone ninguna perilla sobre la cascada de reconocimiento**: ni activar niveles, ni reordenarlos, ni ajustar umbrales.
 - [x] La configuración de Katherine no es alcanzable ni editable desde esta pantalla.
-- [ ] El límite declara su consecuencia: qué hace el vendedor cuando el cliente pide más descuento del autorizado. **Necesita una columna nueva (`0025`): va en la ola siguiente.**
+- [x] El límite declara su consecuencia: qué hace el vendedor cuando el cliente pide más descuento del autorizado. *(columna `discount_limit_behavior`, migración `0025`)*
 
 ## Answer — lo que entra en esta ola, y el campo que falta (18-ago-2026)
 
@@ -186,3 +186,100 @@ el vendedor tiene instruido respetar, no algo que el sistema le impida pasar.
   esta pantalla contra que una edición rompa al vendedor sin que nadie se
   entere.** No se reabre. Queda anotada en el reporte una barrera barata que no
   es una vista previa, sin construir.
+
+---
+
+## Answer — el borde del límite, cerrado (18-ago-2026, worktree `assets-0025`)
+
+### Lo que ahora se puede configurar
+
+Debajo del límite, en la misma tarjeta ámbar y sin pestaña nueva, la pantalla
+pregunta lo que faltaba: **qué hace Sebastián cuando el cliente pide más de lo
+autorizado.** Tres opciones excluyentes, en orden de más cauto a menos:
+*consultar con una persona*, *ofrecer el máximo y cerrar*, *no mencionar
+descuentos*.
+
+**La pregunta se reformula sola con el límite en cero.** Deja de decir «cuando
+el cliente pida más de 10%» y pasa a decir «cuando el cliente insista con un
+descuento», porque prohibir descuentos no evita que se los pidan: solo cambia
+qué significa pasarse. El bloque no desaparece en cero, que era la alternativa
+fácil y la equivocada — el borde con descuentos prohibidos es justamente el caso
+que más se va a dar.
+
+El tratamiento del número no cambió: **en cero va en verde**, y el resto en
+ámbar. Prohibir descuentos es el estado seguro, no el alarmante.
+
+### El default es «consultar con una persona», y esa es la decisión que se pedía
+
+La columna nace en `consultar`. La razón no es que sea la más común sino **qué
+pasa con una fila a medio llenar**: la tabla la llena el panel de a poco, así
+que el valor tiene que ser seguro sin que nadie lo elija.
+
+De las tres, escalar es la única cuyo error **lo ve una persona**. `ofrecer_maximo`
+decide sola y gasta margen — y con un límite alto convierte el techo en piso: el
+que pida, recibe. `no_mencionar` decide sola y no gasta nada, pero cierra la
+puerta en silencio y nadie se entera de que se perdió la venta. Escalar de más
+cuesta atención, que se nota y se corrige; los otros dos fallan callados, que es
+la clase de error que este proyecto ya decidió no aceptar por defecto.
+
+Y hay una segunda razón, más fuerte: **es la única que coincide con lo que el
+sistema ya hace donde el límite se hace cumplir de verdad.** `sales/order.ts`
+recorta el descuento pasado y lo señala «para que el orquestador escale el caso a
+un asesor». Poner `ofrecer_maximo` de default dejaría al prompt instruyendo lo
+contrario de lo que después va a pasar al armar el pedido.
+
+### Lo que la pantalla no promete, y por qué está escrito ahí
+
+El prototipo describía *consultar* como «escala el chat». **No se copió esa
+frase**, y conviene saber por qué: escalar es un acto del sistema
+—`agent/escalation.ts`, con su cambio de `agent_mode`, su aviso al cliente y su
+alerta al admin— y hoy **nadie lo dispara desde acá**. `escalation-triggers.ts`
+decide mirando los turnos del *lead*, y deja el descuento fuera a propósito:
+«escalarlo desde la conversación sería adivinar por el texto lo que el
+constructor de orden sabe de cierto». Es una decisión del ticket 04 que sigue en
+pie y no se tocó.
+
+Así que hoy *consultar* significa: Sebastián deja de negociar, **no concede nada**
+y dice que lo consulta. El traspaso a una persona ocurre por los caminos que ya
+existen — el cliente pide un humano, o el pedido se arma y `order.ts` recorta y
+avisa. La tarjeta lo dice con esas palabras, y debajo del bloque hay una línea
+que lo cierra: *«Las tres viajan como instrucción al vendedor. El límite se hace
+cumplir al armar el pedido, no en medio del chat.»*
+
+Es la misma advertencia que este ticket ya traía para el límite —«hoy el límite
+viaja en las instrucciones del vendedor, no en un candado»—, ahora también en la
+pantalla y no solo en el reporte.
+
+### Guatemala sigue igual, y se puede comprobar
+
+La columna entra con `DEFAULT 'consultar' NOT NULL` sobre una tabla de **cero
+filas** (medido contra producción antes de generar). La migración **no crea
+ninguna fila**, así que `sales_agent_settings` sigue vacía y toda conversación
+sigue resolviendo al agente de confirmación: Katherine sigue atendiendo
+Guatemala.
+
+Comprobado contra una base de ensayo: insertar una fila con solo la operación
+—lo que hace el panel guardado a medio llenar— deja `límite=0`,
+`borde=consultar`, `nombre=""`. El listón de `isSalesAgentConfigured` sigue
+siendo el nombre visible, y sigue apagado. **El borde nuevo no mueve ese listón
+ni le agrega una segunda opinión.**
+
+### Cómo se verificó
+
+- `pnpm -r typecheck` limpio en los cuatro paquetes. El tipado estricto encontró
+  solo el call site real —`agent/runner.ts`, donde la fila se convierte en
+  persona— y ahí se agregó la única conversión de `text` al conjunto cerrado.
+- `pnpm --filter @wa/worker test`: **447 verdes** (423 antes; 24 nuevos). Nueve
+  de los nuevos son del borde: las tres consecuencias con límite alto y con
+  límite en cero, que *ofrecer el máximo* con el máximo en cero no ofrezca nada,
+  y que *consultar* **no** le prometa al cliente un traspaso que nadie hará.
+- La pantalla se levantó contra una base de ensayo en Docker y se leyó lo que
+  renderiza: con la tabla vacía dice «Los descuentos están prohibidos» y
+  «Cuando el cliente insista con un descuento».
+- El `check` de la base rechaza una cuarta consecuencia inventada por otra vía.
+
+### Lo que sigue sin estar
+
+La vista previa del tono sigue descartada y no se reabrió. Y el límite —y ahora
+su borde— siguen siendo instrucción y no candado hasta que el armado de pedidos
+esté conectado a la operación.

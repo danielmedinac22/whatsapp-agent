@@ -11,9 +11,20 @@ import {
   Search,
   Store,
   Trash2,
+  Upload,
   X,
 } from "lucide-react";
-import type { CatalogRow, CatalogView } from "@/lib/catalogo";
+import {
+  conteoDeEnviables,
+  etiquetaDeArchivo,
+  formatoDeTamano,
+  interruptorHabilitado,
+  puedeEnviarse,
+  rechazoDeSubida,
+  whatsappLimitBytes,
+  etiquetaDeTipo,
+} from "@wa/shared";
+import type { CatalogFileView, CatalogRow, CatalogView } from "@/lib/catalogo";
 
 /**
  * El catálogo: tabla densa con el origen **como columna**.
@@ -34,8 +45,8 @@ import type { CatalogRow, CatalogView } from "@/lib/catalogo";
  * miles, esto es lo que cambia.
  */
 
-type SortKey = "nombre" | "anuncios" | "origen" | "agregado";
-type ColumnKey = "origen" | "anuncios" | "precio" | "agregado";
+type SortKey = "nombre" | "anuncios" | "origen" | "agregado" | "archivos";
+type ColumnKey = "origen" | "anuncios" | "archivos" | "precio" | "agregado";
 
 const FILTERS = [
   { k: "src:shopify", label: "Origen: Tienda", test: (r: CatalogRow) => r.source === "shopify" },
@@ -47,11 +58,20 @@ const FILTERS = [
     label: "Con anuncio compartido",
     test: (r: CatalogRow) => r.ads.some((a) => a.alsoPointsTo.length > 0),
   },
+  {
+    // El filtro que el nivel 2 pidió por su nombre. Mira **enviables** y no
+    // «con archivos»: un producto con cuatro archivos, todos desmarcados, le
+    // manda al cliente exactamente lo mismo que uno sin ninguno.
+    k: "files:none",
+    label: "Sin archivos enviables",
+    test: (r: CatalogRow) => !r.files.some(puedeEnviarse),
+  },
 ] as const;
 
 const SORTS: Array<{ k: SortKey; label: string }> = [
   { k: "nombre", label: "Nombre" },
   { k: "anuncios", label: "Anuncios" },
+  { k: "archivos", label: "Archivos enviables" },
   { k: "origen", label: "Origen" },
   { k: "agregado", label: "Agregado" },
 ];
@@ -59,9 +79,15 @@ const SORTS: Array<{ k: SortKey; label: string }> = [
 const COLUMNS: Array<{ k: ColumnKey; label: string }> = [
   { k: "origen", label: "Origen" },
   { k: "anuncios", label: "Anuncios" },
+  { k: "archivos", label: "Archivos" },
   { k: "precio", label: "Precio" },
   { k: "agregado", label: "Agregado" },
 ];
+
+/** Cuántos archivos de este producto le pueden llegar de verdad al cliente. */
+function enviablesDe(r: CatalogRow): number {
+  return r.files.filter(puedeEnviarse).length;
+}
 
 function fecha(iso: string): string {
   return new Date(iso).toLocaleDateString("es", {
@@ -85,6 +111,7 @@ export function CatalogoClient({ view }: { view: CatalogView }) {
   const [cols, setCols] = useState<Record<ColumnKey, boolean>>({
     origen: true,
     anuncios: true,
+    archivos: true,
     precio: true,
     agregado: true,
   });
@@ -122,7 +149,10 @@ export function CatalogoClient({ view }: { view: CatalogView }) {
         (r) =>
           r.name.toLowerCase().includes(term) ||
           (r.shopifyProductId ?? "").toLowerCase().includes(term) ||
-          r.ads.some((a) => a.adId.includes(term)),
+          r.ads.some((a) => a.adId.includes(term)) ||
+          // Por nombre de archivo también: «¿dónde cargué el instructivo?» es
+          // la otra pregunta que se le hace a esta barra.
+          r.files.some((f) => f.filename.toLowerCase().includes(term)),
       );
     }
     for (const key of filters) {
@@ -134,6 +164,10 @@ export function CatalogoClient({ view }: { view: CatalogView }) {
       switch (sort.k) {
         case "anuncios":
           return (a.ads.length - b.ads.length) * dir || a.name.localeCompare(b.name);
+        case "archivos":
+          return (
+            (enviablesDe(a) - enviablesDe(b)) * dir || a.name.localeCompare(b.name)
+          );
         case "origen":
           return a.source.localeCompare(b.source) * dir || a.name.localeCompare(b.name);
         case "agregado":
@@ -331,6 +365,7 @@ export function CatalogoClient({ view }: { view: CatalogView }) {
                     <th>Producto</th>
                     {cols.origen ? <th>Origen</th> : null}
                     {cols.anuncios ? <th>Anuncios</th> : null}
+                    {cols.archivos ? <th>Archivos</th> : null}
                     {cols.precio ? <th>Precio</th> : null}
                     {cols.agregado ? <th>Agregado</th> : null}
                   </tr>
@@ -402,6 +437,26 @@ export function CatalogoClient({ view }: { view: CatalogView }) {
                           )}
                         </td>
                       ) : null}
+                      {cols.archivos ? (
+                        <td className="align-middle text-[12px]">
+                          {r.files.length === 0 ? (
+                            <span className="app-muted">—</span>
+                          ) : (
+                            <span
+                              className={
+                                enviablesDe(r) === 0
+                                  ? "text-[var(--color-text-soft)]"
+                                  : "text-[var(--color-text)]"
+                              }
+                            >
+                              {enviablesDe(r)}/{r.files.length}
+                              <span className="app-muted ml-1 text-[11px]">
+                                enviables
+                              </span>
+                            </span>
+                          )}
+                        </td>
+                      ) : null}
                       {cols.precio ? (
                         <td className="app-muted align-middle text-[12px]">
                           {r.price ?? "—"}
@@ -429,6 +484,9 @@ export function CatalogoClient({ view }: { view: CatalogView }) {
               </span>
               <span className="ml-auto">
                 {view.rows.filter((r) => r.ads.length === 0).length} sin anuncios
+                {" · "}
+                {view.rows.filter((r) => enviablesDe(r) === 0).length} sin archivos
+                enviables
               </span>
             </div>
           ) : null}
@@ -674,6 +732,7 @@ function Ficha({
       </section>
 
       <Anuncios row={row} onChanged={onChanged} onError={onError} />
+      <Archivos row={row} onChanged={onChanged} onError={onError} />
     </div>
   );
 }
@@ -814,6 +873,254 @@ function Anuncios({
  * venza. Por eso el campo a mano de arriba no es un atajo temporal: es el
  * respaldo permanente.
  */
+/**
+ * Los archivos que el vendedor puede mandar por este producto.
+ *
+ * **El interruptor es por archivo y el conteo va en la cabecera** («2 de 4
+ * enviables»), que es la forma que el nivel 2 cerró. El conteo cuenta lo que de
+ * verdad le llega al cliente, no lo que está marcado: un archivo marcado que
+ * excede el límite de WhatsApp no sale, y contarlo haría que la cabecera
+ * prometa de más.
+ *
+ * **El rechazo por tamaño se hace al subir, y acá se hace antes de subir.** El
+ * navegador conoce el peso del archivo sin mandarlo, así que un video de 27 MB
+ * no viaja: se rechaza en el acto, con el motivo a la vista y sin gastar la
+ * subida. Es el criterio del ticket 02 —«que el problema aparezca cuando el
+ * admin puede resolverlo»— en su forma más barata. La ruta vuelve a
+ * preguntarlo, porque lo que llega a una ruta llega de afuera.
+ *
+ * **El prototipo dibujaba el archivo rechazado como una fila permanente**, con
+ * su interruptor deshabilitado. Acá no queda fila: guardar en la base un
+ * archivo que nunca se va a poder enviar cuesta la base y no compra nada, y
+ * además la subida del panel no podría cargarlo. El estado de interruptor
+ * deshabilitado **sigue existiendo** para las filas que caigan de ese lado si
+ * Meta baja un límite, que es cuando de verdad hace falta explicarlo.
+ */
+function Archivos({
+  row,
+  onChanged,
+  onError,
+}: {
+  row: CatalogRow;
+  onChanged: () => void;
+  onError: (m: string | null) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [subiendo, setSubiendo] = useState(false);
+  const [rechazo, setRechazo] = useState<string | null>(null);
+  const conteo = conteoDeEnviables(row.files);
+
+  async function subir(file: File) {
+    setRechazo(null);
+    onError(null);
+
+    const propuesto = {
+      filename: file.name || "archivo",
+      mime: (file.type || "application/octet-stream").toLowerCase(),
+      byteSize: file.size,
+    };
+    // Antes de mandar nada: es lo que hace que el rechazo sea instantáneo y que
+    // un archivo que no se puede enviar no gaste una subida entera.
+    const motivo = rechazoDeSubida(propuesto);
+    if (motivo) {
+      setRechazo(motivo.texto);
+      return;
+    }
+
+    setSubiendo(true);
+    try {
+      const form = new FormData();
+      form.append("productId", row.id);
+      form.append("file", file);
+      const r = await fetch("/api/catalogo/archivos", {
+        method: "POST",
+        body: form,
+      });
+      const j = (await r.json()) as { error?: string };
+      if (!r.ok) {
+        setRechazo(j.error ?? "no se pudo subir el archivo");
+        return;
+      }
+      onChanged();
+    } catch {
+      onError("no se pudo subir el archivo");
+    } finally {
+      setSubiendo(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  }
+
+  async function marcar(file: CatalogFileView, sendable: boolean) {
+    onError(null);
+    setRechazo(null);
+    const r = await fetch(`/api/catalogo/archivos/${file.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ sendable }),
+    });
+    if (!r.ok) {
+      const j = (await r.json()) as { error?: string };
+      onError(j.error ?? "no se pudo cambiar el interruptor");
+      return;
+    }
+    onChanged();
+  }
+
+  async function quitar(file: CatalogFileView) {
+    onError(null);
+    const r = await fetch(`/api/catalogo/archivos/${file.id}`, {
+      method: "DELETE",
+    });
+    if (!r.ok) {
+      const j = (await r.json()) as { error?: string };
+      onError(j.error ?? "no se pudo quitar el archivo");
+      return;
+    }
+    onChanged();
+  }
+
+  return (
+    <section className="space-y-1.5 border-t border-[var(--color-border)] pt-3">
+      <div className="flex items-center gap-2">
+        <h3 className="app-eyebrow flex-1">
+          Archivos
+          {row.files.length > 0 ? (
+            <span className="ml-1.5 text-[var(--color-text-dim)]">
+              · {conteo.texto}
+            </span>
+          ) : null}
+        </h3>
+      </div>
+
+      {row.files.length === 0 ? (
+        <p className="app-muted text-[11px] leading-relaxed">
+          Sin archivos cargados. Lo que subas acá no se envía hasta que lo
+          marques: el vendedor solo manda lo autorizado.
+        </p>
+      ) : null}
+
+      {row.files.map((f) => {
+        const habilitado = interruptorHabilitado(f);
+        const sale = puedeEnviarse(f);
+        return (
+          <div
+            key={f.id}
+            className={`flex items-center gap-2.5 rounded-md border px-2.5 py-2 ${
+              habilitado
+                ? "border-[var(--color-border)]"
+                : "border-[rgba(248,113,113,0.35)] bg-[rgba(248,113,113,0.06)]"
+            }`}
+          >
+            <span
+              className={`flex h-7 w-9 flex-none items-center justify-center rounded text-[9.5px] font-bold tracking-wide ${
+                habilitado
+                  ? "bg-[rgba(18,35,48,0.9)] text-[var(--color-text-soft)]"
+                  : "bg-[rgba(248,113,113,0.14)] text-[var(--color-danger)]"
+              }`}
+            >
+              {habilitado ? (
+                etiquetaDeArchivo(f.filename, f.mime)
+              ) : (
+                <AlertTriangle className="h-3.5 w-3.5" />
+              )}
+            </span>
+
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-xs text-[var(--color-text)]">
+                {f.filename}
+              </div>
+              <div className="app-muted text-[11px]">
+                {etiquetaDeArchivo(f.filename, f.mime)} ·{" "}
+                {formatoDeTamano(f.byteSize)}
+                {habilitado ? null : (
+                  <span className="text-[var(--color-danger)]">
+                    {" "}
+                    — excede el límite de WhatsApp para{" "}
+                    {etiquetaDeTipo(f.mime)} (
+                    {formatoDeTamano(whatsappLimitBytes(f.mime))}); no se puede
+                    enviar
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              role="switch"
+              aria-checked={sale}
+              aria-label={`Enviable: ${f.filename}`}
+              disabled={!habilitado}
+              title={
+                !habilitado
+                  ? "Excede el límite de la API de WhatsApp: no se puede enviar"
+                  : sale
+                    ? "El vendedor puede enviarlo"
+                    : "El vendedor no lo envía"
+              }
+              onClick={() => marcar(f, !f.sendable)}
+              className={`relative h-[19px] w-[34px] flex-none rounded-full border transition ${
+                !habilitado
+                  ? "cursor-not-allowed border-[var(--color-border)] bg-[rgba(8,19,27,0.8)] opacity-40"
+                  : sale
+                    ? "border-[rgba(110,231,183,0.5)] bg-[rgba(110,231,183,0.28)]"
+                    : "border-[var(--color-border)] bg-[rgba(8,19,27,0.8)]"
+              }`}
+            >
+              <span
+                className={`absolute top-[2px] h-[13px] w-[13px] rounded-full transition-all ${
+                  sale
+                    ? "left-[18px] bg-[var(--color-accent)]"
+                    : "left-[2px] bg-[var(--color-text-soft)]"
+                }`}
+              />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => quitar(f)}
+              aria-label={`Quitar ${f.filename}`}
+              className="flex-none rounded p-1 text-[var(--color-text-soft)] transition hover:text-[var(--color-danger)]"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        );
+      })}
+
+      {rechazo ? (
+        <p className="rounded-md border border-[rgba(248,113,113,0.4)] bg-[rgba(248,113,113,0.08)] px-2.5 py-2 text-[11px] leading-relaxed text-[var(--color-danger)]">
+          {rechazo}
+        </p>
+      ) : null}
+
+      <input
+        ref={inputRef}
+        type="file"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) void subir(file);
+        }}
+      />
+      <button
+        type="button"
+        className="app-button-secondary gap-1.5"
+        disabled={subiendo}
+        onClick={() => inputRef.current?.click()}
+      >
+        {subiendo ? (
+          <>Subiendo…</>
+        ) : (
+          <>
+            <Upload className="h-3.5 w-3.5" />
+            Subir archivo
+          </>
+        )}
+      </button>
+    </section>
+  );
+}
+
 function CuentaPublicitariaSinConectar() {
   return (
     <p className="app-muted text-[11px] leading-relaxed">

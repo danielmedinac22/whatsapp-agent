@@ -24,6 +24,7 @@ const SEBASTIAN: SalesPersona = {
   funnelMessage: "Tenemos envío a todo el país con pago contra entrega.",
   toneInstructions: "Tutea, usa emojis con moderación y nunca escribas párrafos largos.",
   discountLimitPct: 10,
+  discountLimitBehavior: "consultar",
 };
 
 const BLOQUE_PRODUCTO =
@@ -131,6 +132,7 @@ describe("composeEffectivePrompt · el prompt del vendedor", () => {
         funnelMessage: "",
         toneInstructions: "",
         discountLimitPct: 0,
+        discountLimitBehavior: "consultar",
       },
       productBlock: null,
     });
