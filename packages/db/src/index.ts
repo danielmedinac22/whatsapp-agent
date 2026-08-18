@@ -4,4 +4,5 @@ export * from "./env";
 export * from "./agent-settings";
 export * from "./sales-agent-settings";
 export * from "./operations";
+export * from "./products";
 export { eq, and, or, asc, desc, sql, inArray, notInArray, gt, gte, lt, lte, ne, isNull, isNotNull, like, ilike } from "drizzle-orm";

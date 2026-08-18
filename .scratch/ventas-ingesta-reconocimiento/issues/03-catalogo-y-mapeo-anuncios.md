@@ -6,14 +6,14 @@ Es el mínimo de catálogo que el reconocimiento necesita para existir. La exper
 
 **Blocked by:** None — can start immediately.
 
-**Status:** claimed — worktree `catalogo`, ola del 18-ago-2026
+**Status:** resolved — worktree `catalogo`, ola del 18-ago-2026 · rama `danielmedinac22/catalogo`, sin merge ni deploy
 
-- [ ] Existe la entidad producto del panel, con su origen declarado: conectado a la tienda o nativo.
-- [ ] La relación anuncio→productos es de muchos a muchos en ambos sentidos.
-- [ ] El admin puede crear un producto y asociarle identificadores de anuncio sin editar la base a mano.
-- [ ] Asociar el mismo anuncio a varios productos funciona y queda consultable como conjunto.
-- [ ] No se introduce ningún concepto de familia o agrupación de productos: la agrupación la expresa el mapeo.
-- [ ] Los productos quedan uno a uno con los de la tienda; no se reestructura el catálogo del cliente.
+- [x] Existe la entidad producto del panel, con su origen declarado: conectado a la tienda o nativo.
+- [x] La relación anuncio→productos es de muchos a muchos en ambos sentidos.
+- [x] El admin puede crear un producto y asociarle identificadores de anuncio sin editar la base a mano.
+- [x] Asociar el mismo anuncio a varios productos funciona y queda consultable como conjunto.
+- [x] No se introduce ningún concepto de familia o agrupación de productos: la agrupación la expresa el mapeo.
+- [x] Los productos quedan uno a uno con los de la tienda; no se reestructura el catálogo del cliente.
 
 ## Answer — esquema puesto por la `0022` (17-ago-2026), la funcionalidad sigue abierta
 
@@ -87,3 +87,64 @@ Medido en producción el 18-ago-2026: `products` = **0 filas**, `product_ads` =
 respetar — pero tampoco hay nada contra qué ver la pantalla llena. **La prueba
 válida es el estado cargado**, y el hallazgo del nivel 1 del árbol de diseño
 aplica igual acá: el estado fácil aprueba por la razón equivocada.
+
+## Answer — construido (18-ago-2026, worktree `catalogo`)
+
+**El catálogo existe y se usa desde el panel.** El admin entra a `/catalogo`,
+crea un producto o conecta uno de la tienda, y le pega los identificadores de
+sus anuncios. Nadie toca la base a mano.
+
+### Lo que quedó
+
+- **Un accesor único** (`packages/db/src/products.ts`), en `@wa/db` y no en el
+  panel, por lo mismo que sus dos hermanos: el panel escribe el catálogo y el
+  worker lo lee, y un accesor por aplicación es la forma de que las dos mitades
+  del mismo módulo se desincronicen.
+- **La regla de aislamiento, pura y probada**, con la misma forma que
+  `resolveAgentSettings` y `resolveSalesAgentSettings`: pedir el catálogo de una
+  operación que no tiene productos devuelve la lista vacía, **nunca la de otra**.
+  Y su versión por id: pedir un producto ajeno devuelve `null` aunque alguien
+  escriba el uuid a mano.
+- **La pantalla**: tabla densa con el origen como columna, buscar por nombre o
+  por id de anuncio, filtrar con chips removibles, ordenar, columnas
+  conmutables, total y estado del filtro al pie, y selección múltiple.
+- **El registro de anuncios**, con el N:M visible en los dos sentidos.
+
+### Lo que se probó, y contra qué
+
+Los tests de las funciones puras están en
+`apps/worker/src/sales/catalog-accessor.test.ts` (31 casos). Pero **el estado
+vacío aprueba por la razón equivocada**, así que lo que decide fue el ensayo
+contra una base cargada con el catálogo real —los tres REVITALHAIR casi
+idénticos y un producto colombiano con el mismo nombre—: 36 comprobaciones sobre
+el accesor y la pantalla completa levantada contra esa base.
+
+Ahí se vio lo que ningún test verde iba a mostrar:
+
+- El mismo id de anuncio registrado en Guatemala y en Colombia resuelve, en cada
+  panel, **solo al producto propio**.
+- El anuncio de familia devuelve **el conjunto** de sus productos, que es lo que
+  deja a la cascada quedar ambigua en vez de elegir sobre el 77% del volumen.
+- Asociar desde el panel guatemalteco un producto colombiano lo **descarta y lo
+  informa**, en vez de reventar la transacción entera; y editarlo o borrarlo
+  responde «el producto no existe en esta operación».
+- Registrar dos veces el mismo par no es error y no duplica la fila — el admin
+  acaba de pegar el mismo id.
+- El pegado con espacios y saltos de línea **encuentra igual** su mapeo. Un id
+  que no encuentra el suyo se ve idéntico a un anuncio sin registrar.
+
+### Un fallo que el ensayo destapó, y que el typecheck no podía ver
+
+La señal de «llegaron N clics de anuncios registrados» estaba escrita con una
+subconsulta correlacionada dentro del `select`. Drizzle escribe ahí las columnas
+**sin calificar la tabla**, así que `pa.ad_id = ad_id` se resolvía contra la
+propia `product_ads` —o sea `pa.ad_id = pa.ad_id`— y **contaba todos los clics
+como reconocidos**. Es exactamente el modo de falla que esa señal existe para
+impedir: se veía sana estando rota. Está reescrita con `join` y
+`count(distinct)`, y el ensayo lo verifica con un clic registrado y uno que no.
+
+### Lo que este ticket **no** cierra, y vive en `ventas-panel/02` y `03`
+
+Los archivos enviables (migración `0025`, ola siguiente) y la lista de anuncios
+leída de Meta (falta la credencial). El registro por campo a mano —que es lo que
+este ticket pedía— funciona sin ninguna de las dos.

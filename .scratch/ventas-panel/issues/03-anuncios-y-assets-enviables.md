@@ -4,13 +4,13 @@
 
 **Blocked by:** 02
 
-**Status:** claimed — worktree `catalogo`, ola del 18-ago-2026
+**Status:** en curso — worktree `catalogo`, ola del 18-ago-2026 · rama `danielmedinac22/catalogo`. **No se cierra en esta ola**: falta la lista de anuncios leída de Meta (credencial) y los archivos enviables (migración `0025`).
 
-- [ ] El admin pega un identificador de anuncio en un solo campo y lo asocia a uno o varios productos.
-- [ ] Un mismo anuncio puede quedar asociado a varios productos, y se ve claramente a cuáles.
+- [x] El admin pega un identificador de anuncio en un solo campo y lo asocia a uno o varios productos.
+- [x] Un mismo anuncio puede quedar asociado a varios productos, y se ve claramente a cuáles.
 - [ ] El admin marca por archivo si es enviable, y solo esos llegan al cliente.
 - [ ] Un archivo desmarcado deja de enviarse desde la siguiente conversación.
-- [ ] **La interacción de registrar un anuncio nuevo es de segundos, no de minutos** — es la que determina cuánto soporte recurrente genera el módulo después de entregado.
+- [ ] **La interacción de registrar un anuncio nuevo es de segundos, no de minutos** *(el campo a mano lo cumple; elegir por nombre de la lista de Meta espera la credencial)* — es la que determina cuánto soporte recurrente genera el módulo después de entregado.
 
 ## Answer — el alcance sin la credencial de Meta (18-ago-2026)
 
@@ -70,3 +70,70 @@ después. Queda pendiente de validación con datos reales en producción.
 Por eso: **quien construya debe dejar una señal explícita de «llegaron N clics de
 anuncios registrados esta semana»**. Sin ella el módulo puede estar muerto y
 verse sano.
+
+## Answer — lo construido sin la credencial (18-ago-2026, worktree `catalogo`)
+
+### El registro funciona, por el camino de respaldo
+
+Registrar un anuncio es: pegar el id en el campo de la ficha y Enter. Y el N:M
+**se ve en los dos sentidos**:
+
+- Desde el producto, cada anuncio compartido dice a qué otros apunta —
+  `23851094999 · también apunta a REVITALHAIR – DHT BLOCKER ANTICALVICIE,
+  REVITALHAIR Serum Capilar`. Verificado en pantalla contra el catálogo real
+  cargado. Sin eso, desde la ficha de un producto un anuncio N:M **parece
+  exclusivo**, y el N:M existiría en la base y no en la pantalla.
+- Desde la tabla, la selección múltiple asocia **un anuncio a varios productos a
+  la vez**. Acá no es un control genérico: es literalmente el N:M del ticket y su
+  camino más corto — es como se registra un anuncio de familia o de combo sin
+  inventar un producto falso.
+
+Registrar dos veces el mismo par no es error ni duplica: el admin acaba de pegar
+el mismo id. Y el pegado con espacios o saltos de línea encuentra igual su
+mapeo — un id que no encuentra el suyo se ve idéntico a un anuncio sin
+registrar, que es la clase de error silencioso que este módulo no puede tener.
+
+### El estado «cuenta publicitaria sin conectar» es pantalla, no error
+
+La ficha lo dice donde importa, junto al campo: la cuenta de Meta no está
+conectada, así que el anuncio no se puede elegir por su nombre todavía, y
+mientras tanto se pega el ID — **que es el mismo camino que queda cuando el token
+vence**. El `## Answer` del nivel 3 ya lo había anticipado: F no reemplaza a las
+otras, las envuelve, y este estado va a pasar solo.
+
+### La señal que el nivel 3 pidió, y el fallo que destapó
+
+Está construida y es lo primero que se ve en `/catalogo`: **«llegaron N clics de
+anuncio en los últimos 7 días · M de anuncios registrados»**, con cuatro
+lecturas distintas —nunca llegó una referencia, llegan clics sin registrar, el
+mapa se está consultando, sin clics en la ventana— porque no significan lo mismo
+ni se arreglan igual. Con el estado de producción de hoy (1.723 conversaciones,
+`ad_id` = 0) la pantalla dice: *«Nunca llegó una referencia de anuncio al panel.
+Registrar anuncios acá no sirve de nada hasta que la pauta apunte al número que
+escucha el panel»*.
+
+**Y la señal misma casi nace rota.** Escrita con una subconsulta correlacionada
+dentro del `select`, drizzle emite las columnas sin calificar la tabla, así que
+la condición se resolvía contra la propia `product_ads` y **contaba todos los
+clics como reconocidos**: el número se veía sano y era falso. Lo destapó el
+ensayo contra una base cargada con un clic registrado y uno que no — ni el
+typecheck ni un test de función pura podían verlo. Está reescrita con `join` y
+`count(distinct)`.
+
+Que la contra-medida de «el módulo puede estar muerto y verse sano» haya podido
+mentir exactamente así es la mejor evidencia de que hacía falta.
+
+### Por qué este ticket queda abierto
+
+Dos cosas, ninguna de código:
+
+1. **La lista de anuncios leída de Meta** —la forma decidida, elegir por nombre—
+   necesita un token de usuario de sistema con `ads_read` sobre
+   `act_2042265076620189`. No hay ninguna credencial de Meta en el entorno. Lo
+   trae Daniel.
+2. **Los archivos enviables** (el interruptor por archivo, el conteo «2 de 4
+   enviables») dependen de `product_media`, que es migración: va con la `0025` de
+   la ola siguiente.
+
+Cuando llegue el token, lo que se agrega es la lista; el campo a mano y todo el
+N:M ya construido no cambian.
