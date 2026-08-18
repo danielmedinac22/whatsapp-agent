@@ -24,7 +24,7 @@
  * `if` que la mire.
  */
 
-import type { Inbox } from "../inbox/resolve";
+import type { Inbox } from "@wa/db";
 
 /**
  * Los dos agentes. `confirmacion` es el que existe en producción desde antes

@@ -31,7 +31,7 @@
  * los pedidos que existen solo en logística.
  */
 
-import type { DropiOrder, ShopifyOrder } from "@wa/db";
+import type { DropiOrder, ShopifyOrder } from "./schema";
 
 /**
  * Las dos bandejas. Son los mismos nombres que los roles `ventas` y

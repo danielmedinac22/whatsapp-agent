@@ -7,7 +7,7 @@ import {
   type OrderPipelineStatus,
   resolveInbox,
   resolveOrderPhase,
-} from "./resolve";
+} from "@wa/db";
 
 // Las fechas son días distintos de un mismo mes para que el orden se lea a ojo:
 // lo único que el ruteo compara es «¿el clic es posterior al último pedido?».

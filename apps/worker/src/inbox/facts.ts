@@ -16,7 +16,7 @@
 import { and, eq, isNull } from "@wa/db";
 import { dropiOrders, shopifyOrders } from "@wa/db";
 import { db } from "../db";
-import type { OrderFacts } from "./resolve";
+import type { OrderFacts } from "@wa/db";
 
 /** Todos los pedidos de un contacto, en la forma que el ruteo espera. */
 export async function loadOrderFacts(

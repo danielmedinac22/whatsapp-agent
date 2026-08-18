@@ -18,7 +18,7 @@ import { markNovedadCustomerReply } from "../dropi/novedad-reply";
 import { fetchKapsoMedia, markRead } from "../kapso/client";
 import { resolveInboundOperation } from "../kapso/connection";
 import type { ParsedAdReferral, ParsedInboundMessage } from "../kapso/inbound";
-import { resolveInbox, type InboxDecision } from "../inbox/resolve";
+import { resolveInbox, type InboxDecision } from "@wa/db";
 import { loadOrderFacts } from "../inbox/facts";
 import type { OperationId } from "../operations";
 import { decideAdAttribution } from "../sales/attribution";

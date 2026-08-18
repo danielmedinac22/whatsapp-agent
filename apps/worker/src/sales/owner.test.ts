@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ParsedAdReferral } from "../kapso/inbound";
-import { resolveInbox, type OrderFacts } from "../inbox/resolve";
+import { resolveInbox, type OrderFacts } from "@wa/db";
 import { decideAdAttribution, type StoredAdAttribution } from "./attribution";
 import { resolveConversationOwner } from "./owner";
 
