@@ -47,14 +47,14 @@ Es importante, porque el resto de este mapa dice otra cosa.
 
 ## Criterios
 
-- [ ] Existe un inventario de lo que está roto, **medido en el navegador**, no supuesto leyendo el código: qué componente, en qué ancho, y qué le pasa.
-- [ ] Ningún componente desborda horizontalmente el cuerpo de la página en 390 px.
-- [ ] Todo lo que sea ancho por naturaleza —tablas, bloques de código, diagramas— desborda **dentro de su propio contenedor**, no del documento.
-- [ ] La bandeja es usable en móvil: se puede llegar a una conversación, leerla y responder.
-- [ ] Los objetivos táctiles son alcanzables; nada queda debajo del teclado ni fuera de alcance del pulgar.
-- [ ] Ningún componente queda roto en escritorio por arreglar el móvil. **La regresión en la dirección contraria es el riesgo real de este ticket.**
-- [ ] `pnpm -r typecheck` limpio.
-- [ ] El usuario da el veredicto visual en los anchos reales. **No se cierra sin eso.**
+- [x] Existe un inventario de lo que está roto, **medido en el navegador**, no supuesto leyendo el código: qué componente, en qué ancho, y qué le pasa.
+- [x] Ningún componente desborda horizontalmente el cuerpo de la página en 390 px.
+- [x] Todo lo que sea ancho por naturaleza —tablas, bloques de código, diagramas— desborda **dentro de su propio contenedor**, no del documento.
+- [x] La bandeja es usable en móvil: se puede llegar a una conversación, leerla y responder.
+- [x] Los objetivos táctiles son alcanzables; nada queda debajo del teclado ni fuera de alcance del pulgar.
+- [x] Ningún componente queda roto en escritorio por arreglar el móvil. **La regresión en la dirección contraria es el riesgo real de este ticket.**
+- [x] `pnpm -r typecheck` limpio.
+- [x] El usuario da el veredicto visual en los anchos reales. **No se cierra sin eso.**
 
 ## Cómo se verifica
 

@@ -4,7 +4,7 @@
 
 **Blocked by:** 02
 
-**Status:** done
+**Status:** resolved — worktree `grill-nivel-1`, sesión con el usuario, 18-ago-2026
 
 - [x] Un producto conectado a la tienda se distingue de uno nativo **sin leer**. — resuelto en el nivel 2 (origen como columna + aviso de solo lectura en la ficha).
 - [x] **Registrar un anuncio nuevo se siente de segundos.** — esta ronda.
