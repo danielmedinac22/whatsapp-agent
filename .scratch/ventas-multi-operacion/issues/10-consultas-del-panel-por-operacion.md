@@ -4,7 +4,7 @@
 
 **Blocked by:** 06 · 07
 
-**Status:** ready-for-agent
+**Status:** claimed — worktree `selector-operacion`, ola del 18-ago-2026
 
 Levantado el 18-ago-2026 desde el spec de pulido de UI, al construir los prototipos del grupo de conversaciones.
 
@@ -60,3 +60,51 @@ Las 1.678 conversaciones y los 1.678 pedidos de Guatemala son el camino que fact
 ## Nota de alcance
 
 Este ticket es el filtro **por operación**. El filtro **por módulo** —qué conversaciones ve ventas y cuáles confirmación— es de *ventas-modulos-y-ruteo 03*, y son independientes: se puede filtrar por país sin separar módulos, pero no al revés.
+
+## Answer — lo repartido y lo medido (18-ago-2026, sesión coordinadora)
+
+Va en el **mismo worktree que el 07** (`selector-operacion`), y no por afinidad
+temática: el 07 escribe `resolvePanelOperation()` y las doce consultas de este
+ticket son sus primeras llamadoras. Separarlos habría dejado a este ticket
+codeando contra una función que otra rama todavía no mergeó.
+
+### Migración `0024` — asignada a este worktree, y es la única de la ola
+
+**Solo un worktree por ola genera migración.** No es una precaución de estilo:
+drizzle-kit reescribe `packages/db/migrations/meta/_journal.json` y deja un
+`NNNN_snapshot.json`. Dos ramas que generen en paralelo chocan en el journal
+siempre, y el conflicto no lo ve ningún check local. Esta ola tiene tres
+worktrees y **la migración es de este**.
+
+Contenido: `operation_id` en `shopify_orders` y en `wa_templates`, con backfill
+a Guatemala. **Drizzle no escribe el backfill** — la migración generada se lee y
+se le meten los `UPDATE` a mano antes de los índices, y antes de aplicarla.
+
+### Medido en producción (18-ago-2026, solo lectura)
+
+| Tabla | Filas | Qué implica |
+| -- | -- | -- |
+| `operations` | 1 (`GT`, `active`) | el fallback cubre todo; filtrar no puede cambiar resultados |
+| `conversations` | 1.714 | **0 con `operation_id` NULL** |
+| `shopify_orders` | 1.707 | backfill a GT |
+| `wa_templates` | 15 | backfill a GT |
+| `templates` | 9 | ya tiene `operation_id` |
+
+**El «0 con `operation_id` NULL» es el número que desarma el riesgo de este
+ticket.** La sección de no-regresión decía que si al agregar el `where` alguna
+pantalla perdía filas era señal de filas en NULL, y que había que decidir qué
+hacer con ellas antes de seguir. No hay ninguna: las 1.714 conversaciones están
+asociadas a Guatemala. Filtrar devuelve exactamente lo mismo que hoy, y si
+alguna pantalla queda vacía es un bug del filtro, no un dato huérfano.
+
+### El criterio que más importa, y no es el filtro
+
+**Las escrituras por id** — `markRead`, `setAgentMode`, `setConfirmationStatus`—
+verifican pertenencia **antes de escribir**, no solo al leer. Un id viejo en una
+pestaña abierta apagando el agente de la conversación de otro país es el daño
+real de este ticket; el resto es higiene.
+
+Y la prueba que falla si alguien agrega una consulta sin filtro: sin ella el
+punto ciego vuelve, porque **el compilador no puede verlo** — una consulta con
+Drizzle no pasa por accesor y no hay parámetro que volver obligatorio. Esa es la
+razón por la que este ticket existe aparte del 06 y no como su remiendo.

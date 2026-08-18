@@ -6,7 +6,7 @@ Es el mínimo de catálogo que el reconocimiento necesita para existir. La exper
 
 **Blocked by:** None — can start immediately.
 
-**Status:** esquema en curso — worktree `esquema-0022` deja las tablas; la funcionalidad sigue abierta
+**Status:** claimed — worktree `catalogo`, ola del 18-ago-2026
 
 - [ ] Existe la entidad producto del panel, con su origen declarado: conectado a la tienda o nativo.
 - [ ] La relación anuncio→productos es de muchos a muchos en ambos sentidos.
@@ -64,3 +64,26 @@ Exporta `products`, `productAds`, `productSource` y los tipos `Product`, `NewPro
 ### Verificado en producción tras aplicar
 
 `products` 0 filas · `product_ads` 0 filas · `product_source` = `[shopify, native]` · las restricciones y los índices de arriba existen con esos nombres. Nada de lo existente cambió (ver el `## Answer` del ticket 01 de multi-operación para el patrón de verificación; los números están en el commit de la `0022`).
+
+## Answer — repartido con el catálogo del panel (18-ago-2026, sesión coordinadora)
+
+Va en el worktree **`catalogo`**, junto a `ventas-panel/02` y `ventas-panel/03`.
+No es agrupación por tema: los tres caen en la misma pantalla y en el mismo
+accesor. Repartirlos por ticket habría puesto a tres sesiones a escribir
+`packages/db/src/products.ts` a la vez.
+
+**Este ticket es el que sí se cierra en esta ola.** Es el mínimo que el
+reconocimiento necesita: el accesor sobre `products` y `product_ads` —que la
+`0022` ya dejó aplicadas y vacías— y el alta de producto con sus anuncios sin
+tocar la base a mano. Los otros dos quedan abiertos por dependencias ajenas
+(archivos enviables → migración `0025` de la ola siguiente; lista de anuncios de
+Meta → credencial que trae Vorare).
+
+**No genera migración**, como ya decía el ticket. Y esta ola tiene una sola
+migración asignada, la `0024`, que es de otro worktree.
+
+Medido en producción el 18-ago-2026: `products` = **0 filas**, `product_ads` =
+**0 filas**. El catálogo arranca vacío, así que no hay backfill ni datos que
+respetar — pero tampoco hay nada contra qué ver la pantalla llena. **La prueba
+válida es el estado cargado**, y el hallazgo del nivel 1 del árbol de diseño
+aplica igual acá: el estado fácil aprueba por la razón equivocada.
