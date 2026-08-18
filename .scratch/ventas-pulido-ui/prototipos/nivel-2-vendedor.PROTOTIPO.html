@@ -226,6 +226,31 @@
     </div>
 
     <div class="pk-set">
+      <span class="pk-legend">Sobre la A · ejes abiertos</span>
+      <div class="pk-opts" data-key="guardFirst">
+        <button class="pk-opt" data-val="false">Límite en su lugar</button>
+        <button class="pk-opt" data-val="true">Límite arriba</button>
+      </div>
+    </div>
+
+    <div class="pk-pair">
+      <div class="pk-set">
+        <span class="pk-legend">Vista previa</span>
+        <div class="pk-opts" data-key="preview">
+          <button class="pk-opt" data-val="false">No</button>
+          <button class="pk-opt" data-val="true">Sí</button>
+        </div>
+      </div>
+      <div class="pk-set">
+        <span class="pk-legend">Presets</span>
+        <div class="pk-opts" data-key="presets">
+          <button class="pk-opt" data-val="false">No</button>
+          <button class="pk-opt" data-val="true">Sí</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="pk-set">
       <span class="pk-legend">Tono</span>
       <div class="pk-opts" data-key="tone">
         <button class="pk-opt" data-val="cercano">Cercano</button>
@@ -252,10 +277,9 @@
     </div>
 
     <p class="pk-hint">
-      <kbd>←</kbd> <kbd>→</kbd> alternan. La prueba: <strong>¿se ve de un
-      vistazo qué campo tiene consecuencia y cuál es sólo tono?</strong>
-      Poné el límite en <strong>0</strong> — es el caso que el spec nombra, y
-      el que más cambia lo que Sebastián puede hacer.
+      <strong>Variante 1 elegida</strong> — todo en la misma pantalla. Los tres
+      ejes de arriba se juzgan <em>sobre</em> ella: ninguno la rompe.
+      <kbd>←</kbd> <kbd>→</kbd> alternan.
     </p>
   </div>
 </div>
@@ -291,7 +315,7 @@ const WHEN = [
 ];
 
 const VARIANTS = [
-  {id:"A",label:"Secciones apiladas",  tag:"la anatomía de Katherine: tarjetas con h2",           ref:"agent-form.tsx · Lindy"},
+  {id:"A",label:"Secciones apiladas ✓", tag:"ELEGIDA · todo en la misma pantalla",                  ref:"agent-form.tsx · Lindy"},
   {id:"B",label:"Consecuencia | tono", tag:"dos columnas: lo que actúa, lo que suena",            ref:"separación física"},
   {id:"C",label:"El límite arriba",    tag:"el guardarraíl primero, con su consecuencia",         ref:"Relevance AI"},
   {id:"D",label:"Presets con preview", tag:"el tono se elige y se ve respondido",                 ref:"Gorgias"},
@@ -299,7 +323,10 @@ const VARIANTS = [
 ];
 
 const state = { variant:0, country:"GT", module:"ventas", screen:"vendedor", bars:"open",
-                limit:"10", tone:"cercano", when:"consulta", tab:"persona" };
+                limit:"10", tone:"cercano", when:"consulta", tab:"persona",
+                /* Ejes abiertos dentro de la variante elegida. Ninguno rompe
+                   «todo en la misma pantalla», que fue la razón del veredicto. */
+                guardFirst:false, preview:false, presets:false };
 
 const el=(t,c,h)=>{const n=document.createElement(t);if(c)n.className=c;if(h!=null)n.innerHTML=h;return n;};
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -438,10 +465,24 @@ const saveBar = () => {
 
 function vA() { // secciones apiladas — la anatomía de Katherine
   const w = el("div");
-  w.appendChild(identityBlock());
-  w.appendChild(messagesBlock());
-  w.appendChild(guardBlock());
-  w.appendChild(toneBlock({ history:true }));
+  const cols = el("div");
+  cols.style.cssText = state.preview
+    ? "display:grid;grid-template-columns:1fr 340px;gap:13px;align-items:start"
+    : "display:block";
+  const L = el("div");
+  if (state.guardFirst) L.appendChild(guardBlock());
+  L.appendChild(identityBlock());
+  L.appendChild(messagesBlock());
+  if (!state.guardFirst) L.appendChild(guardBlock());
+  L.appendChild(toneBlock({ history:true, presets:state.presets }));
+  cols.appendChild(L);
+  if (state.preview) {
+    const R = el("div");
+    R.style.cssText = "position:sticky;top:16px";
+    R.appendChild(previewBlock());
+    cols.appendChild(R);
+  }
+  w.appendChild(cols);
   w.appendChild(saveBar());
   return w;
 }
@@ -630,7 +671,8 @@ function syncPicker() {
   document.getElementById("pk-vtag").textContent = v.tag;
   document.getElementById("pk-ref").textContent = "ref: " + v.ref;
   document.querySelectorAll(".pk-opts[data-key]").forEach(g => {
-    g.querySelectorAll(".pk-opt").forEach(b => b.setAttribute("aria-pressed", String(state[g.dataset.key] === b.dataset.val)));
+    g.querySelectorAll(".pk-opt").forEach(b => b.setAttribute("aria-pressed",
+      String(String(state[g.dataset.key]) === b.dataset.val)));
   });
 }
 document.querySelectorAll('.pk-opts[data-key]').forEach(g => {
@@ -638,7 +680,8 @@ document.querySelectorAll('.pk-opts[data-key]').forEach(g => {
     b.onclick = () => {
       const k = g.dataset.key;
       if (k === "country") { switchCountry(b.dataset.val); return; }
-      state[k] = b.dataset.val;
+      state[k] = ["guardFirst","preview","presets"].includes(k)
+        ? b.dataset.val === "true" : b.dataset.val;
       render();
     };
   });
