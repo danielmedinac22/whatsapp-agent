@@ -33,6 +33,40 @@
 - **El pulido de comportamiento del panel** (móvil y escritorio).
 - **Los tres niveles del árbol de diseño**, cerrados con el usuario. Prototipos en `.scratch/ventas-pulido-ui/prototipos/`.
 
+## Ola en curso — repartida el 18-ago-2026
+
+Tres worktrees en paralelo, todos nacidos de `7b93bea`. **La sesión coordinadora
+es la única que mergea y deploya.**
+
+| Worktree | Tickets | Dueño de | Migración |
+| -- | -- | -- | -- |
+| `selector-operacion` | multi-op **07 + 10** | `operations.ts`, `schema.ts`, `queries.ts`, `worker.ts`, `layout.tsx`, `access/resolve.ts`, las 6 rutas del worker | **`0024`** |
+| `catalogo` | ingesta **03** + panel **02 + 03** | `products.ts` (nuevo), `/catalogo`, `shopify/admin.ts` | ninguna |
+| `vendedor-config` | panel **01** | `/vendedor` y su ruta de API | ninguna |
+
+**Solo un worktree por ola genera migración**, porque drizzle reescribe
+`migrations/meta/_journal.json` y dos ramas que generen en paralelo chocan
+siempre — sin que ningún check local lo vea. De ahí que **tres tickets queden a
+propósito abiertos al cerrar la ola**:
+
+- `ventas-panel/01` — falta el borde del límite de descuento (columna nueva).
+- `ventas-panel/02` — faltan los archivos enviables (tabla `product_media`).
+- `ventas-panel/03` — faltan los archivos enviables **y** la lista de anuncios de
+  Meta, que espera una credencial que trae Vorare.
+
+**Orden de merge**: `selector-operacion` primero (es de quien cuelgan las
+entradas de menú `/catalogo` y `/vendedor`), después los otros dos. `merge-tree`
+contra el `main` de ese momento antes de cada uno.
+
+### Ola siguiente, ya perfilada
+
+1. **Esquema `0025`** — `product_media` (bytes en Postgres, decidido el 18-ago) y
+   `sales_agent_settings.discount_limit_behavior`. Más las pantallas que cuelgan.
+2. **`bandejas`** — `ventas-modulos-y-ruteo/03 + 04` y `ventas-panel/04`. Van
+   juntos porque los tres caen en `inbox-client.tsx` (1.026 líneas), y **un
+   archivo grande tiene un solo dueño por vez**. Depende de que `selector-operacion`
+   haya mergeado: comparten `queries.ts`.
+
 ## Qué sigue, y qué lo bloquea
 
 **Se puede construir ya** — las pantallas, que ahora tienen forma decidida en los `## Answer` de `ventas-pulido-ui`:
