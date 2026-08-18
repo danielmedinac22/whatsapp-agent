@@ -4,7 +4,7 @@
 
 **Blocked by:** 06 · 07
 
-**Status:** resolved — worktree `selector-operacion`, ola del 18-ago-2026
+**Status:** resolved — ola del 18-ago-2026, mergeado y desplegado. Migración `0024` aplicada a producción
 
 Levantado el 18-ago-2026 desde el spec de pulido de UI, al construir los prototipos del grupo de conversaciones.
 

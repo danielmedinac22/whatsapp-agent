@@ -4,7 +4,7 @@
 
 **Blocked by:** ventas-conversacion 01 · Sebastián responde con su persona
 
-**Status:** abierto — la pantalla entregada en el worktree `vendedor-config`, rama `danielmedinac22/vendedor-config`, sin merge ni deploy. Falta el borde del límite, que necesita la `0025` de la ola siguiente. Ola del 18-ago-2026
+**Status:** abierto — la pantalla está mergeada y desplegada. Falta el borde del límite, que necesita la `0025` de la ola siguiente. Ola del 18-ago-2026
 
 - [x] Campos estructurados para nombre visible, mensajes base (saludo, empuje al cierre, mensaje de embudo) y límite de descuento.
 - [x] Campo de texto libre para tono e instrucciones de personalidad.

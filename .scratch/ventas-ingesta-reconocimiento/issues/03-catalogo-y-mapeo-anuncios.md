@@ -6,7 +6,7 @@ Es el mínimo de catálogo que el reconocimiento necesita para existir. La exper
 
 **Blocked by:** None — can start immediately.
 
-**Status:** resolved — worktree `catalogo`, ola del 18-ago-2026 · rama `danielmedinac22/catalogo`, sin merge ni deploy
+**Status:** resolved — ola del 18-ago-2026, mergeado y desplegado
 
 - [x] Existe la entidad producto del panel, con su origen declarado: conectado a la tienda o nativo.
 - [x] La relación anuncio→productos es de muchos a muchos en ambos sentidos.

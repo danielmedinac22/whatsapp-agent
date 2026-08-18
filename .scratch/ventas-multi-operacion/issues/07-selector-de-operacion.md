@@ -4,7 +4,7 @@
 
 **Blocked by:** 06
 
-**Status:** resolved — worktree `selector-operacion`, ola del 18-ago-2026
+**Status:** resolved — ola del 18-ago-2026, mergeado y desplegado. Migración `0024` aplicada a producción
 
 - [x] Hay un selector de operación accesible desde toda la sección.
 - [x] **La operación activa es evidente en pantalla sin abrir el selector.** El error que esto previene —editar el país equivocado— es silencioso, así que la señal tiene que ser pasiva.

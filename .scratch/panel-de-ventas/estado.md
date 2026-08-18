@@ -10,7 +10,7 @@
 
 ## Reglas de trabajo, aprendidas a golpes
 
-- **`pnpm -r typecheck` y `pnpm --filter @wa/worker test` después de CADA ticket**, no al final. Hoy: **4 paquetes limpios, 334 tests en 22 archivos.**
+- **`pnpm -r typecheck` y `pnpm --filter @wa/worker test` después de CADA ticket**, no al final. Hoy: **4 paquetes limpios, 423 tests en 27 archivos.**
 - **`dropi_dry_run` está en `true` a propósito.** Confirmado intencional: es el default del esquema, está expuesto como interruptor en el panel, y `84b62c0` quitó el auto-confirm dejando el botón manual como único camino. **No lo cambies.**
 - **Los tests van sobre funciones puras con fixtures**, en el estilo de `kapso/inbound.test.ts`. **Nombres en español que enuncian el comportamiento**, no la mecánica.
 - **Si algo del ticket contradice el código real, para y pregunta. El código gana.** Pasó varias veces y las correcciones valieron más que los tickets.
@@ -20,7 +20,7 @@
 
 ## Qué está construido y en producción
 
-**21 de 41 tickets resueltos.** Cuatro migraciones aplicadas (`0020`–`0023`). Worker en Railway y dashboard en Vercel, desplegados y verificados.
+**24 de 41 tickets resueltos.** Cinco migraciones aplicadas (`0020`–`0024`). Worker en Railway y dashboard en Vercel, desplegados y verificados.
 
 - **Migración multi-operación completa** (tickets 01–06). Existe `operations`; Guatemala registrada (`GT`/`GTQ`/`active`); **cero `eq(<tabla>.id, 1)` en toda la base** — ningún accesor devuelve conexión o configuración sin decir de qué operación.
 - **La atribución del primer contacto** — referencia del anuncio y `ctwa_clid` se capturan y persisten. Era irreversible: no existe endpoint de Meta para recuperarlos después.
@@ -33,47 +33,63 @@
 - **El pulido de comportamiento del panel** (móvil y escritorio).
 - **Los tres niveles del árbol de diseño**, cerrados con el usuario. Prototipos en `.scratch/ventas-pulido-ui/prototipos/`.
 
-## Ola en curso — repartida el 18-ago-2026
+## Ola del 18-ago-2026 — cerrada, en producción
 
-Tres worktrees en paralelo, todos nacidos de `7b93bea`. **La sesión coordinadora
-es la única que mergea y deploya.**
+**Tres worktrees en paralelo, los tres mergeados y desplegados.** Migración
+`0024` aplicada. Suite: **423 tests en 27 archivos** (venía de 334 en 22).
 
-| Worktree | Tickets | Dueño de | Migración |
-| -- | -- | -- | -- |
-| `selector-operacion` | multi-op **07 + 10** | `operations.ts`, `schema.ts`, `queries.ts`, `worker.ts`, `layout.tsx`, `access/resolve.ts`, las 6 rutas del worker | **`0024`** |
-| `catalogo` | ingesta **03** + panel **02 + 03** | `products.ts` (nuevo), `/catalogo`, `shopify/admin.ts` | ninguna |
-| `vendedor-config` | panel **01** | `/vendedor` y su ruta de API | ninguna |
+| Worktree | Tickets | Estado |
+| -- | -- | -- |
+| `selector-operacion` | multi-op **07 + 10** | ambos `resolved` |
+| `catalogo` | ingesta **03** + panel **02 + 03** | ingesta 03 `resolved`; panel 02 y 03 abiertos |
+| `vendedor-config` | panel **01** | abierto |
 
-**Solo un worktree por ola genera migración**, porque drizzle reescribe
-`migrations/meta/_journal.json` y dos ramas que generen en paralelo chocan
-siempre — sin que ningún check local lo vea. De ahí que **tres tickets queden a
-propósito abiertos al cerrar la ola**:
+**Los tres tickets abiertos lo están a propósito**, y cada uno dice qué le falta:
+panel/01 el borde del límite de descuento, panel/02 los archivos enviables, y
+panel/03 esos mismos archivos **más** la lista de anuncios de Meta.
 
-- `ventas-panel/01` — falta el borde del límite de descuento (columna nueva).
-- `ventas-panel/02` — faltan los archivos enviables (tabla `product_media`).
-- `ventas-panel/03` — faltan los archivos enviables **y** la lista de anuncios de
-  Meta, que espera una credencial que trae Vorare.
+### Dos cosas que esta ola enseñó, y que valen para la próxima
 
-**Orden de merge**: `selector-operacion` primero (es de quien cuelgan las
-entradas de menú `/catalogo` y `/vendedor`), después los otros dos. `merge-tree`
-contra el `main` de ese momento antes de cada uno.
+1. **Dos verdes por separado se rompieron al unirse, otra vez.** `catalogo` y
+   `vendedor-config` llamaban `panelOperation()` de `@wa/db`, que el ticket 07
+   retiró justo al poner el selector. Ningún check local podía verlo: el
+   conflicto solo existe en la unión. El arreglo no fue cosmético — reconectarlas
+   a `resolvePanelOperation()` es lo que hace que el selector las afecte de
+   verdad. **Al repartir, la función que un ticket retira es superficie
+   compartida aunque no aparezca en ningún diff.**
+
+2. **El ticket 10 afirmaba que `templates.operation_id` ya existía desde la
+   `0022`, y era falso.** La sesión midió el esquema real en vez de creerle, y
+   por eso la `0024` la agrega. Si hubiera obedecido al ticket, el `ALTER TABLE`
+   habría reventado a mitad de migración **contra producción**. Es la regla de
+   «el código gana» pagando por sí sola.
 
 ### Ola siguiente, ya perfilada
 
 1. **Esquema `0025`** — `product_media` (bytes en Postgres, decidido el 18-ago) y
-   `sales_agent_settings.discount_limit_behavior`. Más las pantallas que cuelgan.
+   `sales_agent_settings.discount_limit_behavior`. Más las pantallas que cuelgan,
+   que cierran panel/01 y panel/02.
 2. **`bandejas`** — `ventas-modulos-y-ruteo/03 + 04` y `ventas-panel/04`. Van
    juntos porque los tres caen en `inbox-client.tsx` (1.026 líneas), y **un
-   archivo grande tiene un solo dueño por vez**. Depende de que `selector-operacion`
-   haya mergeado: comparten `queries.ts`.
+   archivo grande tiene un solo dueño por vez**.
+
+**Sigue siendo una migración por ola.** Drizzle reescribe
+`migrations/meta/_journal.json` y dos ramas que generen en paralelo chocan
+siempre, sin que ningún check local lo vea.
 
 ## Qué sigue, y qué lo bloquea
 
-**Se puede construir ya** — las pantallas, que ahora tienen forma decidida en los `## Answer` de `ventas-pulido-ui`:
+**Se puede construir ya:**
 
-- `ventas-multi-operacion/07` — el selector de operación. **Bloquea la apertura de Colombia**: el panel lanza con dos operaciones activas.
-- `ventas-multi-operacion/10` — las doce consultas de `apps/web/src/lib/queries.ts` **no filtran por operación**. Punto ciego estructural del contract: una consulta con Drizzle no pasa por accesor, así que no hubo parámetro que volver obligatorio.
-- `ventas-panel/01–04`, `ventas-modulos-y-ruteo/03–04`, `ventas-ingesta-reconocimiento/03`.
+- **La ola siguiente** (arriba): el esquema `0025` y las bandejas.
+- `ventas-conversacion/03` — envío de apoyos visuales. Depende de `product_media`.
+- `ventas-cierre-orden/03–05` y `ventas-capi/03` — ver la tabla de abajo, casi
+  todos esperan algo del cliente.
+
+**Ya no está pendiente** lo que la ola del 18-ago cerró: el selector de operación
+y el filtro por operación de las doce consultas del panel. **La apertura de
+Colombia dejó de estar bloqueada por el panel** — `ventas-multi-operacion/08`
+puede arrancar cuando el número colombiano esté en Cloud API.
 
 **Depende del usuario, no del código:**
 
@@ -84,6 +100,7 @@ contra el `main` de ese momento antes de cada uno.
 | Permiso `whatsapp_business_manage_events` de Meta | `ventas-capi/03` y `04` |
 | Migrar +57 304 5430173 a Cloud API | `ventas-multi-operacion/08`. Runbook de 5 pasos en el ticket 09. |
 | Crear el dataset de CAPI de Guatemala | El envío de conversiones |
+| Token de usuario de sistema con `ads_read` sobre `act_2042265076620189` | `ventas-panel/03` — sin él, el anuncio se registra a mano y no por su nombre, que es lo que se eligió |
 
 ## Trampas que ya costaron tiempo. No las redescubras.
 
@@ -92,7 +109,7 @@ contra el `main` de ese momento antes de cada uno.
 - **`contacts.agent_mode` no significa «un humano lo tomó»**: arranca en `false` y solo pasa a `true` cuando la confirmación habla. Derivar «humano» de ahí marca justo a los leads nuevos.
 - **No inventes vocabulario para actos que el panel ya nombra.** «Tomar el chat» ya es *Agente: ON/OFF*; la cola de triage ya es `needsAttention`. Una ronda entera de prototipos se descartó por esto.
 - **`shopify_orders.order_id` tiene único global** y el número de pedido es por tienda. No muerde hasta la segunda tienda; es del ticket 08.
-- Al mergear ramas paralelas: **dos verdes por separado pueden romperse al unirse.** Pasó con un fixture al que otra rama le agregó un campo.
+- Al mergear ramas paralelas: **dos verdes por separado pueden romperse al unirse.** Pasó con un fixture al que otra rama le agregó un campo, y otra vez el 18-ago con una función *retirada*: dos ramas seguían llamando `panelOperation()` mientras una tercera lo quitaba. **Lo que un ticket elimina es superficie compartida aunque no aparezca en ningún diff** — al repartir, hay que nombrarlo igual que un archivo.
 
 ## Cómo se ha venido trabajando
 

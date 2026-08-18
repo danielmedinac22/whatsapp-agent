@@ -4,7 +4,7 @@
 
 **Blocked by:** ventas-ingesta-reconocimiento 03 · Catálogo y mapeo anuncio→productos
 
-**Status:** en curso — worktree `catalogo`, ola del 18-ago-2026 · rama `danielmedinac22/catalogo`. **No se cierra en esta ola**: faltan los archivos enviables, que necesitan la migración `0025`.
+**Status:** en curso — worktree `catalogo`, ola del 18-ago-2026 mergeado y desplegado. **No se cierra en esta ola**: faltan los archivos enviables, que necesitan la migración `0025`.
 
 - [x] El admin puede buscar y conectar un producto existente de la tienda. *(construido; sin verificar contra datos reales — `shopify_connection` está vacía)*
 - [x] **Un producto conectado lee su información de la tienda en tiempo de uso, no la copia** — editarlo allá se refleja acá, sin desincronización silenciosa.
