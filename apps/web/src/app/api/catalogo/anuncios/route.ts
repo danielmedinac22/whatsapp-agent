@@ -1,5 +1,6 @@
 import { auth } from "@/auth";
-import { linkAdToProducts, listProductIdsForAd, panelOperation, unlinkAd } from "@wa/db";
+import { linkAdToProducts, listProductIdsForAd, unlinkAd } from "@wa/db";
+import { resolvePanelOperation } from "@/lib/operation";
 
 /**
  * El registro de anuncios: un identificador, uno o varios productos.
@@ -37,7 +38,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const op = await panelOperation();
+    const op = await resolvePanelOperation();
     const { linked, rejected } = await linkAdToProducts(
       op,
       body.adId,
@@ -61,6 +62,6 @@ export async function DELETE(req: Request) {
   if (!body.adId || !body.productId) {
     return Response.json({ error: "faltan datos" }, { status: 400 });
   }
-  const gone = await unlinkAd(await panelOperation(), body.adId, body.productId);
+  const gone = await unlinkAd(await resolvePanelOperation(), body.adId, body.productId);
   return Response.json({ ok: gone });
 }

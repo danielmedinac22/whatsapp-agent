@@ -2,11 +2,11 @@ import {
   eq,
   getSalesAgentSettings,
   kapsoConnection,
-  panelOperation,
   salesAgentSettings,
   type Operation,
   type SalesAgentSettings,
 } from "@wa/db";
+import { resolvePanelOperation } from "./operation";
 import type { SalesAgentSettingsInput } from "@wa/shared";
 import { normalizeSalesAgentSettings } from "@wa/shared";
 import { db } from "./db";
@@ -42,7 +42,7 @@ export interface VendedorScreen {
 export async function loadVendedorScreen(): Promise<VendedorScreen> {
   // La misma operación que edita la pantalla de Katherine, resuelta igual:
   // hasta el selector es la única activa, y con dos falla en vez de adivinar.
-  const operation = await panelOperation();
+  const operation = await resolvePanelOperation();
   const [settings, phone] = await Promise.all([
     getSalesAgentSettings(operation),
     connectionPhone(operation),
@@ -77,7 +77,7 @@ async function connectionPhone(operation: Operation): Promise<string | null> {
 export async function saveVendedorSettings(
   input: SalesAgentSettingsInput,
 ): Promise<void> {
-  const operation = await panelOperation();
+  const operation = await resolvePanelOperation();
   const fields = normalizeSalesAgentSettings(input);
   await db
     .insert(salesAgentSettings)

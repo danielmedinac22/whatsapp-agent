@@ -1,4 +1,5 @@
-import { getSalesAgentSettings, panelOperation } from "@wa/db";
+import { getSalesAgentSettings } from "@wa/db";
+import { resolvePanelOperation } from "@/lib/operation";
 import { salesAgentSettingsInput } from "@wa/shared";
 import { auth } from "@/auth";
 import { saveVendedorSettings } from "@/lib/vendedor";
@@ -24,7 +25,7 @@ export async function GET() {
   if (!session) return new Response("unauthorized", { status: 401 });
   // La pantalla se dibuja con lo que trae el servidor; esto es para quien
   // quiera leer la configuración sin abrirla.
-  return Response.json(await panelOperation().then(getSalesAgentSettings));
+  return Response.json(await resolvePanelOperation().then(getSalesAgentSettings));
 }
 
 export async function PUT(req: Request) {

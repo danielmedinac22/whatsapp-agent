@@ -1,5 +1,6 @@
 import { auth } from "@/auth";
-import { deleteProduct, panelOperation, updateNativeProduct } from "@wa/db";
+import { deleteProduct, updateNativeProduct } from "@wa/db";
+import { resolvePanelOperation } from "@/lib/operation";
 
 /**
  * Editar y borrar un producto del catálogo.
@@ -21,7 +22,7 @@ export async function PATCH(
   };
 
   try {
-    const product = await updateNativeProduct(await panelOperation(), id, {
+    const product = await updateNativeProduct(await resolvePanelOperation(), id, {
       ...(body.name !== undefined ? { name: body.name } : {}),
       ...(body.description !== undefined
         ? { description: body.description }
@@ -43,7 +44,7 @@ export async function DELETE(
   const session = await auth();
   if (!session) return new Response("unauthorized", { status: 401 });
   const { id } = await params;
-  const gone = await deleteProduct(await panelOperation(), id);
+  const gone = await deleteProduct(await resolvePanelOperation(), id);
   if (!gone) {
     return Response.json(
       { error: "el producto no existe en esta operación" },

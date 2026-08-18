@@ -1,5 +1,6 @@
 import { auth } from "@/auth";
-import { connectShopifyProduct, createNativeProduct, panelOperation } from "@wa/db";
+import { connectShopifyProduct, createNativeProduct } from "@wa/db";
+import { resolvePanelOperation } from "@/lib/operation";
 
 /**
  * Alta de producto, por los dos caminos que el ticket pide.
@@ -8,7 +9,7 @@ import { connectShopifyProduct, createNativeProduct, panelOperation } from "@wa/
  * `tienda` guarda **solo el identificador**: copiar el título acá sería la
  * desincronización silenciosa que el criterio del ticket prohíbe.
  *
- * La operación la resuelve `panelOperation()` y no el cuerpo de la petición: de
+ * La operación la resuelve `resolvePanelOperation()` y no el cuerpo de la petición: de
  * dónde es el producto no lo decide el navegador.
  */
 export async function POST(req: Request) {
@@ -22,7 +23,7 @@ export async function POST(req: Request) {
     shopifyProductId?: string;
   };
 
-  const op = await panelOperation();
+  const op = await resolvePanelOperation();
   try {
     if (body.source === "shopify") {
       if (!body.shopifyProductId?.trim()) {

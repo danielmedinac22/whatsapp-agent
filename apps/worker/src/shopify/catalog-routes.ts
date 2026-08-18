@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { panelOperation } from "@wa/db";
+import { panelOperation } from "../operations";
 import { readStoreProducts, searchStoreProducts } from "./admin";
 
 /**
@@ -27,7 +27,7 @@ export const catalogStore = new Hono();
  * explicarlo en vez de mostrar un fallo.
  */
 catalogStore.get("/store/search", async (c) => {
-  const op = await panelOperation();
+  const op = await panelOperation(c);
   const term = c.req.query("q") ?? "";
   const limit = Number(c.req.query("limit") ?? 25);
   const read = await searchStoreProducts(
@@ -47,7 +47,7 @@ catalogStore.get("/store/search", async (c) => {
  * nadie sincronice nada.
  */
 catalogStore.get("/store/products", async (c) => {
-  const op = await panelOperation();
+  const op = await panelOperation(c);
   const ids = (c.req.query("ids") ?? "")
     .split(",")
     .map((s) => s.trim())
