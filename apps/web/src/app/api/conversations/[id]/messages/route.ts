@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
-import { listMessages, markRead } from "@/lib/queries";
+import { getSalesContext, listMessages, markRead } from "@/lib/queries";
 import { resolvePanelOperation } from "@/lib/operation";
+import { getSalesAgentSettings, salesThreadEvents } from "@wa/db";
 
 export async function GET(
   _req: Request,
@@ -15,5 +16,23 @@ export async function GET(
   const read = await markRead(op, id);
   if (!read) return new Response("not found", { status: 404 });
   const msgs = await listMessages(op, id);
-  return Response.json({ messages: msgs });
+
+  /**
+   * El contexto de venta va **en el mismo hilo y en las dos bandejas**: los
+   * módulos separan pantallas y configuración, no el historial, y operaciones
+   * necesita saber qué le prometieron al cliente (criterio del ticket 03).
+   *
+   * Lo que sí lo apaga entero es que la operación no tenga vendedor
+   * configurado: sin él no hay reconocimiento del que hablar, y el hilo de
+   * Katherine tiene que quedar exactamente como estaba.
+   */
+  const seller = await getSalesAgentSettings(op);
+  if (!seller) return Response.json({ messages: msgs, events: [] });
+
+  const facts = await getSalesContext(op, id);
+  return Response.json({
+    messages: msgs,
+    events: facts ? salesThreadEvents(facts) : [],
+    sellerName: seller.displayName.trim() || "El vendedor",
+  });
 }

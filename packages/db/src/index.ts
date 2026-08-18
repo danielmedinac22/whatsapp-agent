@@ -6,4 +6,5 @@ export * from "./sales-agent-settings";
 export * from "./operations";
 export * from "./products";
 export * from "./inbox";
+export * from "./sales-context";
 export { eq, and, or, asc, desc, sql, inArray, notInArray, gt, gte, lt, lte, ne, isNull, isNotNull, like, ilike } from "drizzle-orm";

@@ -3,6 +3,14 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { buildReopenOptions, type ReopenOption } from "@/lib/reopen";
+// Del subcamino y no del barril: `@wa/db` arrastra el cliente de la base y
+// `node:fs`, y esto es un componente de cliente. `sales-context` es puro.
+import {
+  escalationPhrase,
+  isSalesEscalation,
+  type RowMark,
+  type SalesThreadEvent,
+} from "@wa/db/sales-context";
 import { VoiceRecorder } from "./voice-recorder";
 import {
   AlertCircle,
@@ -16,6 +24,7 @@ import {
   CircleDashed,
   FileText,
   HelpCircle,
+  Hand,
   MessageSquareText,
   Package,
   Search,
@@ -23,6 +32,7 @@ import {
   Sparkles,
   Truck,
   Undo2,
+  UserRound,
   X,
   XCircle,
 } from "lucide-react";
@@ -75,6 +85,13 @@ export type ChatItem = {
   dropiGuide: string | null;
   dropiCarrier: string | null;
   dropiPdfUrl: string | null;
+  /** Quién la está trabajando, o `null` si está libre. */
+  assignedTo: { id: string; label: string } | null;
+  /**
+   * Lo que la fila marca del reconocimiento, o `null` si no marca nada — que es
+   * el caso limpio y el de siempre. Lo decide `resolveRowMark` en el servidor.
+   */
+  mark: RowMark | null;
 };
 
 type FilterKey =
@@ -82,7 +99,33 @@ type FilterKey =
   | "pending"
   | "confirmed"
   | "not_confirmed"
-  | "needs_attention";
+  | "needs_attention"
+  /** Las que lleva el vendedor. Es el `automatedCount` que la pantalla ya
+   *  calculaba, ahora también como filtro; solo se ofrece en la bandeja de
+   *  ventas, donde es una de las tres vistas de la barra. */
+  | "automated";
+
+/** Cómo se dice en la fila lo que el reconocimiento dejó a medias. */
+const MARK_META: Record<RowMark, { label: string; title: string; classes: string }> = {
+  escalada: {
+    label: "escalada",
+    title: "El vendedor pasó esta conversación a un asesor",
+    classes: "border-red-400/30 bg-red-500/10 text-red-200",
+  },
+  sin_identificar: {
+    label: "sin producto",
+    title:
+      "Llegó por un anuncio y el producto sigue sin identificarse — el vendedor no sabe de qué le hablan",
+    classes: "border-amber-400/30 bg-amber-500/10 text-amber-200",
+  },
+};
+
+/** La vista de la barra lateral, traducida al filtro que la lista ya tenía. */
+function filterOfView(vista: "atencion" | "agente" | null): FilterKey {
+  if (vista === "atencion") return "needs_attention";
+  if (vista === "agente") return "automated";
+  return "all";
+}
 
 const STATUS_META: Record<
   ConfirmationStatus,
@@ -201,6 +244,10 @@ export function InboxClient({
   approvedTemplates,
   query,
   selectedId,
+  bandeja,
+  vista,
+  sellerName,
+  currentUserId,
 }: {
   initial: ChatItem[];
   approvedTemplates: string[];
@@ -208,17 +255,54 @@ export function InboxClient({
   query: string;
   /** Conversación pedida por URL (?c=), p. ej. desde un pedido. */
   selectedId: string | null;
+  /**
+   * La bandeja que se está viendo, o `null` cuando la operación no tiene
+   * vendedor configurado y por lo tanto **no hay dos bandejas**: ahí esta
+   * pantalla es exactamente la de siempre.
+   */
+  bandeja: "ventas" | "operaciones" | null;
+  /** La vista de la barra lateral (?v=), que solo existe dentro de ventas. */
+  vista: "atencion" | "agente" | null;
+  /** El nombre del vendedor configurado, o `null` si no hay ninguno. */
+  sellerName: string | null;
+  /** Quién está mirando, para poder decir «la trabajo yo» y no solo «alguien». */
+  currentUserId: string | null;
 }) {
   const router = useRouter();
+  const esVentas = bandeja === "ventas";
   const [items, setItems] = useState<ChatItem[]>(initial);
   const [selected, setSelected] = useState<ChatItem | null>(
     (selectedId ? initial.find((i) => i.id === selectedId) : null) ??
       initial[0] ??
       null,
   );
-  const [filter, setFilter] = useState<FilterKey>("all");
+  const [filter, setFilter] = useState<FilterKey>(
+    esVentas ? filterOfView(vista) : "all",
+  );
   const [search, setSearch] = useState(query);
   const [searching, startSearch] = useTransition();
+
+  // La vista la manda la barra lateral: entrar por «Necesitan atención» tiene
+  // que dejar la lista en esa vista, y volver a «Todas» tiene que deshacerlo.
+  useEffect(() => {
+    if (esVentas) setFilter(filterOfView(vista));
+  }, [esVentas, vista]);
+
+  /**
+   * La URL de esta pantalla, conservando bandeja y vista.
+   *
+   * Buscar dentro de Conversaciones **no puede devolverte al Inbox de
+   * Katherine**, y eso es justo lo que pasaba al reconstruir la URL con solo el
+   * término: `?b=` y `?v=` se perdían y la bandeja cambiaba sola.
+   */
+  const urlDeLaBandeja = (term: string): string => {
+    const params = new URLSearchParams();
+    if (bandeja === "ventas") params.set("b", "ventas");
+    if (esVentas && vista) params.set("v", vista);
+    if (term) params.set("q", term);
+    const qs = params.toString();
+    return qs ? `/inbox?${qs}` : "/inbox";
+  };
 
   // La búsqueda vive en la URL y la resuelve el servidor sobre TODAS las
   // conversaciones — la lista solo carga las 200 más recientes, así que un
@@ -228,11 +312,12 @@ export function InboxClient({
     const timer = setTimeout(() => {
       const term = search.trim();
       startSearch(() => {
-        router.replace(term ? `/inbox?q=${encodeURIComponent(term)}` : "/inbox");
+        router.replace(urlDeLaBandeja(term));
       });
     }, 250);
     return () => clearTimeout(timer);
-  }, [search, query, router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, query, router, bandeja, vista]);
   const automatedCount = items.filter((item) => item.agentMode).length;
   const unreadCount = items.reduce((sum, item) => sum + item.unread, 0);
   const pendingCount = items.filter(
@@ -248,12 +333,16 @@ export function InboxClient({
     (item) => !item.agentMode && item.unread > 0,
   ).length;
 
+  const assignedCount = items.filter((item) => item.assignedTo !== null).length;
+
   const visibleItems =
     filter === "all"
       ? items
       : filter === "needs_attention"
         ? items.filter((item) => !item.agentMode && item.unread > 0)
-        : items.filter((item) => item.confirmationStatus === filter);
+        : filter === "automated"
+          ? items.filter((item) => item.agentMode)
+          : items.filter((item) => item.confirmationStatus === filter);
 
   useEffect(() => {
     const es = new EventSource("/api/events");
@@ -304,12 +393,19 @@ export function InboxClient({
     <div className="app-page flex min-h-[calc(100vh-46px)] flex-col gap-3 xl:h-[calc(100vh-46px)] xl:min-h-0">
       <header className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="app-title">Inbox</h1>
+          <h1 className="app-title">{esVentas ? "Conversaciones" : "Inbox"}</h1>
           <p className="mt-1 text-sm text-[var(--color-text-dim)]">
-            Conversaciones en vivo
+            {esVentas
+              ? `La bandeja de ${sellerName ?? "ventas"} — el mismo número, la misma pantalla`
+              : "Conversaciones en vivo"}
           </p>
         </div>
-        <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
+        {/* En ventas no hay «por confirmar»: una conversación con pedido ya no
+            está en esta bandeja. Mostrar un contador que siempre vale cero es
+            enseñar ruido donde debería haber señal. */}
+        <div
+          className={`grid grid-cols-2 gap-2 ${esVentas ? "lg:grid-cols-4" : "lg:grid-cols-5"}`}
+        >
           <SummaryCard
             label="Conversaciones"
             value={String(items.length)}
@@ -317,14 +413,27 @@ export function InboxClient({
             onClick={() => setFilter("all")}
           />
           <SummaryCard label="Sin leer" value={String(unreadCount)} />
-          <SummaryCard label="Modo agente" value={String(automatedCount)} />
-          <SummaryCard
-            label="Por confirmar"
-            value={String(pendingCount)}
-            accent={pendingCount > 0 ? "text-amber-200" : undefined}
-            active={filter === "pending"}
-            onClick={() => setFilter("pending")}
-          />
+          {esVentas ? (
+            <SummaryCard
+              label="Modo agente"
+              value={String(automatedCount)}
+              active={filter === "automated"}
+              onClick={() => setFilter("automated")}
+            />
+          ) : (
+            <SummaryCard label="Modo agente" value={String(automatedCount)} />
+          )}
+          {esVentas ? (
+            <SummaryCard label="Asignadas" value={String(assignedCount)} />
+          ) : (
+            <SummaryCard
+              label="Por confirmar"
+              value={String(pendingCount)}
+              accent={pendingCount > 0 ? "text-amber-200" : undefined}
+              active={filter === "pending"}
+              onClick={() => setFilter("pending")}
+            />
+          )}
           <SummaryCard
             label="Necesita atención"
             value={String(needsAttentionCount)}
@@ -375,6 +484,11 @@ export function InboxClient({
                 <option value="confirmed">Confirmadas ({confirmedCount})</option>
                 <option value="not_confirmed">No conf. ({notConfirmedCount})</option>
                 <option value="needs_attention">Atención ({needsAttentionCount})</option>
+                {esVentas && (
+                  <option value="automated">
+                    Las lleva {sellerName ?? "el vendedor"} ({automatedCount})
+                  </option>
+                )}
               </select>
               <span className="rounded-md border border-[var(--color-border)] bg-[rgba(8,21,30,0.72)] px-2 py-1 text-xs text-[var(--color-text-dim)]">
                 {visibleItems.length}/{items.length}
@@ -431,6 +545,22 @@ export function InboxClient({
                       manual
                     </span>
                   )}
+                  {/* Solo lo que NO es limpio: «reconocido» no se marca.
+                      Marcar todas las filas es no marcar ninguna. */}
+                  {it.mark && <MarkChip mark={it.mark} />}
+                  {/* Sin vendedor configurado la fila es la de siempre: la
+                      asignación no se puede tomar, así que tampoco se enseña. */}
+                  {sellerName !== null && it.assignedTo && (
+                    <span
+                      title={`La está trabajando ${it.assignedTo.label}`}
+                      className="inline-flex items-center gap-1 rounded-md border border-sky-400/30 bg-sky-500/10 px-2 py-0.5 text-[10px] uppercase text-sky-200"
+                    >
+                      <UserRound className="h-3 w-3" />
+                      {it.assignedTo.id === currentUserId
+                        ? "la trabajo yo"
+                        : it.assignedTo.label}
+                    </span>
+                  )}
                   <ConfirmationChip status={it.confirmationStatus} />
                   {it.dropiStatus && it.dropiStatus !== "unknown" && (
                     <DropiChip status={it.dropiStatus} />
@@ -473,6 +603,8 @@ export function InboxClient({
             key={selected.id}
             chat={selected}
             approvedTemplates={approvedTemplates}
+            currentUserId={currentUserId}
+            sellerConfigured={sellerName !== null}
           />
         ) : (
           <div className="app-card flex flex-1 items-center justify-center text-[var(--color-text-dim)]">
@@ -544,16 +676,61 @@ function windowStateOf(lastInboundAt: string | null): WindowState {
   return Date.now() - t <= SERVICE_WINDOW_MS ? "open" : "closed";
 }
 
+/**
+ * Un evento de venta tal como viaja por JSON: igual que en `@wa/db`, pero con
+ * el instante en texto. Se declara aquí y no se castea a la fecha: el hilo lo
+ * único que hace con él es ordenar y mostrar.
+ */
+type ConFechaEnTexto<T> = T extends { at: Date }
+  ? Omit<T, "at"> & { at: string }
+  : never;
+type WireEvent = ConFechaEnTexto<SalesThreadEvent>;
+
+/** Una línea del hilo: un mensaje o un momento del contexto de venta. */
+type ThreadEntry =
+  | { at: number; kind: "msg"; msg: Msg }
+  | { at: number; kind: "event"; event: WireEvent };
+
+/**
+ * Los mensajes y los eventos en un solo hilo, por instante.
+ *
+ * Es la decisión 2 del nivel 2 hecha código: el producto y el anuncio no son
+ * atributos que se consulten en un panel, son **algo que pasó en un momento del
+ * chat**. Intercalarlos es lo que los fecha.
+ */
+function threadEntries(msgs: Msg[], events: WireEvent[]): ThreadEntry[] {
+  const entries: ThreadEntry[] = [
+    ...msgs.map((msg) => ({
+      at: Date.parse(msg.createdAt),
+      kind: "msg" as const,
+      msg,
+    })),
+    ...events.map((event) => ({
+      at: Date.parse(event.at),
+      kind: "event" as const,
+      event,
+    })),
+  ];
+  return entries.sort((a, b) => a.at - b.at);
+}
+
 function ConversationPane({
   chat,
   approvedTemplates,
+  currentUserId,
+  sellerConfigured,
 }: {
   chat: ChatItem;
   approvedTemplates: string[];
+  currentUserId: string | null;
+  sellerConfigured: boolean;
 }) {
   const [msgs, setMsgs] = useState<Msg[]>([]);
+  const [events, setEvents] = useState<WireEvent[]>([]);
+  const [seller, setSeller] = useState<string>("El vendedor");
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  const [assigning, setAssigning] = useState(false);
   const [reopenSending, setReopenSending] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -611,15 +788,21 @@ function ConversationPane({
       top: scrollRef.current.scrollHeight,
       behavior: "smooth",
     });
-  }, [msgs]);
+  }, [msgs, events]);
 
   const reload = async () => {
     const r = await fetch(`/api/conversations/${chat.id}/messages`, {
       cache: "no-store",
     });
     if (r.ok) {
-      const j = (await r.json()) as { messages: Msg[] };
+      const j = (await r.json()) as {
+        messages: Msg[];
+        events?: WireEvent[];
+        sellerName?: string;
+      };
       setMsgs(j.messages);
+      setEvents(j.events ?? []);
+      if (j.sellerName) setSeller(j.sellerName);
     }
   };
 
@@ -663,6 +846,32 @@ function ConversationPane({
     }
   };
 
+  /**
+   * «Esta la estoy trabajando yo», y su contrario.
+   *
+   * **No toca el modo agente**, y esa separación es el criterio explícito de los
+   * dos tickets 04: se puede estar asignado sin haber pausado al vendedor. El
+   * botón de al lado sigue siendo `Agente: ON/OFF`, que es el que ya existía.
+   */
+  const toggleAssignment = async () => {
+    if (assigning) return;
+    setAssigning(true);
+    try {
+      const r = await fetch(`/api/conversations/${chat.id}/assignment`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ on: chat.assignedTo === null }),
+      });
+      if (!r.ok) {
+        alert("No se pudo cambiar quién la trabaja.");
+        return;
+      }
+      location.reload();
+    } finally {
+      setAssigning(false);
+    }
+  };
+
   const toggleAgent = async () => {
     await fetch(`/api/contacts/${chat.contactId}/agent-mode`, {
       method: "POST",
@@ -680,6 +889,29 @@ function ConversationPane({
           <p className="text-xs text-[var(--color-text-dim)]">+{chat.to}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {sellerConfigured && (
+            <button
+              onClick={toggleAssignment}
+              disabled={assigning}
+              title={
+                chat.assignedTo
+                  ? `La está trabajando ${chat.assignedTo.label} — soltarla la deja libre`
+                  : "Marcar que la estás trabajando vos. No pausa al vendedor."
+              }
+              className={`inline-flex h-9 items-center gap-2 rounded-md border px-3 text-xs uppercase lg:h-8 ${
+                chat.assignedTo
+                  ? "border-sky-400/30 bg-sky-500/10 text-sky-200"
+                  : "border-[var(--color-border)] text-[var(--color-text-dim)]"
+              }`}
+            >
+              <Hand className="h-3.5 w-3.5" />
+              {chat.assignedTo
+                ? chat.assignedTo.id === currentUserId
+                  ? "La trabajo yo · soltar"
+                  : `La trabaja ${chat.assignedTo.label}`
+                : "Trabajarla yo"}
+            </button>
+          )}
           <ConfirmationMenu chat={chat} />
           <button
             onClick={toggleAgent}
@@ -733,68 +965,32 @@ function ConversationPane({
         ref={scrollRef}
         className="flex-1 space-y-2 overflow-y-auto bg-[linear-gradient(180deg,rgba(9,19,28,0.3),rgba(5,12,18,0.18))] p-4"
       >
-        {msgs.map((m) => (
-          <div
-            key={m.id}
-            className={`flex ${m.direction === "out" ? "justify-end" : "justify-start"}`}
-          >
-            <div
-              className={`max-w-[78%] rounded-lg px-3 py-2 text-sm shadow-[0_10px_28px_rgba(3,10,16,0.2)] ${
-                m.direction === "out"
-                  ? "bg-[image:var(--color-bubble-out)]"
-                  : "bg-[image:var(--color-bubble-in)]"
-              } ${
-                m.status === "failed" && m.direction === "out"
-                  ? "border border-red-400/40"
-                  : ""
-              }`}
-            >
-              {m.mediaUrl && m.mediaMime?.startsWith("audio/") ? (
-                <div className="space-y-1">
-                  <audio
-                    src={m.mediaUrl}
-                    controls
-                    preload="metadata"
-                    className="h-9 w-[240px] max-w-full"
-                  />
-                  {/* Para el audio entrante el body es la transcripción de
-                      Kapso: se muestra como pie para poder leer sin escuchar. */}
-                  {m.direction === "in" && m.body.trim() && (
-                    <p className="whitespace-pre-wrap break-words text-xs italic text-[var(--color-text-dim)]">
-                      “{m.body}”
-                    </p>
-                  )}
-                </div>
-              ) : (
-                <p className="whitespace-pre-wrap break-words">{m.body}</p>
-              )}
-              {m.direction === "out" && m.status === "failed" && (
-                <p className="mt-1 text-[11px] leading-4 text-red-200">
-                  ⚠ No entregado
-                  {m.deliveryError ? ` · ${m.deliveryError}` : ""}
-                </p>
-              )}
-              <p
-                className="mt-1 flex items-center justify-end gap-1 text-[10px] uppercase text-[var(--color-text-dim)]"
-                suppressHydrationWarning
-              >
-                {m.fromAgent && "BOT "}
-                {new Date(m.createdAt).toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-                {m.direction === "out" && (
-                  <span title={STATUS_TITLE[m.status]} className="ml-0.5 flex">
-                    <DeliveryTicks status={m.status} />
-                  </span>
-                )}
-              </p>
-            </div>
-          </div>
-        ))}
+        {threadEntries(msgs, events).map((entry) =>
+          entry.kind === "event" ? (
+            <SalesEventLine
+              key={`ev-${entry.event.kind}-${entry.at}`}
+              event={entry.event}
+              seller={seller}
+            />
+          ) : (
+            <MessageBubble key={entry.msg.id} m={entry.msg} />
+          ),
+        )}
       </div>
 
       <footer className="border-t border-[var(--color-border)] bg-[rgba(10,24,34,0.84)] p-3">
+        {/* «El resto del equipo ve quién la tiene, ANTES de escribir» es el
+            criterio del ticket, así que el aviso va pegado al compositor y no
+            arriba del todo: arriba se lee cuando ya escribiste. */}
+        {sellerConfigured &&
+          chat.assignedTo &&
+          chat.assignedTo.id !== currentUserId && (
+            <div className="mb-2 rounded-lg border border-sky-400/30 bg-sky-500/10 p-2.5 text-xs leading-5 text-sky-100">
+              👤 <strong>{chat.assignedTo.label} está trabajando esta
+              conversación.</strong> Si vas a escribir, avisale primero: el
+              cliente ve un solo hilo.
+            </div>
+          )}
         {windowState === "closed" ? (
           <div className="space-y-2">
             <div className="rounded-lg border border-amber-400/30 bg-amber-500/10 p-3 text-xs leading-5 text-amber-100">
@@ -882,6 +1078,132 @@ function ConversationPane({
   );
 }
 
+/** Un globo del hilo. Es el mismo de siempre, extraído para poder intercalar
+ *  los eventos de venta entre los mensajes sin duplicar su marcado. */
+function MessageBubble({ m }: { m: Msg }) {
+  return (
+          <div
+            className={`flex ${m.direction === "out" ? "justify-end" : "justify-start"}`}
+          >
+            <div
+              className={`max-w-[78%] rounded-lg px-3 py-2 text-sm shadow-[0_10px_28px_rgba(3,10,16,0.2)] ${
+                m.direction === "out"
+                  ? "bg-[image:var(--color-bubble-out)]"
+                  : "bg-[image:var(--color-bubble-in)]"
+              } ${
+                m.status === "failed" && m.direction === "out"
+                  ? "border border-red-400/40"
+                  : ""
+              }`}
+            >
+              {m.mediaUrl && m.mediaMime?.startsWith("audio/") ? (
+                <div className="space-y-1">
+                  <audio
+                    src={m.mediaUrl}
+                    controls
+                    preload="metadata"
+                    className="h-9 w-[240px] max-w-full"
+                  />
+                  {/* Para el audio entrante el body es la transcripción de
+                      Kapso: se muestra como pie para poder leer sin escuchar. */}
+                  {m.direction === "in" && m.body.trim() && (
+                    <p className="whitespace-pre-wrap break-words text-xs italic text-[var(--color-text-dim)]">
+                      “{m.body}”
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <p className="whitespace-pre-wrap break-words">{m.body}</p>
+              )}
+              {m.direction === "out" && m.status === "failed" && (
+                <p className="mt-1 text-[11px] leading-4 text-red-200">
+                  ⚠ No entregado
+                  {m.deliveryError ? ` · ${m.deliveryError}` : ""}
+                </p>
+              )}
+              <p
+                className="mt-1 flex items-center justify-end gap-1 text-[10px] uppercase text-[var(--color-text-dim)]"
+                suppressHydrationWarning
+              >
+                {m.fromAgent && "BOT "}
+                {new Date(m.createdAt).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+                {m.direction === "out" && (
+                  <span title={STATUS_TITLE[m.status]} className="ml-0.5 flex">
+                    <DeliveryTicks status={m.status} />
+                  </span>
+                )}
+              </p>
+            </div>
+          </div>
+  );
+}
+
+/**
+ * Un momento del contexto de venta, dentro del hilo.
+ *
+ * Se lee como una línea de sistema y no como un mensaje: no es de nadie de los
+ * dos lados de la conversación, es algo que le pasó a la conversación.
+ */
+function SalesEventLine({
+  event,
+  seller,
+}: {
+  event: WireEvent;
+  seller: string;
+}) {
+  const texto = ((): string => {
+    if (event.kind === "producto_identificado") {
+      const anuncio = event.adId ? ` · anuncio ${event.adId}` : "";
+      return event.productName
+        ? `${seller} reconoció ${event.productName}${anuncio}`
+        : `${seller} reconoció el producto${anuncio}`;
+    }
+    if (event.kind === "producto_sin_identificar") {
+      const deDonde = event.adId
+        ? ` · anuncio ${event.adId}`
+        : event.adHeadline
+          ? ` · «${event.adHeadline}»`
+          : "";
+      return `${seller} no logró identificar el producto${deDonde}`;
+    }
+    const frase = escalationPhrase(event.reason);
+    const sufijo = frase ? ` ${frase}` : "";
+    // Solo los motivos del vendedor llevan su nombre: el de audio es del agente
+    // que confirma y existe desde mucho antes que este módulo.
+    return isSalesEscalation(event.reason)
+      ? `${seller} escaló${sufijo}`
+      : `Escalada a un asesor${sufijo}`;
+  })();
+  const alarma = event.kind !== "producto_identificado";
+  return (
+    <div className="flex justify-center py-1">
+      <span
+        className={`inline-flex max-w-[86%] items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] leading-4 ${
+          alarma
+            ? "border-amber-400/25 bg-amber-500/10 text-amber-100"
+            : "border-[var(--color-border)] bg-[rgba(8,21,30,0.72)] text-[var(--color-text-dim)]"
+        }`}
+      >
+        {alarma ? (
+          <AlertTriangle className="h-3 w-3 shrink-0" />
+        ) : (
+          <Sparkles className="h-3 w-3 shrink-0" />
+        )}
+        <span className="truncate">{texto}</span>
+        <span className="shrink-0 opacity-60" suppressHydrationWarning>
+          {new Date(event.at).toLocaleDateString([], {
+            day: "2-digit",
+            month: "short",
+          })}
+        </span>
+      </span>
+    </div>
+  );
+}
+
 function SummaryCard({
   label,
   value,
@@ -935,6 +1257,20 @@ function DropiChip({ status }: { status: DropiStatus }) {
       className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] uppercase ${meta.classes}`}
     >
       <Icon className="h-3 w-3" />
+      {meta.label}
+    </span>
+  );
+}
+
+/** Lo que la fila dice del reconocimiento cuando no quedó limpio. */
+function MarkChip({ mark }: { mark: RowMark }) {
+  const meta = MARK_META[mark];
+  return (
+    <span
+      title={meta.title}
+      className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] uppercase ${meta.classes}`}
+    >
+      <AlertTriangle className="h-3 w-3" />
       {meta.label}
     </span>
   );

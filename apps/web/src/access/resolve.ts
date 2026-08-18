@@ -125,6 +125,15 @@ const AREAS: Readonly<Record<string, Area>> = {
    * sola: quién ve qué conversación lo decide el ruteo del ticket 03, no el rol.
    */
   "/api/contacts/*/agent-mode": "ambos",
+  /**
+   * «Esta la estoy trabajando yo». Área común y no de ventas: es una marca
+   * sobre la conversación —quién la atiende ahora—, no una decisión de módulo,
+   * y el equipo que confirma la necesita por la misma razón que el que vende.
+   * Sin esta línea la ruta quedaría `ruta_sin_clasificar` y **cerrada**: hoy no
+   * se notaría, porque los tres usuarios de producción son `admin`, y se
+   * notaría el día que exista el primer `sales`.
+   */
+  "/api/conversations/*/assignment": "ambos",
 
   // ── Rutas de datos de confirmación ─────────────────────────────────────
   /** Marcar un pedido confirmado o no confirmado. Es *la* decisión de Katherine. */
@@ -142,10 +151,33 @@ const AREAS: Readonly<Record<string, Area>> = {
 
 /**
  * La pantalla a la que rebota quien no alcanza la que pidió. Es área común, es
- * lo que la raíz ya abre, y por eso todo rol llega. Cuando el ticket 03 parta
- * la bandeja en dos, aquí se decide a cuál cae cada rol.
+ * lo que la raíz ya abre, y por eso todo rol llega.
  */
 export const LANDING_PATH = "/inbox";
+
+/**
+ * A qué **bandeja** cae cada rol, ahora que el ticket 03 partió la bandeja en
+ * dos. Es la pregunta que este archivo dejó abierta para ese ticket.
+ *
+ * La ruta no cambia —hay una sola pantalla, decisión del nivel 2— y lo que
+ * cambia es el parámetro: quien vende cae en la de ventas, todos los demás en
+ * la de siempre. **Sigue siendo `/inbox` para todo el mundo**, así que el
+ * rebote no puede quedarse sin destino ni entrar en un bucle.
+ *
+ * Hoy no lo nota nadie: los tres usuarios de producción son `admin` y `admin`
+ * no tiene módulo. Se decide igual porque el día que exista el primer `sales`,
+ * lo que no esté decidido acá lo va a mandar a la bandeja de Katherine.
+ */
+export function landingFor(role: Role | undefined): {
+  pathname: string;
+  search: string;
+} {
+  const modulo = role === undefined ? null : moduleOf(role);
+  return {
+    pathname: LANDING_PATH,
+    search: modulo === "ventas" ? "?b=ventas" : "",
+  };
+}
 
 /**
  * Qué módulo abre un rol. `null` = **ningún módulo lo restringe**: alcanza todo

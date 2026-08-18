@@ -14,7 +14,7 @@
 
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { LANDING_PATH, resolveAccess } from "@/access/resolve";
+import { LANDING_PATH, landingFor, resolveAccess } from "@/access/resolve";
 
 const PUBLIC_PATHS = ["/login", "/api/auth"];
 
@@ -48,9 +48,13 @@ export default auth((req) => {
   ) {
     return new NextResponse("forbidden", { status: 403 });
   }
+  // La ruta es la misma para todo rol; lo que cambia es en qué bandeja cae —
+  // quien vende, en la suya. La búsqueda se reemplaza y no se conserva: la de
+  // la pantalla que rebotó no significa nada en esta.
+  const landing = landingFor(role);
   const url = req.nextUrl.clone();
-  url.pathname = LANDING_PATH;
-  url.search = "";
+  url.pathname = landing.pathname;
+  url.search = landing.search;
   return NextResponse.redirect(url);
 });
 
