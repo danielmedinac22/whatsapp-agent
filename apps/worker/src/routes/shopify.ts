@@ -52,7 +52,18 @@ shopify.post("/webhook", async (c) => {
 
   // Cloud API addressing is just the E.164 wa_id — no LID/PN resolution and
   // no dependency on a live socket (the old 503-when-disconnected is gone).
-  const contact = await upsertContactByWaId(phone, { name: customerName });
+  //
+  // Si el cliente no existía, nace con el agente **apagado**, que es como nacen
+  // hoy todos: no escribió —no hay nada que contestarle— y el interruptor de un
+  // contacto con pedido ya tiene dueño, `followup` y `confirmation-ack`, este
+  // último detrás de la perilla `activate_agent_on_confirm` que el admin
+  // controla. Nacer encendido pasaría por encima de esa perilla sin darle al
+  // negocio nada nuevo. Ver `inbound/agent-mode.ts`.
+  const contact = await upsertContactByWaId(
+    phone,
+    { name: customerName },
+    { origin: "store_order" },
+  );
 
   // A qué operación se le atribuye el pedido.
   //
