@@ -400,9 +400,19 @@ export function InboxClient({
               : "Conversaciones en vivo"}
           </p>
         </div>
-        {/* En ventas no hay «por confirmar»: una conversación con pedido ya no
-            está en esta bandeja. Mostrar un contador que siempre vale cero es
-            enseñar ruido donde debería haber señal. */}
+        {/*
+          Cuatro tarjetas en ventas y cinco en confirmación, **y las columnas
+          son siempre tantas como tarjetas**: una rejilla de cuatro con cinco
+          hijos deja la quinta sola en una segunda fila, que es como se veía
+          antes de este arreglo.
+
+          Las dos que cambian dicen por qué. «Por confirmar» no existe en
+          ventas: una conversación con pedido ya no está en esta bandeja, así
+          que el contador valdría cero siempre — ruido donde debería haber
+          señal. Y «Modo agente» sale de ventas porque la barra lateral ya lo
+          dice a 20 cm de aquí, con el nombre del vendedor y su contador; el
+          mismo número dos veces en la misma pantalla no informa, distrae.
+        */}
         <div
           className={`grid grid-cols-2 gap-2 ${esVentas ? "lg:grid-cols-4" : "lg:grid-cols-5"}`}
         >
@@ -413,14 +423,7 @@ export function InboxClient({
             onClick={() => setFilter("all")}
           />
           <SummaryCard label="Sin leer" value={String(unreadCount)} />
-          {esVentas ? (
-            <SummaryCard
-              label="Modo agente"
-              value={String(automatedCount)}
-              active={filter === "automated"}
-              onClick={() => setFilter("automated")}
-            />
-          ) : (
+          {!esVentas && (
             <SummaryCard label="Modo agente" value={String(automatedCount)} />
           )}
           {esVentas ? (
@@ -469,28 +472,38 @@ export function InboxClient({
                 </button>
               )}
             </div>
-            <div className="flex items-center justify-between gap-2">
-            <p className="text-sm font-semibold">
+            <div className="flex min-w-0 items-center justify-between gap-2">
+            <p className="shrink-0 text-sm font-semibold">
               {query ? (searching ? "Buscando…" : "Resultados") : "Conversaciones"}
             </p>
-            <div className="flex items-center gap-2">
+            {/* min-w-0 en el contenedor y shrink-0 en el contador: el selector
+                es lo único que puede encoger. Sin esto, una opción larga —«Las
+                lleva Sebastián (99)»— empuja el «99/115» fuera de la tarjeta. */}
+            <div className="flex min-w-0 items-center gap-2">
               <select
                 value={filter}
                 onChange={(e) => setFilter(e.target.value as FilterKey)}
-                className="h-9 rounded-md border border-[var(--color-border)] bg-[rgba(8,21,30,0.72)] px-2 text-xs text-[var(--color-text-dim)] outline-none transition hover:border-[rgba(110,231,183,0.3)] focus:border-[rgba(110,231,183,0.5)] lg:h-7"
+                className="h-9 min-w-0 rounded-md border border-[var(--color-border)] bg-[rgba(8,21,30,0.72)] px-2 text-xs text-[var(--color-text-dim)] outline-none transition hover:border-[rgba(110,231,183,0.3)] focus:border-[rgba(110,231,183,0.5)] lg:h-7"
               >
                 <option value="all">Todas ({items.length})</option>
-                <option value="pending">Pendientes ({pendingCount})</option>
-                <option value="confirmed">Confirmadas ({confirmedCount})</option>
-                <option value="not_confirmed">No conf. ({notConfirmedCount})</option>
-                <option value="needs_attention">Atención ({needsAttentionCount})</option>
-                {esVentas && (
+                {/* Los tres estados de confirmación no se ofrecen en ventas:
+                    una conversación con pedido ya está en la otra bandeja, así
+                    que los tres filtros devuelven cero. Un filtro que siempre
+                    vacía la lista es una trampa, no una opción. */}
+                {esVentas ? (
                   <option value="automated">
                     Las lleva {sellerName ?? "el vendedor"} ({automatedCount})
                   </option>
+                ) : (
+                  <>
+                    <option value="pending">Pendientes ({pendingCount})</option>
+                    <option value="confirmed">Confirmadas ({confirmedCount})</option>
+                    <option value="not_confirmed">No conf. ({notConfirmedCount})</option>
+                  </>
                 )}
+                <option value="needs_attention">Atención ({needsAttentionCount})</option>
               </select>
-              <span className="rounded-md border border-[var(--color-border)] bg-[rgba(8,21,30,0.72)] px-2 py-1 text-xs text-[var(--color-text-dim)]">
+              <span className="shrink-0 rounded-md border border-[var(--color-border)] bg-[rgba(8,21,30,0.72)] px-2 py-1 text-xs text-[var(--color-text-dim)]">
                 {visibleItems.length}/{items.length}
               </span>
             </div>

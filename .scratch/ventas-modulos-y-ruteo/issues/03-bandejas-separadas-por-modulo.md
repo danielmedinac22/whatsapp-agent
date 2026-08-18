@@ -31,9 +31,18 @@ del dueño de la operación y no un efecto colateral de este ticket.
 
 Eso no es una promesa: está medido. Se levantó una base de ensayo con 1.725
 conversaciones —la escala de producción—, se renderizó el panel con el código de
-antes del ticket y con el de después, y **con el vendedor apagado el HTML de
-`/inbox`, `/orders`, `/templates`, `/agent` y `/connection` sale byte por byte
-idéntico** (398.124 caracteres los dos, en el caso del Inbox).
+antes del ticket y con el de después, y con el vendedor apagado:
+
+- **`/orders`, `/templates`, `/agent` y `/connection` salen byte por byte
+  idénticos.**
+- **`/inbox` difiere en cinco atributos `class`, y en nada más**: `min-w-0` en
+  los dos contenedores de la cabecera de la lista y en el `<select>`, y
+  `shrink-0` en el rótulo y en el contador. Ni una palabra, ni un nodo, ni una
+  fila de diferencia. Son la red contra el desbordamiento que se vio en ventas
+  —una opción larga empujaba el «99/115» fuera de la tarjeta— y valen igual en
+  la bandeja de confirmación, donde hoy no se nota porque sus opciones son
+  cortas. Se dejaron sin condicionar a propósito: unas clases de layout puestas
+  solo en una bandeja serían dos cabeceras que se pueden desincronizar.
 
 ### Qué hace la bandeja, y por qué se deriva sobre todas y se corta después
 
@@ -67,7 +76,8 @@ ruteo necesite un hecho más las dos dejan de compilar juntas.
 - [x] **Las escaladas se distinguen a simple vista.** La fila lleva «escalada»,
       y solo eso: el reconocimiento limpio **no se marca**, porque marcar todo es
       no marcar nada.
-- [x] **Apagar el módulo de ventas no afecta la confirmación.** Ver arriba.
+- [x] **Apagar el módulo de ventas no afecta la confirmación.** Ver arriba: el
+      HTML es el mismo salvo cinco clases de layout en la cabecera de la lista.
 
 ### Lo que queda abierto, dicho por su nombre
 

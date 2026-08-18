@@ -34,7 +34,15 @@
  *       pnpm --filter @wa/db migrate
  *     DATABASE_URL="postgres://postgres:test@127.0.0.1:55991/wa" SEMBRAR=si \
  *       npx tsx scripts/seed-bandejas-ensayo.ts
+ *
+ * Con `ESCALA=si` agrega además ~1.700 conversaciones más, hasta la escala real
+ * de producción (1.725). Sirve para dos cosas distintas: ver que la bandeja de
+ * ventas trae sus ~115 aunque **ninguna** esté entre las 200 más recientes —que
+ * es el caso que rompía si se cortaba antes de derivar— y medir cuánto cuesta
+ * derivar. Las once conversaciones de arriba quedan siempre como las más
+ * recientes, así que son las que se ven al abrir.
  */
+import bcrypt from "bcryptjs";
 import {
   contacts,
   conversations,
@@ -51,6 +59,13 @@ import {
   users,
   type Operation,
 } from "@wa/db";
+
+/**
+ * La clave de los asesores de ensayo. Está a la vista porque **no es un
+ * secreto**: solo existe en una base desechable que este script se niega a
+ * abrir contra producción.
+ */
+const CLAVE_DE_ENSAYO = "ensayo123";
 
 /** Hosts que son producción. Contra estos no se siembra nada, nunca. */
 const PROHIBIDOS = ["rlwy.net", "railway.app"];
@@ -119,23 +134,29 @@ async function main() {
     discountLimitPct: 10,
   });
 
-  // Dos asesores, para que «la trabaja otro» sea de verdad otro.
+  // Dos asesores, para que «la trabaja otro» sea de verdad otro. Con clave de
+  // verdad, para poder entrar sin un segundo script; y como upsert, para que
+  // volver a sembrar no reviente contra el índice único del correo — la gracia
+  // de este script es poder correrlo dos veces.
+  const clave = await bcrypt.hash(CLAVE_DE_ENSAYO, 10);
+  const asesores = [
+    { email: "ana@ensayo.local", name: "Ana" },
+    { email: "luis@ensayo.local", name: "Luis" },
+  ];
   const [ana, luis] = await db
     .insert(users)
-    .values([
-      {
-        email: "ana@ensayo.local",
-        passwordHash: "x",
-        name: "Ana",
+    .values(
+      asesores.map((a) => ({
+        email: a.email,
+        passwordHash: clave,
+        name: a.name,
         role: "admin" as const,
-      },
-      {
-        email: "luis@ensayo.local",
-        passwordHash: "x",
-        name: "Luis",
-        role: "admin" as const,
-      },
-    ])
+      })),
+    )
+    .onConflictDoUpdate({
+      target: users.email,
+      set: { passwordHash: clave, role: "admin" as const },
+    })
     .returning({ id: users.id });
 
   // ── El catálogo, para que el reconocimiento tenga qué nombrar ────────────
@@ -382,6 +403,11 @@ async function main() {
         operationId: op.id,
         lastInboundAt: haceHoras(1),
         lastOutboundAt: haceHoras(2),
+        // Explícito, y no el `now()` por defecto: la lista ordena por
+        // GREATEST(inbound, outbound, created), así que sin esto **todas** las
+        // filas empatan en `created_at` y el orden lo decide el azar del
+        // insert — con el relleno arriba y lo que hay que mirar enterrado.
+        createdAt: haceHoras(2),
         lastMessagePreview: s.preview,
         unreadCount: s.unread,
         adId: s.anuncio?.adId ?? null,
@@ -456,16 +482,148 @@ async function main() {
     }
   }
 
+  // ── El volumen, opcional ────────────────────────────────────────────────
+  let deEscala = 0;
+  if (process.env.ESCALA === "si") {
+    deEscala = await sembrarEscala(db, op, semillas.length);
+  }
+
   console.log(
     `\n  Sembrado en ${host}:\n` +
       `    · vendedor «Sebastián» configurado — la operación tiene dos bandejas\n` +
       `    · ${semillas.length} conversaciones, ${productosSembrados.length} productos, 3 mapeos de anuncio\n` +
-      `    · asesores: ana@ensayo.local y luis@ensayo.local\n\n` +
+      `    · asesores: ana@ensayo.local y luis@ensayo.local (clave ${CLAVE_DE_ENSAYO})\n\n` +
       `  Qué mirar:\n` +
       `    · Ventas trae 7 y Operaciones 4 — Rosa Ixcot está en ventas CON pedido entregado\n` +
       `    · solo Marta, Julio y Wendy llevan marca en la fila; el resto no\n` +
-      `    · Elena Barrios estaba asignada a Ana y aparece libre: cambió de bandeja\n`,
+      `    · Elena Barrios estaba asignada a Ana y aparece libre: cambió de bandeja\n` +
+      (deEscala
+        ? `\n  Y ${deEscala} conversaciones más, hasta la escala de producción:\n` +
+          `    · ventas trae ~115 aunque ninguna esté entre las 200 más recientes\n`
+        : `\n  Sin volumen. Con ESCALA=si se llega a las 1.725 de producción.\n`),
   );
+}
+
+/**
+ * El relleno que lleva la base a la escala de producción.
+ *
+ * **No es decorativo.** Con once conversaciones cualquier orden de operaciones
+ * funciona; el error que este volumen destapa es cortar la lista en 200 *antes*
+ * de derivar la bandeja, que en Guatemala deja ventas vacía porque las 200 más
+ * recientes son casi todas de operaciones. Por eso el 94 % lleva pedido, igual
+ * que producción.
+ *
+ * Todas quedan **más viejas** que las once de arriba: lo primero que se ve al
+ * abrir la bandeja tiene que ser lo que se sembró a mano para mirarlo.
+ */
+async function sembrarEscala(
+  db: ReturnType<typeof getDb>,
+  op: Operation,
+  yaSembradas: number,
+): Promise<number> {
+  const N = 1725 - yaSembradas;
+  const desde = Date.now() - 3 * 24 * 60 * 60 * 1000;
+  const NOMBRES = [
+    "Ana", "Byron", "Carla", "Diego", "Elsa", "Fredy", "Gaby", "Hugo",
+    "Ingrid", "Josué", "Karen", "Luis", "Mynor", "Nidia", "Otto", "Paola",
+  ];
+  const APELLIDOS = [
+    "Ramírez", "Coc", "Xitumul", "Batz", "Morales", "Sactic", "Ixcot",
+    "Quiñónez", "Tzoc", "Chacón", "Barrios", "Estrada",
+  ];
+  const CONFIRMACIONES = [
+    "confirmed",
+    "confirmed",
+    "pending",
+    "unknown",
+    "not_confirmed",
+    "confirmed",
+  ] as const;
+  const PREVIEWS = [
+    "¿ya salió mi pedido?",
+    "gracias, quedo pendiente",
+    "sí, confirmo la dirección",
+    "¿cuánto sale el envío?",
+    "no me ha llegado nada",
+    "perfecto, muchas gracias",
+    "¿me pueden llamar?",
+    "quiero cambiar la dirección",
+  ];
+
+  // El apellido avanza cada vuelta completa de nombres: con `i % largo` en los
+  // dos, los dos ciclos se sincronizan y salen 48 nombres repetidos 36 veces.
+  const filas = Array.from({ length: N }, (_, i) => ({
+    waId: `5029${String(900000 + i)}`,
+    jid: `5029${String(900000 + i)}@s.whatsapp.net`,
+    phone: `+5029${String(900000 + i)}`,
+    name: `${NOMBRES[i % NOMBRES.length]} ${
+      APELLIDOS[Math.floor(i / NOMBRES.length) % APELLIDOS.length]
+    }`,
+    agentMode: i % 9 !== 0,
+  }));
+
+  const ids: string[] = [];
+  for (let i = 0; i < filas.length; i += 500) {
+    const lote = await db
+      .insert(contacts)
+      .values(filas.slice(i, i + 500))
+      .returning({ id: contacts.id });
+    ids.push(...lote.map((r) => r.id));
+  }
+  for (let i = 0; i < ids.length; i += 500) {
+    await db.insert(conversations).values(
+      ids.slice(i, i + 500).map((id, k) => ({
+        contactId: id,
+        operationId: op.id,
+        lastInboundAt: new Date(desde - (i + k) * 60_000),
+        lastOutboundAt: new Date(desde - (i + k) * 60_000 + 30_000),
+        createdAt: new Date(desde - (i + k) * 60_000),
+        lastMessagePreview: PREVIEWS[(i + k) % PREVIEWS.length]!,
+        unreadCount: (i + k) % 7 === 0 ? 2 : 0,
+        // La bandeja de Katherine también tiene que verse viva: sin esto sus
+        // cinco contadores quedan en cero menos dos, y una pantalla en cero no
+        // deja ver si el filtro de confirmación sigue funcionando.
+        confirmationStatus: CONFIRMACIONES[(i + k) % CONFIRMACIONES.length]!,
+      })),
+    );
+  }
+
+  // 94 % con pedido, como producción: lo que queda sin pedido es la bandeja
+  // de ventas, y tiene que dar del orden de 100.
+  const conPedido = ids.filter((_, i) => i % 16 !== 0);
+  for (let i = 0; i < conPedido.length; i += 500) {
+    const lote = await db
+      .insert(shopifyOrders)
+      .values(
+        conPedido.slice(i, i + 500).map((id, k) => ({
+          operationId: op.id,
+          contactId: id,
+          orderId: `#9${i + k}`,
+          customerName: "Cliente",
+          customerPhone: "+5029",
+          totalPrice: "349.00",
+          status: "confirmed" as const,
+          receivedAt: new Date(desde - (i + k) * 60_000),
+          rawPayload: {
+            line_items: [{ title: "REVITALHAIR – DHT ANTICALVICIE" }],
+          },
+        })),
+      )
+      .returning({ id: shopifyOrders.id, contactId: shopifyOrders.contactId });
+    await db.insert(dropiOrders).values(
+      lote.map((r, k) => ({
+        operationId: op.id,
+        contactId: r.contactId,
+        shopifyOrderRowId: r.id,
+        dropiOrderId: 900_000 + i + k,
+        customerName: "Cliente",
+        status: (k % 3 === 0 ? "entregado" : "en_transito") as
+          | "entregado"
+          | "en_transito",
+      })),
+    );
+  }
+  return N;
 }
 
 function haceMinutos(m: number): Date {
