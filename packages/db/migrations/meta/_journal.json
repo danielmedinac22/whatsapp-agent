@@ -169,6 +169,13 @@
       "when": 1786977902352,
       "tag": "0023_capi_dataset_por_operacion",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1787074921411,
+      "tag": "0024_operacion_en_pedidos_y_plantillas",
+      "breakpoints": true
     }
   ]
 }

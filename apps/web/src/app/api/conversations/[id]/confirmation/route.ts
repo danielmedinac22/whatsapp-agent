@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { setConfirmationStatus, type ConfirmationStatus } from "@/lib/queries";
 import { workerFetch } from "@/lib/worker";
+import { resolvePanelOperation } from "@/lib/operation";
 
 const ALLOWED: ConfirmationStatus[] = [
   "unknown",
@@ -21,7 +22,15 @@ export async function POST(
   if (!status || !ALLOWED.includes(status)) {
     return new Response("invalid status", { status: 400 });
   }
-  await setConfirmationStatus(id, status);
+  // La confirmación es la decisión que dispara la logística: si la conversación
+  // no es de esta operación no se escribe **y no se avisa al worker**, que es
+  // lo que evita confirmarle a la logística del país equivocado.
+  const written = await setConfirmationStatus(
+    await resolvePanelOperation(),
+    id,
+    status,
+  );
+  if (!written) return new Response("not found", { status: 404 });
   if (status === "confirmed") {
     workerFetch(`/api/dropi/confirm-by-conversation`, {
       method: "POST",

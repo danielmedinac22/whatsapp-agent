@@ -1,4 +1,5 @@
 import { listCarriers, listShopifyOrdersWithDropi } from "@/lib/queries";
+import { resolvePanelOperation } from "@/lib/operation";
 import { OrdersTable, type OrderRow } from "./orders-table";
 
 export const dynamic = "force-dynamic";
@@ -18,8 +19,9 @@ export default async function OrdersPage({
   searchParams: Promise<OrdersSearchParams>;
 }) {
   const sp = await searchParams;
+  const op = await resolvePanelOperation();
   const [rows, carriers] = await Promise.all([
-    listShopifyOrdersWithDropi({
+    listShopifyOrdersWithDropi(op, {
       q: sp.q,
       shopifyStatus: sp.shopify,
       dropiStatus: sp.dropi,
@@ -27,7 +29,7 @@ export default async function OrdersPage({
       match: sp.match,
       situacion: sp.situacion,
     }),
-    listCarriers(),
+    listCarriers(op),
   ]);
 
   const serialized: OrderRow[] = rows.map(

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import { z } from "zod";
-import { eq, messageMedia, panelOperation } from "@wa/db";
+import { eq, messageMedia } from "@wa/db";
 import { db } from "../db";
 import { getKapsoConnection } from "../kapso/connection";
 import { isTemplateApproved } from "../kapso/provisioning";
@@ -15,6 +15,7 @@ import { enqueueOutbound } from "../jobs/outbound";
 import {
   getConversationOperationId,
   getOperationIdByWaId,
+  panelOperation,
   requireOperationOrSole,
 } from "../operations";
 
@@ -46,11 +47,11 @@ wa.get("/media/:id", async (c) => {
 
 /**
  * Connection status — fed by kapso_connection (no QR/session lifecycle).
- * El panel todavía muestra una sola conexión: la del panel (ticket 07 trae el
- * selector). Ya no es `null` = la fila singleton = Guatemala.
+ * La conexión que se reporta es la de la operación elegida en el riel. Ya no es
+ * `null` = la fila singleton = Guatemala.
  */
 wa.get("/status", async (c) => {
-  const conn = await getKapsoConnection(await panelOperation());
+  const conn = await getKapsoConnection(await panelOperation(c));
   return c.json({
     status: conn?.phoneNumberId ? "connected" : "disconnected",
     phone: conn?.displayPhoneNumber ?? null,
@@ -84,7 +85,7 @@ wa.post("/send", async (c) => {
   });
   // Estado que se le muestra al asesor tras encolar; el envío en sí resuelve su
   // propia operación desde la conversación (ver `jobs/outbound.ts`).
-  const conn = await getKapsoConnection(await panelOperation());
+  const conn = await getKapsoConnection(await panelOperation(c));
   return c.json({
     ok: true,
     outboundId,

@@ -1,4 +1,4 @@
-import { panelOperation } from "@wa/db";
+import { resolvePanelOperation } from "@/lib/operation";
 import {
   getAgentSettings,
   listRecentConversationOptions,
@@ -9,14 +9,14 @@ import { AgentForm } from "./agent-form";
 export const dynamic = "force-dynamic";
 
 export default async function AgentPage() {
+  // La pantalla de configuración edita la de **una** operación: la que el admin
+  // eligió en el riel. Antes editaba la fila global `id = 1` — que es
+  // Guatemala, y por tanto el país equivocado en cuanto exista el segundo.
+  const op = await resolvePanelOperation();
   const [settings, templates, conversations] = await Promise.all([
-    // La pantalla de configuración edita la de **una** operación: la del panel,
-    // que hasta el selector (ticket 07) es la única activa. Antes editaba la
-    // fila global `id = 1` — que es Guatemala, y por tanto el país equivocado
-    // en cuanto exista el segundo.
-    panelOperation().then(getAgentSettings),
-    listTemplates(),
-    listRecentConversationOptions(),
+    getAgentSettings(op),
+    listTemplates(op),
+    listRecentConversationOptions(op),
   ]);
 
   return (

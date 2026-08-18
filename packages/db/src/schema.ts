@@ -329,6 +329,23 @@ export const waTemplates = pgTable(
   "wa_templates",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    /**
+     * La operación dueña del catálogo. Migración `0024`.
+     *
+     * **Obligatoria**, y por la regla de la `0021`: quien escribe aquí es el
+     * aprovisionamiento de Meta (`kapso/provisioning.ts`), que somete el
+     * catálogo contra la WABA **de una operación concreta** y por tanto la sabe
+     * siempre. No hay ningún camino que escriba una plantilla sin saber de
+     * quién es.
+     *
+     * Redundante con `business_account_id` mientras haya una WABA por
+     * operación, y a propósito: el panel filtra por operación —es lo único que
+     * tiene en la mano— y sin la columna tendría que ir a buscar la conexión
+     * para traducir. `listApprovedWaTemplates` es la consulta que la usa.
+     */
+    operationId: uuid("operation_id")
+      .notNull()
+      .references(() => operations.id, { onDelete: "restrict" }),
     name: text("name").notNull(),
     language: text("language").notNull().default("es"),
     category: text("category").notNull().default("UTILITY"),
@@ -347,7 +364,14 @@ export const waTemplates = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (t) => [uniqueIndex("wa_templates_name_waba_idx").on(t.name, t.businessAccountId)],
+  (t) => [
+    // El único sigue siendo (nombre, WABA) y no (nombre, operación): Meta
+    // aprueba por WABA, así que es la WABA la que define qué nombre puede
+    // repetirse. Cambiarlo obligaría a tocar los cuatro `onConflictDoUpdate`
+    // del aprovisionamiento sin comprar nada.
+    uniqueIndex("wa_templates_name_waba_idx").on(t.name, t.businessAccountId),
+    index("wa_templates_operation_idx").on(t.operationId, t.status),
+  ],
 );
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -560,6 +584,26 @@ export const templates = pgTable(
   "templates",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    /**
+     * La operación dueña de la plantilla. Migración `0024`.
+     *
+     * **Obligatoria**: las tres escrituras que existen —la pantalla de
+     * Plantillas, el seed de logística y el seed inicial— saben la operación
+     * antes de escribir. Es la misma regla que la `0021` aplicó a las cuatro
+     * tablas de configuración, y estas plantillas son configuración: de aquí
+     * cuelgan las seis FK de `agent_settings`, que ya es una fila por
+     * operación.
+     *
+     * **El ticket 10 daba por hecho que esta columna ya existía** (decía
+     * «`templates` ya tiene `operation_id`, solo agregás el `where`»). No
+     * existía: medido contra producción el 18-ago-2026, `templates` tenía nueve
+     * filas y ninguna columna de operación. Sin ella `listTemplates` no se
+     * puede filtrar y las dos operaciones comparten las nueve plantillas —
+     * incluidas las de logística, que llevan el texto que le sale al cliente.
+     */
+    operationId: uuid("operation_id")
+      .notNull()
+      .references(() => operations.id, { onDelete: "restrict" }),
     name: text("name").notNull(),
     body: text("body").notNull(),
     variables: jsonb("variables").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
@@ -574,7 +618,11 @@ export const templates = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (t) => [uniqueIndex("templates_name_idx").on(t.name)],
+  // El único pasa de `name` a `(operación, name)`: mismo movimiento que la
+  // `0021` le hizo a `dropi_orders`. Con el único sobre el nombre a secas, la
+  // operación colombiana no puede tener su propia `dropi_guia_generada` — el
+  // insert choca contra la guatemalteca y se queda sin plantilla.
+  (t) => [uniqueIndex("templates_operation_name_idx").on(t.operationId, t.name)],
 );
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -877,6 +925,28 @@ export const shopifyOrders = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     orderId: text("order_id").notNull(),
+    /**
+     * La operación a la que se le atribuye el pedido. Migración `0024`.
+     *
+     * **Nullable, y por la misma regla que `conversations`**: la columna se
+     * pone donde hace falta filtrar, `NOT NULL` solo donde quien escribe
+     * *siempre* sabe la operación. El webhook de la tienda se autentica con un
+     * secreto de entorno global y la carga útil no trae identidad de tienda:
+     * con dos tiendas y hasta el ticket 08 puede legítimamente no saberla.
+     * Volverla obligatoria convertiría «no sé de qué operación es» en «pierdo
+     * el pedido», sobre el camino por el que entran los 1.712 que facturan.
+     *
+     * La `0021` argumentó que esta columna no hacía falta *para escribir* —el
+     * único de `dropi_orders` sí la necesitaba— y tenía razón. Hace falta para
+     * **leer**: la pantalla de Pedidos lee `shopify_orders` de frente y sin
+     * ella no hay forma de que no mezcle dos países.
+     *
+     * `restrict` y no `cascade`: dar de baja una operación no puede llevarse
+     * por delante el historial de pedidos.
+     */
+    operationId: uuid("operation_id").references(() => operations.id, {
+      onDelete: "restrict",
+    }),
     customerPhone: text("customer_phone").notNull(),
     customerName: text("customer_name"),
     contactId: uuid("contact_id").references(() => contacts.id, {
@@ -907,6 +977,9 @@ export const shopifyOrders = pgTable(
     uniqueIndex("shopify_orders_order_id_idx").on(t.orderId),
     index("shopify_orders_phone_idx").on(t.customerPhone),
     index("shopify_orders_status_idx").on(t.status),
+    // La pantalla de Pedidos filtra por operación y ordena por fecha: el índice
+    // compuesto es el que sirve esa consulta sin recorrer las 1.712 filas.
+    index("shopify_orders_operation_idx").on(t.operationId, t.receivedAt),
   ],
 );
 

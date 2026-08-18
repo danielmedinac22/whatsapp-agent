@@ -1,33 +1,34 @@
-import { auth, signOut } from "@/auth";
+import { auth } from "@/auth";
 import { redirect } from "next/navigation";
-import Link from "next/link";
-import {
-  Bot,
-  Cable,
-  Inbox,
-  LogOut,
-  Package2,
-  Shapes,
-} from "lucide-react";
-import { ConnectionIndicator } from "./connection-indicator";
+import { db, kapsoConnection } from "@/lib/db";
+import { operationTint } from "@wa/shared";
 import { resolveAccess } from "@/access/resolve";
+import { resolvePanelBars, resolvePanelOperationState } from "@/lib/operation";
+import { ChooseOperation } from "./choose-operation";
+import { NAV_HREFS } from "./nav";
+import {
+  OperationColumn,
+  OperationRail,
+  type RailOperation,
+} from "./operation-rail";
 
 /**
- * El menú entero. Cada entrada se muestra solo si el rol alcanza su ruta, y
- * quien lo decide es la misma función que el borde (`src/proxy.ts`): así el
- * menú no puede ofrecer una pantalla que rebota, ni esconder una que sí abre.
+ * El marco del panel: el riel de operaciones, el tinte del país activo y la
+ * navegación anidada dentro.
  *
- * Esconder el enlace **no es el control de acceso** —quien escribe la URL a
- * mano no pasa por aquí—; es solo no ofrecer una puerta cerrada.
+ * **El tinte muere aquí.** Las variables `--op*` se declaran en este elemento y
+ * las usan el riel y la columna; el contenido conserva siempre la paleta
+ * neutra. Si `--color-accent-strong` siguiera al país, cada botón primario
+ * cambiaría de color y el verde dejaría de significar «confirmado» — justo en
+ * Guatemala, que es lo que factura. Es la decisión 1 del nivel 1 y la razón por
+ * la que los tres referentes del patrón (Slack, la consola de AWS, el modo
+ * prueba de Stripe) confinan el color al cromo.
+ *
+ * De aquí para adentro, cada pantalla resuelve su propia operación con
+ * `resolvePanelOperation()`: el layout no se la puede pasar a los `children`, y
+ * pasarla por contexto la volvería invisible en la firma de las consultas, que
+ * es justo lo que este trabajo vino a evitar.
  */
-const NAV = [
-  { href: "/inbox", label: "Inbox", icon: Inbox },
-  { href: "/templates", label: "Plantillas", icon: Shapes },
-  { href: "/agent", label: "Agente", icon: Bot },
-  { href: "/orders", label: "Pedidos", icon: Package2 },
-  { href: "/connection", label: "Conexión", icon: Cable },
-] as const;
-
 export default async function AppLayout({
   children,
 }: {
@@ -36,93 +37,93 @@ export default async function AppLayout({
   const session = await auth();
   if (!session) redirect("/login");
 
-  const nav = NAV.filter(
-    (item) => resolveAccess(session.user.role, item.href).allowed,
+  // **Sin lanzar, a propósito.** El marco tiene que dibujarse aunque no haya
+  // operación elegida: es el que trae el riel con el que se elige. Si esto
+  // lanzara —como lanza `resolvePanelOperation()` en las pantallas—, el día que
+  // Colombia se ponga `active` el panel quedaría sin salida: para elegir haría
+  // falta un riel que no se podría dibujar hasta haber elegido.
+  const [state, bars] = await Promise.all([
+    resolvePanelOperationState(),
+    resolvePanelBars(),
+  ]);
+  const active = state.operation;
+  const operations = state.operations;
+
+  // El número de cada operación sale de su conexión de WhatsApp. Una sola
+  // consulta para todo el riel: son una o dos filas, y el índice único de la
+  // `0021` garantiza una conexión por operación.
+  const connections = await db
+    .select({
+      operationId: kapsoConnection.operationId,
+      phone: kapsoConnection.displayPhoneNumber,
+    })
+    .from(kapsoConnection);
+  const phoneByOperation = new Map(
+    connections.map((c) => [c.operationId, c.phone]),
   );
 
+  const entries: RailOperation[] = operations.map((operation) => ({
+    operation,
+    phone: phoneByOperation.get(operation.id) ?? null,
+  }));
+  const activeEntry = active
+    ? entries.find((e) => e.operation.id === active.id) ?? {
+        operation: active,
+        phone: phoneByOperation.get(active.id) ?? null,
+      }
+    : null;
+
+  // Las rutas que este rol alcanza, decididas por la misma función que el borde
+  // (`src/proxy.ts`): el menú no puede ofrecer una pantalla que rebota, ni
+  // esconder una que sí abre.
+  const allowed = NAV_HREFS.filter(
+    (href) => resolveAccess(session.user.role, href).allowed,
+  );
+
+  // Sin operación elegida el marco no toma el color de ninguna: teñirlo del
+  // primero de la lista sería decir que se está trabajando sobre él.
+  const tint = active
+    ? operationTint(active.countryCode)
+    : {
+        base: "var(--color-text-soft)",
+        line: "var(--color-border-strong)",
+        soft: "rgba(157, 187, 210, 0.08)",
+        faint: "rgba(157, 187, 210, 0.04)",
+      };
+  const collapsed = bars === "collapsed";
+
   return (
-    <div className="app-shell">
-      <aside className="app-sidebar">
-        <div className="relative mb-4 px-2">
-          <h1 className="text-lg font-semibold text-[var(--color-text)]">
-            WhatsApp Agent
-          </h1>
-          <p className="mt-1 truncate text-xs text-[var(--color-text-soft)]">
-            {session.user.email}
-          </p>
-        </div>
-
-        <div className="mb-2 px-2">
-          <p className="text-xs font-medium text-[var(--color-text-soft)]">
-            Navegación
-          </p>
-        </div>
-
-        <nav className="flex gap-2 overflow-x-auto pb-1 text-sm lg:flex-col lg:overflow-visible">
-          {nav.map((item) => (
-            <NavLink
-              key={item.href}
-              href={item.href}
-              label={item.label}
-              icon={item.icon}
-            />
-          ))}
-        </nav>
-
-        <div className="my-3">
-          <ConnectionIndicator />
-        </div>
-
-        <form
-          className="mt-auto"
-          action={async () => {
-            "use server";
-            await signOut({ redirectTo: "/login" });
-          }}
-        >
-          <button type="submit" className="app-button-secondary w-full gap-2">
-            <LogOut className="h-4 w-4" />
-            Cerrar sesión
-          </button>
-        </form>
-      </aside>
+    <div
+      className="app-frame"
+      data-bars={active ? bars : "collapsed"}
+      style={
+        {
+          "--op": tint.base,
+          "--op-line": tint.line,
+          "--op-soft": tint.soft,
+          "--op-faint": tint.faint,
+        } as React.CSSProperties
+      }
+    >
+      <OperationRail
+        entries={entries}
+        activeId={active?.id ?? null}
+        bars={bars}
+        allowed={allowed}
+      />
+      {collapsed || !activeEntry ? null : (
+        <OperationColumn
+          entry={activeEntry}
+          allowed={allowed}
+          email={session.user.email}
+        />
+      )}
 
       <main className="app-main">
-        <div className="border-b border-[var(--color-border)] px-4 py-2.5">
-          <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-medium text-[var(--color-text)]">
-                Control center
-              </p>
-            </div>
-            <div className="hidden h-7 items-center gap-2 rounded-md border border-[var(--color-border)] bg-[rgba(8,22,31,0.72)] px-2 text-xs text-[var(--color-text-dim)] md:flex">
-              <span className="h-2 w-2 rounded-full bg-[var(--color-accent)]" />
-              Activo
-            </div>
-          </div>
-        </div>
-
-        <div>{children}</div>
+        {/* `children` no se renderiza mientras no haya operación: la pantalla
+            no se dibuja «por debajo» de un aviso, sencillamente no se dibuja. */}
+        <div>{active ? children : <ChooseOperation state={state} />}</div>
       </main>
     </div>
-  );
-}
-
-function NavLink({
-  href,
-  label,
-  icon: Icon,
-}: {
-  href: string;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-}) {
-  return (
-    <Link href={href} className="app-nav-link group min-w-[156px] lg:min-w-0">
-      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--color-text-dim)] transition group-hover:text-[var(--color-accent)]">
-        <Icon className="h-4 w-4" />
-      </span>
-      <span className="flex-1">{label}</span>
-    </Link>
   );
 }

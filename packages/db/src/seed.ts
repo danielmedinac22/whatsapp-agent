@@ -34,21 +34,24 @@ async function main() {
     .values({ id: 1, status: "disconnected" })
     .onConflictDoNothing();
 
+  // La configuración de agente cuelga de una operación desde el contract
+  // (ticket 06), y la plantilla también desde la `0024`. En una base recién
+  // migrada la operación ya existe: la crea la migración `0020`. Si no hay
+  // ninguna, esto falla en vez de sembrar filas sin dueño — que es justo lo que
+  // la `0021` ya no admite.
+  const op = await requireSoleActiveOperation();
+
   const [followup] = await db
     .insert(templates)
     .values({
+      operationId: op.id,
       name: "shopify_followup",
       body: "Hola {{nombre}}, vimos que aún no has confirmado tu pedido. ¿Te gustaría continuar?",
       variables: ["nombre"],
     })
-    .onConflictDoNothing({ target: templates.name })
+    .onConflictDoNothing({ target: [templates.operationId, templates.name] })
     .returning();
 
-  // La configuración de agente cuelga de una operación desde el contract
-  // (ticket 06). En una base recién migrada la operación ya existe: la crea la
-  // migración `0020`. Si no hay ninguna, esto falla en vez de sembrar una fila
-  // sin dueño — que es justo lo que la `0021` ya no admite.
-  const op = await requireSoleActiveOperation();
   await db
     .insert(agentSettings)
     .values({

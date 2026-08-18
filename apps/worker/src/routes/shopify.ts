@@ -103,10 +103,22 @@ shopify.post("/webhook", async (c) => {
   const followupAt = new Date(Date.now() + followupDelay);
   const remarketingAt = new Date(Date.now() + remarketingDelay);
 
+  // La operación del pedido es la de la conversación de ese cliente, que la
+  // resolvió la ingesta por el número que recibió el mensaje. Solo cuando la
+  // conversación tampoco la sabe cae al mismo `null` de arriba: el pedido queda
+  // sin atribuir —visible— en vez de atribuido al país equivocado.
+  //
+  // Sin esta línea la columna de la `0024` nacería en NULL en cada pedido
+  // nuevo y la pantalla de Pedidos, que ya filtra por operación, dejaría de
+  // mostrarlos **hoy**, con una sola operación. Es el motivo por el que la
+  // columna se agrega junto con su escritor y no antes.
+  const orderOperationId = conv?.operationId ?? operationId;
+
   const [stored] = await db
     .insert(shopifyOrders)
     .values({
       orderId: order.id,
+      operationId: orderOperationId,
       customerPhone: phone,
       customerName,
       contactId: contact.id,

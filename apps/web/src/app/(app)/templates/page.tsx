@@ -1,6 +1,7 @@
 import { revalidatePath } from "next/cache";
-import { db, templates, eq } from "@/lib/db";
+import { db, templates, and, eq } from "@/lib/db";
 import { listTemplates } from "@/lib/queries";
+import { resolvePanelOperation } from "@/lib/operation";
 import { auth } from "@/auth";
 import { templateTypeValues, type TemplateType } from "@wa/shared";
 import { TemplateEditor } from "./template-editor";
@@ -29,16 +30,22 @@ async function createTemplate(formData: FormData) {
   const body = String(formData.get("body") ?? "").trim();
   const type = parseType(String(formData.get("type") ?? "general"));
   if (!name || !body) return;
+  // La plantilla nace de la operación sobre la que se está trabajando. El
+  // conflicto es contra (operación, nombre) desde la `0024`: dos operaciones
+  // pueden tener su propia plantilla con el mismo nombre, y hasta ahora la
+  // segunda se perdía en silencio contra el único del nombre a secas.
+  const op = await resolvePanelOperation();
   await db
     .insert(templates)
     .values({
+      operationId: op.id,
       name,
       body,
       variables: extractVariables(body),
       type,
       createdBy: session.user.id,
     })
-    .onConflictDoNothing({ target: templates.name });
+    .onConflictDoNothing({ target: [templates.operationId, templates.name] });
   revalidatePath("/templates");
 }
 
@@ -51,6 +58,9 @@ async function updateTemplate(formData: FormData) {
   const body = String(formData.get("body") ?? "").trim();
   const type = parseType(String(formData.get("type") ?? "general"));
   if (!id || !name || !body) return;
+  // Editar y borrar son escrituras por id, igual que las del Inbox: el id llega
+  // del formulario y la pertenencia se verifica dentro del `where`.
+  const op = await resolvePanelOperation();
   await db
     .update(templates)
     .set({
@@ -60,7 +70,7 @@ async function updateTemplate(formData: FormData) {
       type,
       updatedAt: new Date(),
     })
-    .where(eq(templates.id, id));
+    .where(and(eq(templates.id, id), eq(templates.operationId, op.id)));
   revalidatePath("/templates");
 }
 
@@ -69,12 +79,15 @@ async function deleteTemplate(formData: FormData) {
   const session = await auth();
   if (!session) return;
   const id = String(formData.get("id") ?? "");
-  await db.delete(templates).where(eq(templates.id, id));
+  const op = await resolvePanelOperation();
+  await db
+    .delete(templates)
+    .where(and(eq(templates.id, id), eq(templates.operationId, op.id)));
   revalidatePath("/templates");
 }
 
 export default async function TemplatesPage() {
-  const list = await listTemplates();
+  const list = await listTemplates(await resolvePanelOperation());
 
   return (
     <div className="app-page max-w-5xl space-y-3">
