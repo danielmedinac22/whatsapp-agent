@@ -425,6 +425,12 @@ export async function handleInbound(parsed: ParsedInboundMessage): Promise<void>
       contact,
       conversation: conv,
       body: parsed.text,
+      // El dueño se derivó arriba y hasta ahora solo se registraba en el log:
+      // sin pasarlo aquí, el runner caía siempre a `confirmacion` y el vendedor
+      // no contestaba nunca. Con `sales_agent_settings` vacía —que es el estado
+      // de producción hoy— `resolveOwner` devuelve `confirmacion` igual, así que
+      // esto no cambia el comportamiento de Guatemala.
+      owner: ownership?.owner.agent,
     }).catch((err) => logger.error({ err }, "agent runner failed"));
   }
 }
