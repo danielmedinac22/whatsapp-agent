@@ -4,7 +4,7 @@
 
 **Blocked by:** ventas-ingesta-reconocimiento 01 · Distinguir un lead nuevo de un cliente existente · ventas-multi-operacion 05 · La configuración de agente cuelga de la operación
 
-**Status:** claimed — worktree `sebastian-persona`, tanda del 17-ago-2026
+**Status:** resolved — worktree `sebastian-persona`, 17-ago-2026. El último guardia queda en el ticket 05 de este mapa.
 
 - [x] El vendedor tiene su **propio registro de configuración, en una tabla hermana** — no se generaliza la configuración existente, cuyas 65 referencias son en su mayoría campos de Katherine.
 - [x] Esa configuración incluye nombre visible, mensajes base, límite de descuento, instrucciones de tono, modelo y esfuerzo de razonamiento.

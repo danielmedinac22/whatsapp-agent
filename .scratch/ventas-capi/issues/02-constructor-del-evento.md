@@ -6,7 +6,7 @@ Función pura, mismo patrón que el constructor de orden del spec de cierre: arm
 
 **Blocked by:** 01
 
-**Status:** hecho — worktree `capi-evento`, migración `0023` aplicada a producción el 17-ago-2026. `apps/worker/src/capi/purchase-event.ts` + 31 tests.
+**Status:** resolved — worktree `capi-evento`, migración `0023` aplicada a producción el 17-ago-2026
 
 - [x] El evento lleva **valor y moneda de la operación** — quetzales o pesos, sin valor por defecto. Sin el valor, Meta optimiza hacia cantidad de ventas en vez de hacia ingreso.
 - [x] El píxel se resuelve **desde la operación**, nunca desde una constante. — **Corregido por medición: no es un píxel, es un `dataset`.** Ver abajo.

@@ -4,7 +4,7 @@
 
 **Blocked by:** 02
 
-**Status:** claimed — worktree `sebastian-persona`, tanda del 17-ago-2026
+**Status:** resolved — worktree `sebastian-persona`, 17-ago-2026
 
 - [x] El módulo de escalamiento existente suma los triggers del vendedor, sin duplicar lógica.
 - [x] Escala ante palabra clave de petición de humano.
