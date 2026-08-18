@@ -54,12 +54,11 @@ products = 0 · product_ads = 0 · operations = 1
 
 **La referencia CTWA no se capturó nunca, ni una sola vez.** La ruta de captura está viva —`inbound/pipeline.ts:237` escribe y hasta registra por qué ruta llegó— pero la migración `0022` aterrizó el 17-ago y desde entonces entraron ~28 conversaciones.
 
-**El cero no prueba que Kapso no mande el `referral`. Prueba que nadie lo vio llegar nunca.** Y admite dos explicaciones que no se distinguen desde el código:
+**Resuelto el 18-ago con la credencial de Meta, y no es ninguna de las dos cosas que se sospechaban.** Leída la cuenta publicitaria: de 500 conjuntos, 10 tienen destino WhatsApp, y **ninguno apunta al número que escucha el panel**. Los dos activos —`CJ NEURO WPP` y `CJ ABT WPP BUSSINES SEBASTIAN SEGUNDA CAMPAÑA`— van a +502 4722 4176, otra WABA.
 
-- **No hay pauta CTWA corriendo** → el código está bien y nunca tuvo oportunidad.
-- **La hay y el referral no llega** → **es un bug en producción**, y está costando plata ahora mismo: no existe endpoint para recuperar el `referral` después del hecho, así que cada clic sin capturar es atribución perdida para siempre, y con ella el CAPI de esa venta.
+**Y es a propósito.** Hoy las confirmaciones corren en un WhatsApp y las ventas en otro; los dos se van a unir en uno solo, y Sebastián queda activo cuando eso pase. Daniel lo dejó **pendiente de validación con datos reales** una vez esté en producción.
 
-Esto no se junta en el veredicto. Son dos cosas distintas y solo el Ads Manager las separa.
+No es un bug y no hay pérdida retroactiva: esos leads nunca pudieron llegar al panel. Lo único que condiciona la unificación es que el número de la pauta está en **ON_PREMISE** (que Meta descontinúa) y el del panel en **CLOUD_API**, que es lo que Kapso usa — la unificación tiene que ir hacia Cloud API.
 
 ### La consecuencia de F que hay que tener a la vista
 

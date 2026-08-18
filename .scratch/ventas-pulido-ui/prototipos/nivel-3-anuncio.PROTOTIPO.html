@@ -312,6 +312,16 @@
             border:1px dashed rgba(248,113,113,.4); background:rgba(248,113,113,.06); font-size:11.5px; line-height:1.55; color:var(--text-dim); }
   .noconn b { color:var(--danger); }
 
+  .m-camp { position:sticky; top:0; z-index:1; display:flex; align-items:baseline; gap:9px; padding:9px 15px 7px; background:#0c1a24; border-bottom:1px solid var(--border); }
+  .m-camp b { font-size:11.5px; font-weight:700; letter-spacing:.01em; }
+  .m-camp .meta { font-size:10px; color:var(--text-soft); margin-left:auto; text-align:right; white-space:nowrap; }
+  .m-camp.otro b { color:var(--text-dim); }
+  .m-dest { font-size:10px; color:var(--highlight); }
+  .m-ad { display:flex; align-items:center; gap:11px; width:100%; text-align:left; background:none; border:none; border-bottom:1px solid rgba(157,187,210,.06); padding:8px 15px 8px 26px; }
+  .m-ad:hover { background:rgba(255,255,255,.045); }
+  .m-ad .nm { flex:1; min-width:0; font-size:12.5px; }
+  .m-ad .idd { flex:none; font-size:10.5px; color:var(--text-soft); font-variant-numeric:tabular-nums; }
+
   /* ===== instrumento ===== */
   #picker { position:fixed; right:16px; bottom:16px; z-index:9999; width:296px; background:#16181c; border:1px solid #33373f; border-radius:12px; box-shadow:0 24px 60px rgba(0,0,0,.68); font-size:12px; color:#d6d9de; user-select:none; overflow:hidden; }
   #picker.is-min .pk-body { display:none; }
@@ -468,20 +478,78 @@ const PENDING = {
 };
 
 
-/* Los anuncios tal como los devolvería `GET /act_2042265076620189/ads`.
-   UNA sola cuenta publicitaria («CP - Vorare», en COP y zona Bogotá) sirve a
-   las DOS operaciones: la lista NO viene separada por país, y eso es un
-   problema del diseño, no un detalle del mock. */
-const AD_ACCOUNT = { id:"act_2042265076620189", name:"CP - Vorare", currency:"COP" };
-const META_ADS = [
-  {id:"24019338702", name:"DHT ANTICALVICIE · Video · testimonial", camp:"CP · Prospecting GT", set:"Hombres 28-55 GT", on:true,  op:"GT", leads:41},
-  {id:"24022114900", name:"REVITALHAIR · genérico · Imagen",         camp:"CP · Prospecting GT", set:"Amplio GT",        on:true,  op:"GT", leads:22},
-  {id:"24019338715", name:"DHT BLOCKER · Video · dermatólogo",       camp:"CP · Prospecting GT", set:"Hombres 30-60 GT", on:true,  op:"GT", leads:17},
-  {id:"23990117899", name:"COMBO 360 · Carrusel",                    camp:"CP · Retargeting GT", set:"Visitantes 30d",   on:false, op:"GT", leads:8},
-  {id:"24022004488", name:"Hair Recovery 3X · Video",                camp:"CP · Prospecting GT", set:"Lookalike 2% GT",  on:true,  op:"GT", leads:3},
-  {id:"23851094782", name:"DHT ANTICALVICIE · Imagen · antes/después", camp:"CP · Prospecting GT", set:"Hombres 28-55 GT", on:true, op:"GT", leads:0},
-  {id:"24030019955", name:"REVITALHAIR CO · contra entrega",         camp:"CP · Apertura CO",    set:"Amplio Bogotá",    on:true,  op:"CO", leads:2},
-  {id:"24030019961", name:"REVITALHAIR CO · Video · lanzamiento",    camp:"CP · Apertura CO",    set:"Amplio Medellín",  on:false, op:"CO", leads:0},
+/* LOS ANUNCIOS REALES de act_2042265076620189, leídos con la Graph API v21.0
+   el 18-ago-2026. No son de laboratorio: los nombres son los que hay.
+
+   El dato que ordena la variante: de 400 anuncios de la cuenta, solo **37
+   llevan a WhatsApp**. Los otros 363 van a la web y no pueden producir un
+   lead de Sebastián — ofrecerlos sería ofrecer ruido.
+
+   Y el nombre del anuncio NO identifica: «VIDEO 1» aparece 23 veces en la
+   cuenta, «VIDEO 2» otras 23. Lo que identifica es la CAMPAÑA, que codifica
+   producto, destino, país y fecha. Por eso la lista va agrupada por campaña
+   y no plana. La campaña más nueva (15-08) sí usa nombres descriptivos con
+   emoji — la práctica está mejorando, pero el diseño no puede suponerla. */
+const PANEL_WA = "50236890343";   // el número que escucha el panel
+const AD_ACCOUNT = { id:"act_2042265076620189", name:"CP - Vorare", total:400, ctwa:37 };
+const META_CAMPAIGNS = [
+  { name:"NEUROPATHY INCUBADORA WPP CBO GTM 15 08 2026", set:"CJ NEURO WPP", wa:"50247224176", on:true, ads:[
+    { id:"120250199020500761", name:"NEURO 🙌 Alivio suave para pies y manos", on:true },
+    { id:"120250199021300761", name:"NEURO 🌿 Calma esa molestia de los nervios", on:true },
+    { id:"120250199020620761", name:"NEURO 🌙 Que el hormigueo no te quite el sueño", on:true },
+  ]},
+  { name:"DHT WHATSAPP SEBAS CBO GTM 12 08 2026", set:"CJ DHT VIDEOS - WPP SEBAS HOMBRES GTM 12 08 2026", wa:"50247224176", on:false, ads:[
+    { id:"120250120196080761", name:"VIDEO 1", on:false },
+    { id:"120250120210550761", name:"VIDEO 3", on:false },
+    { id:"120250120210560761", name:"VIDEO 2", on:false },
+    { id:"120250120210540761", name:"VIDEO 4", on:false },
+  ]},
+  { name:"NEUROPATHY WHATSAPP CBO GTM 10 08 2026 SEGUNDA CAMPAÑA - Copia", set:"CJ ABT WPP BUSSINES SEBASTIAN SEGUNDA CAMPAÑA", wa:"50247224176", on:true, ads:[
+    { id:"120250082932830761", name:"VIDEO 1", on:true },
+    { id:"120250082932810761", name:"VIDEO 3", on:true },
+    { id:"120250082932840761", name:"VIDEO 2", on:true },
+  ]},
+  { name:"DEOS NUEVOS ANGULO CBO GTM 10 07 2026 WHATSAPP SEBASTIAN", set:"CONJUNTO DEOS NUEVOS ANGULO GTM", wa:"50247224176", on:false, ads:[
+    { id:"120250047471270761", name:"VIDEO 4", on:false },
+    { id:"120250047289350761", name:"VIDEO 2", on:false },
+    { id:"120250046539090761", name:"VIDEO 1", on:false },
+    { id:"120250047370530761", name:"VIDEO 3", on:false },
+  ]},
+  { name:"NEUROPATHY WHATSAPP CBO GTM 10 08 2026 SEGUNDA CAMPAÑA", set:"CJ ABT WPP BUSSINES SEBASTIAN SEGUNDA CAMPAÑA", wa:"50247224176", on:false, ads:[
+    { id:"120250045936050761", name:"VIDEO 3", on:false },
+    { id:"120250045839100761", name:"VIDEO 2", on:false },
+    { id:"120250044757340761", name:"VIDEO 1", on:false },
+  ]},
+  { name:"NEUROPATHY WHATSAPP CBO GTM 03 08 2026", set:"CJ ABT WPP BUSSINES", wa:"50247224176", on:false, ads:[
+    { id:"120249838320710761", name:"IMAGEN 1 (reusada)", on:false },
+    { id:"120249903793600761", name:"VIDO 4 / VARIACION", on:false },
+    { id:"120249838316700761", name:"VIDEO 3 (reusado ganador)", on:false },
+    { id:"120249838000490761", name:"VIDO 3", on:false },
+    { id:"120249838000480761", name:"VIDEO 2", on:false },
+    { id:"120249837444170761", name:"VIDO 1", on:false },
+  ]},
+  { name:"NEUROPATHY WHATSAPP CBO GTM 03 08 2026 - Copia", set:"CJ SEBASTIAN WPP VIDEOS NUEVOS 5AM", wa:"50247224176", on:false, ads:[
+    { id:"120249976167270761", name:"VIDEO 2", on:false },
+    { id:"120249976165700761", name:"VIDEO 1", on:false },
+  ]},
+  { name:"NEUROPATHY WHATSAPP CBO GTM 06 08 2026", set:"CA ABT CAMILO WPP VIDEOS ORIGINALES", wa:"50259467118", on:false, ads:[
+    { id:"120249935357760761", name:"VIDO 4 / VARIACION", on:false },
+    { id:"120249935350860761", name:"VIDEO 3 (reusado ganador)", on:false },
+    { id:"120249935355760761", name:"VIDO 3", on:false },
+    { id:"120249935353880761", name:"VIDO 1", on:false },
+    { id:"120249935356650761", name:"VIDEO 2", on:false },
+    { id:"120249935365120761", name:"IMAGEN 1 (reusada)", on:false },
+  ]},
+  { name:"NEUROPATHY VENTAS CREATIVOS NUEVOS CBO GTM 06 08 2026", set:"CA ABT CAMILO WPP VIDEOS NUEVOS", wa:"50259467118", on:false, ads:[
+    { id:"120249934515280761", name:"VIDEO 1", on:false },
+    { id:"120249934566960761", name:"VIDEO 2", on:false },
+  ]},
+  { name:"NEUROPATHY CREAM WPP GTM 01 08 2026", set:"CJ ABIERTO WPP", wa:"573106619655", on:false, ads:[
+    { id:"120249787724450761", name:"VIDEO 1", on:false },
+    { id:"120249787937770761", name:"VIDEO 3", on:false },
+    { id:"120249787937760761", name:"VIDEO 2", on:false },
+    { id:"120249787937780761", name:"IMAGEN 1", on:false },
+  ]},
 ];
 
 const VARIANTS = [
@@ -490,7 +558,7 @@ const VARIANTS = [
   {id:"C",label:"El pegado masivo",  tag:"una campaña entera de una vez, con previsualización",     ref:"Mailchimp · Wix"},
   {id:"D",label:"En el hilo",        tag:"se registra donde duele, dentro de la conversación",      ref:"Midday inline"},
   {id:"E",label:"Confirmar, no registrar", tag:"el panel propone el producto; vos aprobás",        ref:"Salesforce · folk"},
-  {id:"F",label:"De la lista de Meta ✓",   tag:"ELEGIDA · se elige por su nombre; no se escribe ningún ID",  ref:"ManyChat · Klaviyo"},
+  {id:"F",label:"De la lista de Meta ✓",   tag:"ELEGIDA · datos REALES: agrupado por campaña, solo CTWA",   ref:"ManyChat · Klaviyo"},
 ];
 
 const state = {
@@ -1155,18 +1223,16 @@ function metaModal(p){
   const hd = el("div","m-head");
   hd.innerHTML = `<div><div class="m-title">Elegir el anuncio</div>
     <div class="m-acct"><i></i>${esc(AD_ACCOUNT.name)} · ${esc(AD_ACCOUNT.id)}</div></div>`;
-  const x = el("button","m-x","✕");
-  x.onclick = () => { state.metaOpen = false; render(); };
-  hd.appendChild(x);
-  m.appendChild(hd);
+  const x = el("button","m-x","✕"); x.onclick = () => { state.metaOpen = false; render(); };
+  hd.appendChild(x); m.appendChild(hd);
 
   const tools = el("div","m-tools");
   const q = el("input","m-search");
-  q.placeholder = "Buscar por nombre, campaña o conjunto";
+  q.placeholder = "Buscar por campaña o anuncio";
   q.value = state.metaQ;
   q.oninput = e => { state.metaQ = e.target.value; render(); };
   tools.appendChild(q);
-  [["todos","Todos"],["on","Activos"],["off","Pausados"]].forEach(([k,l]) => {
+  [["todos","Todas"],["on","Activas"]].forEach(([k,l]) => {
     const b = el("button","btn btn-sm", l);
     if (state.metaOnly === k) b.classList.add("btn-p");
     b.onclick = () => { state.metaOnly = k; render(); };
@@ -1174,43 +1240,48 @@ function metaModal(p){
   });
   m.appendChild(tools);
 
-  /* Una sola cuenta para dos operaciones: el problema real de esta forma. */
-  const ajenos = META_ADS.filter(a => a.op !== state.country).length;
-  if (ajenos) m.appendChild(el("div","m-warn",
-    `<b>!</b><span>La cuenta publicitaria es una sola para las dos operaciones y
-     está en <b>COP, zona Bogotá</b>. ${ajenos} de estos anuncios no son de
-     ${esc(op().name)} — el panel los deduce del nombre, que es una convención,
-     no un dato. Meta no dice a qué país pertenece un anuncio.</span>`));
+  /* El filtro que de verdad importa, y no se puede apagar: de 400 anuncios
+     de la cuenta solo 37 llevan a WhatsApp. Los otros van a la web y no
+     pueden producir un lead de Sebastián. */
+  m.appendChild(el("div","m-warn",
+    `<b>·</b><span>Solo se listan los <b>${AD_ACCOUNT.ctwa} anuncios que llevan a
+     WhatsApp</b>, de ${AD_ACCOUNT.total} que tiene la cuenta. Los demás van a la
+     web: registrarlos no reconocería nada.</span>`));
 
   const list = el("div","m-list");
   const txt = state.metaQ.toLowerCase();
-  const rows = META_ADS
-    .filter(a => state.metaOnly === "todos" || (state.metaOnly === "on") === a.on)
-    .filter(a => !txt || (a.name + " " + a.camp + " " + a.set + " " + a.id).toLowerCase().includes(txt));
-
-  if (!rows.length){
-    list.appendChild(el("p","lede", `Ningún anuncio coincide. Los que no aparecen
-      pueden estar en otra cuenta publicitaria — hay seis portafolios accesibles
-      con este token.`));
-  }
-  rows.forEach(a => {
-    const ya = adsOf(p).includes(a.id);
-    const r = el("button","m-row" + (a.op !== state.country ? " foreign" : ""));
-    r.setAttribute("aria-pressed", String(ya));
-    r.innerHTML = `<span class="pill ${a.on ? "on" : "off"}">${a.on ? "Activo" : "Pausado"}</span>
-      <span class="m-name"><b>${esc(a.name)}</b><span>${esc(a.camp)} · ${esc(a.set)}</span></span>
-      <span class="m-lead">${a.leads ? `<b>${a.leads}</b> leads` : `<span class="soft">sin leads</span>`}</span>
-      <span class="m-id">${esc(a.id)}</span>`;
-    if (ya){ r.style.opacity = ".55"; r.title = "Ya registrado en este producto"; }
-    else r.onclick = () => { registrar(a.id,[p.id]); state.metaOpen = false; render(); };
-    list.appendChild(r);
-  });
+  let vistos = 0;
+  META_CAMPAIGNS
+    .filter(c => state.metaOnly === "todos" || c.on)
+    .forEach(c => {
+      const ads = c.ads.filter(a => !txt ||
+        (c.name + " " + a.name + " " + a.id).toLowerCase().includes(txt));
+      if (!ads.length) return;
+      vistos += ads.length;
+      const ajeno = c.wa !== PANEL_WA;
+      const h = el("div","m-camp" + (ajeno ? " otro" : ""));
+      h.innerHTML = `<span class="pill ${c.on ? "on" : "off"}">${c.on ? "Activa" : "Pausada"}</span>
+        <b>${esc(c.name)}</b>
+        <span class="meta">${ads.length} anuncios${ajeno
+          ? `<br><span class="m-dest">lleva a +${esc(c.wa)}, no al panel</span>` : ""}</span>`;
+      list.appendChild(h);
+      ads.forEach(a => {
+        const ya = adsOf(p).includes(a.id);
+        const r = el("button","m-ad");
+        r.innerHTML = `<span class="pill ${a.on ? "on" : "off"}">${a.on ? "Activo" : "Pausado"}</span>
+          <span class="nm">${esc(a.name)}</span><span class="idd">${esc(a.id)}</span>`;
+        if (ya){ r.style.opacity = ".5"; r.title = "Ya registrado en este producto"; }
+        else r.onclick = () => { registrar(a.id,[p.id]); state.metaOpen = false; render(); };
+        list.appendChild(r);
+      });
+    });
+  if (!vistos) list.appendChild(el("p","lede","Ningún anuncio coincide."));
   m.appendChild(list);
 
-  const foot = el("div","m-foot");
-  foot.innerHTML = `<span class="soft" style="font-size:11px">${rows.length} de
-    ${META_ADS.length} anuncios · leídos de Meta, no escritos a mano</span>`;
-  m.appendChild(foot);
+  m.appendChild(el("div","m-foot",
+    `<span class="soft" style="font-size:11px">${vistos} anuncios ·
+     el nombre del anuncio no identifica («VIDEO 1» aparece 23 veces en la
+     cuenta); lo que identifica es la campaña</span>`));
 
   scrim.appendChild(m);
   return scrim;
@@ -1240,20 +1311,20 @@ function metaField(p){
   b.onclick = e => { e.stopPropagation(); state.metaOpen = true; render(); };
   box.appendChild(b);
   box.appendChild(el("p","rules",
-    `Se listan los anuncios de <b>${esc(AD_ACCOUNT.name)}</b> con su nombre,
-     campaña y estado. No se escribe ningún identificador: el ID lo pone el
-     panel, así que la clase entera de error del pegado desaparece.`));
+    `Se listan agrupados por campaña, y solo los que llevan a WhatsApp.
+     No se escribe ningún identificador: el ID lo pone el panel, así que la
+     clase entera de error del pegado desaparece.`));
   return box;
 }
 
 function vistaF(){
   const w = el("div");
   w.appendChild(head("catálogo",
-    `La única forma que no pide escribir un identificador. El anuncio se elige
-     por el <strong>nombre que le puso quien lo creó</strong> — «DHT ANTICALVICIE ·
-     Video · testimonial» — y el ID lo pone el panel. Elimina de raíz el error
-     de pegado, y es la única que funciona el día uno, sin esperar a que
-     alguien haga clic.`));
+    `Reconstruida con los anuncios <strong>reales</strong> de la cuenta. Y los
+     nombres reales obligan a cambiar el mecanismo: el anuncio se llama
+     «VIDEO 2» —que aparece 23 veces en la cuenta— así que <strong>lo que se
+     reconoce por su nombre es la campaña</strong>, no el anuncio. Agrupado por
+     campaña, «VIDEO 2» alcanza. Plano, no significa nada.`));
   const g = el("div");
   g.style.cssText = "display:grid;grid-template-columns:1fr 340px;gap:12px;align-items:start";
   g.appendChild(tablaCat(false));
