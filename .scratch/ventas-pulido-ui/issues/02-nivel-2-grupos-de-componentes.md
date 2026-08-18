@@ -8,7 +8,7 @@
 
 - [ ] Cinco variantes por grupo, en el archivo vivo que se actualiza en sitio.
 - [x] El catálogo se muestra vacío y cargado, y con productos de ambos orígenes.
-- [ ] La configuración del vendedor separa visualmente lo que tiene consecuencia —el límite de descuento— de lo que es tono.
+- [x] La configuración del vendedor separa visualmente lo que tiene consecuencia —el límite de descuento— de lo que es tono.
 - [x] Las conversaciones se muestran con casos normales, ambiguos y escalados.
 - [x] La vista de ventas se siente hermana de la de confirmaciones, no una aplicación distinta.
 - [ ] Veredicto por grupo, registrado con su razón.
@@ -21,7 +21,7 @@
 | Conversaciones | **cerrado** (ver abajo) |
 | Ficha de cliente y etapas del lead | **cerrado** — grupo agregado el 17-ago-2026 |
 | Catálogo | **cerrado** (ver abajo) |
-| Configuración del vendedor | pendiente |
+| Configuración del vendedor | **cerrado** (ver abajo) |
 | Tablero de pipeline | pendiente — **último grupo**, ver más abajo |
 
 ### Grupo agregado: la ficha de cliente y las etapas
@@ -64,6 +64,44 @@ Quedan los dos, con trabajos distintos:
 - **La pestaña dice CÓMO**: el nivel de la cascada que resolvió, y en el caso ambiguo los nombres candidatos que el matcher no pudo separar. Eso el evento no lo puede contar, y hoy no se enseña en ninguna pantalla.
 
 Es el mejor lugar del panel para el problema real de Vorare: los cuatro SKUs REVITALHAIR casi homónimos aparecen ahí, listados, con el botón que los desambigua para siempre.
+
+## Answer · Configuración del vendedor
+
+**Secciones apiladas, la misma anatomía que la configuración de Katherine.** Se descartaron las dos columnas, el guardarraíl al principio, la vista previa en columna y las pestañas.
+
+### El veredicto y su razón
+
+> «Por claridad de tener todo en la misma pantalla.»
+
+La razón descarta las pestañas de plano: **partir una configuración en pestañas esconde la mitad de lo que se está cambiando.** Quien construya no debería introducirlas cuando la pantalla crezca; debería alargar el scroll.
+
+### Media pregunta ya estaba contestada por el código
+
+El spec pide separar lo estructurado de lo libre, y **el panel ya lo hace**: `agent-form.tsx` son cuatro `<section class="app-card">` apiladas con `<h2>`, y `prompt-card.tsx` es una tarjeta aparte con el prompt libre, historial de versiones y restaurar. La configuración de Sebastián hereda esa forma en vez de inventar otra.
+
+**Lo que no tenía precedente es un campo que gasta plata**, y ahí sí hizo falta tratamiento propio: el bloque del límite de descuento va con borde y fondo ámbar, y una etiqueta explícita **«tiene consecuencia»**.
+
+### Lo que se le agregó al ticket
+
+**El ticket definía el límite y nunca decía qué hace Sebastián cuando el cliente pide más.** Un límite sin consecuencia declarada no está definido: está numerado. Lo destapó Relevance AI, que junto al límite de autonomía pone «cuando se alcanza el límite» con su acción.
+
+El bloque pregunta las dos cosas. Tres opciones para el borde: **consultar con una persona** (escala el chat), **ofrecer el máximo y cerrar**, o **no mencionar descuentos**.
+
+**El caso del límite en 0** —que el spec nombra explícitamente— pone el campo en **verde, no en ámbar**: prohibir descuentos es el estado seguro, no el alarmante. Y la pregunta del borde cambia sola a «cuando el cliente insista con un descuento».
+
+### Decisiones sobre los tres ejes
+
+1. **El límite va en su lugar natural**, después de identidad y mensajes base — no al principio. Se propuso ponerlo primero por ser lo único que cuesta dinero; **Daniel prefirió conservar el orden de lectura de una configuración**, que es además el que ya tiene la pantalla de Katherine.
+
+2. **Sin vista previa del tono.** Se propuso una columna que muestra cómo respondería Sebastián al cambiar el tono o el límite, y se descartó.
+
+   **Queda registrado el riesgo que eso deja abierto, no como objeción sino como dato para quien construya:** el spec teme literalmente «que una edición del cliente rompa al vendedor sin que nadie se entere», y la vista previa era la única barrera contra eso en esta pantalla — el equivalente al aviso de solo lectura del catálogo. Sin ella, el efecto de una edición de tono solo se ve en la próxima conversación real. Si aparece un incidente de ese tipo, esta es la decisión a revisitar.
+
+3. **Presets de tono, sí, como punto de partida editable** — no como opción cerrada. Elegir uno rellena el texto y a partir de ahí es libre, igual que la cuarta tarjeta «Custom» de Gorgias. Sin presets, el campo se llena con lo primero que se le ocurra a alguien; con presets cerrados, se pierde la mitad libre que el spec eligió a propósito.
+
+### Referencia visual
+
+`prototipos/nivel-2-vendedor.PROTOTIPO.html`. Abre en la configuración decidida; los interruptores del selector sirven para ver **qué se descartó**, no como opciones abiertas.
 
 ## Answer · Catálogo
 
