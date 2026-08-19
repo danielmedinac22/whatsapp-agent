@@ -4,7 +4,7 @@
 
 **Blocked by:** 04
 
-**Status:** parcial — el matcher semántico ya corre (worktree `matcher-semantico`, 19-ago-2026) y con eso quedan marcados los siete criterios. **Sigue faltando que la respuesta del lead se registre**, que la sesión anterior ya había declarado ticket propio. Ver el tercer `## Answer`.
+**Status:** resolved — ola 4 del 19-ago-2026, mergeado y desplegado. Los siete criterios cumplidos; el matcher semántico fue el último
 
 - [x] Un anuncio no registrado se resuelve comparando titular y cuerpo contra el catálogo.
 - [x] **Ante candidatos de nombre muy parecido entre sí, el resultado es ambiguo, nunca una elección.** Este es el caso que motivó toda la decisión: la familia de cuatro SKUs casi homónimos concentra la mayoría del volumen.

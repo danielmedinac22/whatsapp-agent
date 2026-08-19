@@ -10,7 +10,7 @@
 
 ## Reglas de trabajo, aprendidas a golpes
 
-- **`pnpm -r typecheck` y `pnpm --filter @wa/worker test` después de CADA ticket**, no al final. Hoy: **4 paquetes limpios, 597 tests en 38 archivos.**
+- **`pnpm -r typecheck` y `pnpm --filter @wa/worker test` después de CADA ticket**, no al final. Hoy: **4 paquetes limpios, 725 tests en 46 archivos.**
 - **`dropi_dry_run` está en `true` a propósito.** Confirmado intencional: es el default del esquema, está expuesto como interruptor en el panel, y `84b62c0` quitó el auto-confirm dejando el botón manual como único camino. **No lo cambies.**
 - **Los tests van sobre funciones puras con fixtures**, en el estilo de `kapso/inbound.test.ts`. **Nombres en español que enuncian el comportamiento**, no la mecánica.
 - **Si algo del ticket contradice el código real, para y pregunta. El código gana.** Pasó varias veces y las correcciones valieron más que los tickets.
@@ -20,7 +20,7 @@
 
 ## Qué está construido y en producción
 
-**33 de 42 tickets resueltos.** Seis migraciones aplicadas (`0020`–`0025`); la `0026` está mergeada y **sin aplicar**. Worker en Railway y dashboard en Vercel, desplegados y verificados.
+**35 de 43 tickets resueltos.** Ocho migraciones aplicadas (`0020`–`0027`). Worker en Railway y dashboard en Vercel, desplegados y verificados.
 
 - **Migración multi-operación completa** (tickets 01–06). Existe `operations`; Guatemala registrada (`GT`/`GTQ`/`active`); **cero `eq(<tabla>.id, 1)` en toda la base** — ningún accesor devuelve conexión o configuración sin decir de qué operación.
 - **La atribución del primer contacto** — referencia del anuncio y `ctwa_clid` se capturan y persisten. Era irreversible: no existe endpoint de Meta para recuperarlos después.
@@ -32,6 +32,63 @@
 - **Roles de ventas y operaciones**, sin que ningún admin pierda acceso.
 - **El pulido de comportamiento del panel** (móvil y escritorio).
 - **Los tres niveles del árbol de diseño**, cerrados con el usuario. Prototipos en `.scratch/ventas-pulido-ui/prototipos/`.
+
+## Ola 4 del 19-ago-2026 — cerrada, en producción
+
+Tres worktrees. Migraciones `0026` y `0027` aplicadas. Suite: **725 tests en 46
+archivos** (venía de 597 en 38).
+
+| Worktree | Tickets | Estado |
+| -- | -- | -- |
+| `datos-del-cliente` | cierre-orden **03 + 04** | abiertos: falta la tienda real |
+| `matcher-semantico` | ingesta **05** | `resolved` |
+| `capi-envio` | capi **03** | `resolved`, apagado |
+
+**El camino de venta está completo de punta a punta**, y apagado a propósito en
+tres lugares: sin vendedor configurado, sin credencial de tienda (modo seco), y
+sin token de Meta (CAPI en `off`).
+
+### Lo que enseñó esta ola: ejecutar encuentra lo que leer no
+
+Los cinco hallazgos serios salieron de **correr el código**, no de revisarlo:
+
+1. **El worker de cierres no arrancaba en producción** — pg-boss guarda la cola
+   de descarte como clave foránea y hay que crearla **antes** que la que la
+   referencia. Solo se veía en los logs de Railway.
+2. **Un fallo de la cola se llevaba por delante la alerta al equipo** — el fallo
+   se comía el mecanismo que existe para que ningún fallo se coma una venta.
+3. **El reintento de CAPI no reintentaba**: reusaba la consulta del barrido, que
+   salta todo pedido con fila en el libro — incluida la que su propio primer
+   intento acababa de escribir. **Una conversión se perdía para siempre al primer
+   fallo temporal.**
+4. **El tablero de CAPI decía «no hubo pedidos»** sobre una operación que factura
+   470 al mes, porque el filtro de SQL descartaba antes de contar.
+5. **El modelo redactaba «tu pedido quedó registrado» por su cuenta** al recibir
+   el resultado de la herramienta — mentira en modo seco. La regla que quedó es
+   dura, no de prompt.
+
+**Ninguno lo habría encontrado un typecheck ni una revisión de código.** Tres
+salieron de levantar una base desechable con Docker y correr el camino entero;
+dos, de mirar los logs de producción después de desplegar.
+
+### Dos decisiones de diseño que vale la pena no perder
+
+- **La deduplicación de una conversión va en tabla, no en la cola.** Una llave
+  que vive lo que vive el job no protege algo que dura para siempre: pg-boss
+  archiva a los catorce días y desde ahí el barrido reenviaría la misma venta.
+- **El fallo de CAPI se parte en tres, no en dos.** El corte no es «hubo error»
+  sino **si la petición llegó a salir**: «no me pude conectar» (Meta no vio nada
+  → reintentar) y «me colgué esperando» (Meta puede tenerlo adentro → **no**
+  reintentar) son opuestos, y contra un destino que no deduplica esa es la única
+  distinción que importa.
+
+### Tool calling: verificado, no supuesto
+
+Antes de construir el cierre sobre tool calling se **midió contra el modelo de
+producción** —por el antecedente de `reasoning_effort`, que se guarda, se lee, se
+pasa y no llega al proveedor—. Resultado: las herramientas sí viajan en el cuerpo
+de la petición. **El mapa decía que el agente corría «sin tool calls»; ahora las
+usa, y está comprobado.**
 
 ## Ola 3 — mergeada, PENDIENTE DE DESPLIEGUE
 
@@ -164,23 +221,20 @@ siempre, sin que ningún check local lo vea.
 
 ## Qué sigue, y qué lo bloquea
 
-**Se puede construir ya:**
+**Se puede construir ya — queda poco, y nada del camino de venta:**
 
-- **`ventas-ingesta-reconocimiento/06`** — registrar el resultado de la cascada.
-  Destraba `ventas-panel/04` y está debajo de `ingesta/05`. Es el candidato
-  natural de la ola siguiente.
-- **`ventas-ingesta-reconocimiento/05`** — parcial: falta la pregunta al lead con
-  lista corta. Conviene construir el 06 antes.
-- **`ventas-conversacion/03`** — envío de apoyos visuales. **Se destrabó**: la
-  tabla `product_media` ya existe desde la `0025`.
-- `ventas-multi-operacion/09` — migrar +57 304 5430173 a Cloud API. Runbook de 5
-  pasos en el ticket; es trabajo de consola, no de código.
+- **`ventas-panel/05`** — un producto nativo no se puede vender: no tiene precio,
+  y sin precio no hay línea de pedido. Hoy escala a un asesor, que es correcto,
+  pero significa que **para vender, el producto tiene que estar conectado a la
+  tienda**. Levantado el 19-ago por el worktree del cierre.
+- **Una pantalla para el estado de CAPI.** Hoy `GET /api/capi/estado` contesta
+  bien pero solo por `curl`; no hay nada en el panel. Sin dueño.
 
-**El camino de venta está completo salvo el cierre.** Ingesta, atribución,
-reconocimiento, persona, escalamiento, ruteo, bandeja y el lead nuevo llegando al
-agente: todo construido y desplegado. Lo que falta para vender de verdad es
-`ventas-cierre-orden/03` — crear el pedido en la tienda—, y **eso espera las
-credenciales de administración de Shopify**.
+**Todo lo demás que queda espera algo que no depende del código.** El camino de
+venta está construido de punta a punta: ingesta, atribución, reconocimiento con
+sus dos niveles, persona, escalamiento, ruteo, bandeja, catálogo, apoyos
+visuales, el lead nuevo llegando al agente, el cierre a la tienda con su cola de
+reintentos, y el reporte de la conversión a Meta.
 
 **Depende del usuario, no del código:**
 
