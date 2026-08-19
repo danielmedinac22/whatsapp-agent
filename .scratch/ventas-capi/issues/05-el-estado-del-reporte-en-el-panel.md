@@ -5,7 +5,7 @@
 
 **Blocked by:** 03 · Envío asíncrono con reintentos
 
-**Status:** resolved — worktree `cierre-final`, 19-ago-2026
+**Status:** resolved — ola final del 19-ago-2026, mergeado y desplegado
 
 Levantado el 19-ago-2026 al cerrar la ola 4. El worker del ticket 03 quedó
 construido, desplegado y con su estado consultable por `GET /api/capi/estado`,

@@ -85,6 +85,48 @@ contesta **«el reporte a Meta está apagado (META_CAPI_MODE sin poner)»**. El
 interruptor se comprueba antes que la credencial a propósito. Faltan las dos, y
 también el dataset.
 
+## Ola final del 19-ago-2026 — cerrada. NO QUEDA NADA CONSTRUIBLE.
+
+**37 de 44 tickets resueltos. Los 7 que quedan esperan algo que no es código.**
+Migración `0028` aplicada. Suite: **787 tests en 49 archivos.**
+
+Entraron los dos últimos: el **precio del producto nativo** —sin él, para vender
+había que estar conectado a la tienda, que era matar la razón por la que la mitad
+nativa existe— y **la pantalla del estado de CAPI**, que hasta ahora solo se veía
+por `curl`.
+
+El precio lo protege la base, no el código: `products_price_check` impide que un
+producto **conectado** tenga precio propio, así que el suyo sigue viniendo de la
+tienda en tiempo de uso y no puede desincronizarse.
+
+## Lo único que falta, y todo depende del cliente
+
+| Qué falta | Quién lo trae | Qué destraba |
+| -- | -- | -- |
+| **Token de administración de Shopify** | Vorare | `cierre-orden/01`, `03`, `04` — y con eso el pedido real |
+| **Token de sistema con `ads_read`** | Vorare | `panel/03` — elegir el anuncio por su nombre |
+| **Permiso `whatsapp_business_manage_events`** | Vorare | `capi/04` — verificar la conversión en Meta |
+| **Configurar a Sebastián** (`display_name`) | El dueño de la operación | Que el vendedor atienda. Hoy `sales_agent_settings` está vacía **a propósito** |
+| **Cargar el catálogo** | El dueño de la operación | Que haya productos que vender. `products` = 0 filas |
+| **Migrar +57 304 5430173 a Cloud API** | Consola de Meta | `multi-op/08` y `09` — Colombia, **pospuesto por el usuario el 19-ago** |
+
+**Artefacto con las dos credenciales, listo para pasarle a Vorare:**
+https://claude.ai/code/artifact/d4014b57-11a2-400c-a63f-5a4c70bad9da
+
+## Los tres interruptores, todos apagados a propósito
+
+El camino de venta está construido de punta a punta y **no se ejecuta**, por tres
+frenos independientes. Encender es un acto deliberado, no un descuido pendiente:
+
+1. **`sales_agent_settings` vacía** → toda conversación resuelve a Katherine. El
+   listón es `display_name` no vacío, no la existencia de la fila.
+2. **Modo de escritura de tienda en seco** → se arma el pedido y no se manda.
+3. **`META_CAPI_MODE=off`** y sin token → ni una llamada a Meta.
+
+**Encenderlos tiene orden**: primero catálogo y vendedor, después la tienda (y
+antes, un pedido desechable), y CAPI al final con el código de prueba de Meta.
+Ver el riesgo R6 y R7 de `no-regresion.md`.
+
 ## Ola 4 del 19-ago-2026 — cerrada, en producción
 
 Tres worktrees. Migraciones `0026` y `0027` aplicadas. Suite: **725 tests en 46
