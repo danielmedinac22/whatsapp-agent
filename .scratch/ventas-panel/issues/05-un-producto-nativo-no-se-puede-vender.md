@@ -6,7 +6,7 @@ línea de pedido.
 
 **Blocked by:** None — can start immediately.
 
-**Status:** ready-for-agent
+**Status:** claimed — worktree `cierre-final`, 19-ago-2026
 
 Levantado el 19-ago-2026 por el worktree `cierre-tienda` al construir el cierre a
 la tienda. Es un hallazgo de construcción: apareció al intentar armar la línea
