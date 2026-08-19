@@ -22,6 +22,7 @@ import { loadSalesEscalationFacts } from "../sales/escalation-facts";
 import { evaluateSalesEscalation } from "../sales/escalation-triggers";
 import { salesReasoningOptions } from "../sales/model";
 import { isSalesAgentConfigured } from "../sales/persona";
+import { enqueueApoyosVisuales } from "../sales/product-media-send";
 import { openrouter } from "./openrouter";
 import { escalateToHuman, SALES_ESCALATION_REASON } from "./escalation";
 import { buildEffectiveSystemPrompt } from "./effective-prompt";
@@ -212,6 +213,12 @@ async function flushSalesTurn(entry: Buffered): Promise<boolean> {
       dedupKey: `agent:${conversation.id}:${shortHash(reply)}`,
       conversationId: conversation.id,
     });
+
+    // Los archivos del producto salen **detrás** de la respuesta y por la misma
+    // cola. Va después de encolar el texto y no antes por lo que pasa si algo
+    // falla: el lead se queda sin fotos, nunca sin respuesta. Por eso esta
+    // función no lanza — lo resuelve adentro.
+    await enqueueApoyosVisuales({ operation, conversation, to });
 
     await db.insert(agentRuns).values({
       conversationId: conversation.id,

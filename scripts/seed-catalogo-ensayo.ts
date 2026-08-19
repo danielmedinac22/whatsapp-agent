@@ -148,14 +148,24 @@ async function main() {
     false,
   );
   await archivo(blocker.id, "ficha-blocker.pdf", "application/pdf", 512 * 1024, true);
+  await archivo(serum.id, "modo-de-uso.pdf", "application/pdf", 220 * 1024, true);
+
+  // El COMBO lleva cuatro enviables **a propósito**: es el estado difícil del
+  // ticket 03. Con el tope de tres archivos por turno, un producto con cuatro es
+  // el único que muestra la conversación repartiendo —tres en un turno y el
+  // cuarto en el siguiente— en vez de mandarlos todos y no probar nada.
   await archivo(combo.id, "combo-360.jpg", "image/jpeg", 890 * 1024, true);
   await archivo(combo.id, "instructivo.pdf", "application/pdf", 1_100 * 1024, true);
-  await archivo(serum.id, "modo-de-uso.pdf", "application/pdf", 220 * 1024, true);
+  await archivo(combo.id, "modo-de-uso.mp4", "video/mp4", 3_900 * 1024, true);
+  await archivo(combo.id, "testimonio-cliente.jpg", "image/jpeg", 1_400 * 1024, true);
 
   console.log(`\n  Catálogo de ensayo cargado en ${host} (${op.countryCode}).`);
   console.log("  8 productos · 6 anuncios · 2 compartidos · 3 sin anuncios");
   console.log(
-    "  7 archivos · 6 enviables · DHT ANTICALVICIE queda en «2 de 3 enviables»\n",
+    "  9 archivos · 8 enviables · DHT ANTICALVICIE queda en «2 de 3 enviables»",
+  );
+  console.log(
+    "  COMBO 360 queda con 4 enviables: tres salen en un turno y el cuarto en el siguiente\n",
   );
   process.exit(0);
 }

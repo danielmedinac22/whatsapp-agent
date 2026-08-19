@@ -273,6 +273,64 @@ export async function sendAudio(input: {
 }
 
 /**
+ * El cuerpo de un mensaje de media que ya está subido, por su id. **Puro.**
+ *
+ * Kapso no inventa una forma propia: `/meta/whatsapp/v24.0/...` es un proxy del
+ * Cloud API y lo que viaja es el JSON de Meta tal cual, así que esta función
+ * es la forma documentada —`{ type: "image", image: { id } }`— y no una
+ * traducción. Es pura por el mismo motivo que {@link buildTemplateMessageBody}:
+ * la parte más fácil de equivocarse en silencio es la forma del cuerpo, y con
+ * fixtures se ve sin mandarle nada a nadie.
+ *
+ * **El documento lleva `filename` y los demás no**, y no es un detalle de
+ * estilo: es el nombre que el cliente ve en el chat y con el que el archivo se
+ * guarda en su teléfono. Sin él, WhatsApp muestra el id de Meta.
+ *
+ * **Sin `caption`, a propósito.** El texto del vendedor sale como mensaje
+ * aparte por la cola —con su reintento y su fila en el hilo—; repetirlo como
+ * pie de foto lo mandaría dos veces cuando los dos salen, y una vez a medias
+ * cuando uno de los dos falla.
+ */
+export function buildMediaMessageBody(input: {
+  to: string;
+  kind: "image" | "video" | "audio" | "document";
+  mediaId: string;
+  filename: string;
+}): Record<string, unknown> {
+  const payload: Record<string, unknown> =
+    input.kind === "document"
+      ? { id: input.mediaId, filename: input.filename }
+      : { id: input.mediaId };
+  return {
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to: input.to,
+    type: input.kind,
+    [input.kind]: payload,
+  };
+}
+
+/**
+ * Manda un archivo ya subido a Meta. Es el transporte de los apoyos visuales
+ * del vendedor; la nota de voz sigue por {@link sendAudio} porque `voice: true`
+ * es suyo y de ningún otro envío.
+ */
+export async function sendMedia(input: {
+  phoneNumberId: string;
+  to: string;
+  kind: "image" | "video" | "audio" | "document";
+  mediaId: string;
+  filename: string;
+}): Promise<{ waMessageId: string | null }> {
+  const res = await kapsoFetch<MetaSendResponse>(
+    "POST",
+    `${META_BASE}/${input.phoneNumberId}/messages`,
+    buildMediaMessageBody(input),
+  );
+  return { waMessageId: res.messages?.[0]?.id ?? null };
+}
+
+/**
  * Descarga los bytes de un media hospedado por Kapso (los audios que ENTRAN
  * llegan como URL de api.kapso.ai, que necesita la API key).
  */
