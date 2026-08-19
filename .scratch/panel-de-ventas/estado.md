@@ -10,7 +10,7 @@
 
 ## Reglas de trabajo, aprendidas a golpes
 
-- **`pnpm -r typecheck` y `pnpm --filter @wa/worker test` después de CADA ticket**, no al final. Hoy: **4 paquetes limpios, 489 tests en 31 archivos.**
+- **`pnpm -r typecheck` y `pnpm --filter @wa/worker test` después de CADA ticket**, no al final. Hoy: **4 paquetes limpios, 597 tests en 38 archivos.**
 - **`dropi_dry_run` está en `true` a propósito.** Confirmado intencional: es el default del esquema, está expuesto como interruptor en el panel, y `84b62c0` quitó el auto-confirm dejando el botón manual como único camino. **No lo cambies.**
 - **Los tests van sobre funciones puras con fixtures**, en el estilo de `kapso/inbound.test.ts`. **Nombres en español que enuncian el comportamiento**, no la mecánica.
 - **Si algo del ticket contradice el código real, para y pregunta. El código gana.** Pasó varias veces y las correcciones valieron más que los tickets.
@@ -20,7 +20,7 @@
 
 ## Qué está construido y en producción
 
-**29 de 42 tickets resueltos.** Seis migraciones aplicadas (`0020`–`0025`). Worker en Railway y dashboard en Vercel, desplegados y verificados.
+**33 de 42 tickets resueltos.** Seis migraciones aplicadas (`0020`–`0025`); la `0026` está mergeada y **sin aplicar**. Worker en Railway y dashboard en Vercel, desplegados y verificados.
 
 - **Migración multi-operación completa** (tickets 01–06). Existe `operations`; Guatemala registrada (`GT`/`GTQ`/`active`); **cero `eq(<tabla>.id, 1)` en toda la base** — ningún accesor devuelve conexión o configuración sin decir de qué operación.
 - **La atribución del primer contacto** — referencia del anuncio y `ctwa_clid` se capturan y persisten. Era irreversible: no existe endpoint de Meta para recuperarlos después.
@@ -32,6 +32,47 @@
 - **Roles de ventas y operaciones**, sin que ningún admin pierda acceso.
 - **El pulido de comportamiento del panel** (móvil y escritorio).
 - **Los tres niveles del árbol de diseño**, cerrados con el usuario. Prototipos en `.scratch/ventas-pulido-ui/prototipos/`.
+
+## Ola 3 — mergeada, PENDIENTE DE DESPLIEGUE
+
+**Migración `0026` mergeada y SIN APLICAR.** No se puede deployar el worker hasta
+aplicarla: el esquema nuevo selecciona `product_recognition` de `conversations`,
+y sin la columna eso **rompe el camino de entrada de todo mensaje**.
+
+```
+set -a && source .env && set +a && pnpm --filter @wa/db migrate
+env -u RAILWAY_TOKEN railway up --service whatsapp-worker --ci
+vercel --prod --yes
+```
+
+Tres worktrees, mergeados y verdes: **597 tests en 38 archivos**.
+
+| Worktree | Tickets | Estado |
+| -- | -- | -- |
+| `reconocimiento-registrado` | ingesta **06**, panel **04**, ingesta 05 parcial | 06 y panel/04 `resolved` |
+| `cierre-tienda` | cierre-orden **01+03+04+05** | 05 `resolved`; 01, 03 y 04 abiertos |
+| `apoyos-visuales` | conversacion **03** | `resolved` |
+
+### Lo más importante que entró
+
+**El heurístico de `followup` ya no auto-confirma una venta.** Era el riesgo R1:
+daba por confirmado todo pedido con un mensaje entrante posterior, y en una venta
+la conversación *es* el origen — habría dejado toda venta confirmada **sin
+verificar la dirección**, que en contraentrega es la causa número uno de
+devolución. La decisión salió a una función pura y hay tests que fijan que **un
+pedido que no viene del vendedor recorre exactamente el camino de antes**.
+
+### El eslabón que faltaba, y lo destapó una sesión al pararse
+
+El cierre a la tienda está construido entero **y no se puede usar todavía**:
+Sebastián no tiene cómo **entregar los datos del cliente** para dispararlo. Eso
+vive en `agent/runner.ts`, que era de otro worktree, y la sesión **paró y avisó**
+en vez de meter mano. Es trabajo de la ola 4.
+
+**Ojo con esto al construirlo:** el mapa dice que el agente corre hoy **sin tool
+calls**, y está registrado que `reasoning_effort` **no llega al proveedor** porque
+el SDK de OpenRouter descarta `providerOptions`. Antes de construir sobre tool
+calling, **hay que comprobar que funciona**.
 
 ## Ola 2 del 18-ago-2026 — cerrada, en producción
 

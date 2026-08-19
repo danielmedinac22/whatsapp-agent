@@ -4,7 +4,7 @@
 
 **Blocked by:** 02 · ventas-conversacion 02 · Conversa con el contexto del producto
 
-**Status:** ready-for-agent
+**Status:** abierto — el camino está construido y probado entero; falta que el vendedor pueda entregar los datos del cliente, que vive en `agent/runner.ts`
 
 - [ ] Sebastián pide los datos de cierre dentro de la conversación, sin formularios ni enlaces externos.
 - [ ] Un dato inválido se le comunica al lead en el momento, con qué corregir.

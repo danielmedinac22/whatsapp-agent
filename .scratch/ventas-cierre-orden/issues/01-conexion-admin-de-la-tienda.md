@@ -6,7 +6,7 @@ Sin esto, el cierre de ventas no tiene dónde aterrizar.
 
 **Blocked by:** ventas-multi-operacion 03 · La conexión de la tienda cuelga de la operación
 
-**Status:** ready-for-agent
+**Status:** abierto — todo lo que rodea a la credencial está construido y desplegable; falta la credencial, que trae Vorare
 
 - [ ] La operación de Guatemala tiene su conexión de administración configurada y verificada contra la tienda real.
 - [ ] La verificación es de solo lectura primero: se comprueba que se puede consultar un producto antes de intentar escribir nada.

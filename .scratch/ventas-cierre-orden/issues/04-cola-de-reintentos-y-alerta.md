@@ -6,7 +6,7 @@ Es alcance contractual explícito, no mejor esfuerzo.
 
 **Blocked by:** 03
 
-**Status:** ready-for-agent
+**Status:** abierto — construido entero, no observable hasta que el ticket 03 pueda cerrar una venta
 
 - [ ] Un fallo al crear el pedido no descarta el cierre: queda encolado con sus datos completos.
 - [ ] La cola reintenta, y un reintento exitoso **no duplica** el pedido.
