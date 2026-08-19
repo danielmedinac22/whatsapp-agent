@@ -19,6 +19,7 @@ import { agent } from "./routes/agent";
 import { shopify } from "./routes/shopify";
 import { shopifyConn } from "./routes/shopify-connection";
 import { catalogStore } from "./shopify/catalog-routes";
+import { storeClosings } from "./shopify/closing-routes";
 import { dropi } from "./routes/dropi";
 import { kapsoAdmin, kapsoWebhook } from "./routes/kapso";
 import {
@@ -26,6 +27,7 @@ import {
   startKapsoTemplateWorker,
 } from "./jobs/kapso-templates";
 import { startFollowupWorker } from "./jobs/followup";
+import { startSalesOrderWorker } from "./jobs/sales-order";
 import { startOutboundWorker } from "./jobs/outbound";
 import { startRemarketingWorker } from "./jobs/remarketing";
 import {
@@ -73,6 +75,8 @@ app.route("/api/agent", agent);
 app.route("/api/shopify", shopifyConn);
 // El catálogo del panel: lo único que necesita del worker es la tienda.
 app.route("/api/catalog", catalogStore);
+// El estado de la tienda y los cierres que no llegaron a ella.
+app.route("/api/tienda", storeClosings);
 app.route("/api/dropi", dropi);
 app.route("/api/kapso", kapsoAdmin);
 
@@ -105,6 +109,11 @@ serve({ fetch: app.fetch, port }, (info) => {
   );
   startFollowupWorker().catch((err) =>
     logger.error({ err }, "followup worker failed to start"),
+  );
+  // La cola de cierres que no llegaron a la tienda: reintenta y avisa. Sin
+  // ella, una venta cerrada que la tienda rechaza se pierde en silencio.
+  startSalesOrderWorker().catch((err) =>
+    logger.error({ err }, "sales order worker failed to start"),
   );
   startRemarketingWorker().catch((err) =>
     logger.error({ err }, "remarketing worker failed to start"),

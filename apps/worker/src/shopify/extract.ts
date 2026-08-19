@@ -85,3 +85,31 @@ export function extractOrderVariables(
     telefono: pickPhone(p),
   };
 }
+
+/**
+ * Las etiquetas de un pedido, sacadas de la carga cruda del webhook.
+ *
+ * **Importa que sean las crudas y no las del esquema validado**: el zod del
+ * webhook no declara `tags`, y `routes/shopify.ts` guarda en `raw_payload` el
+ * JSON entero antes de validarlo, así que las etiquetas están ahí. Medido en
+ * producción: los 1.732 pedidos guardados traen `tags`, todos con
+ * `releasit_cod_form` —el formulario de contraentrega de la tienda— y ninguno
+ * con la etiqueta de ventas, que es lo esperado porque el vendedor todavía no
+ * ha creado ni un pedido.
+ *
+ * Se aceptan las dos formas porque las dos existen: el webhook REST manda una
+ * **cadena separada por comas** (`"a, b"`) y la API de administración devuelve
+ * un **arreglo**. Leer solo una de las dos haría que el origen del pedido se
+ * resolviera bien en un camino y mal en el otro — y resolverlo mal significa
+ * auto-confirmar un pedido de ventas que nadie confirmó.
+ */
+export function extractOrderTags(payload: unknown): string[] {
+  const raw = (payload ?? {}) as { tags?: unknown };
+  const tags = raw.tags;
+  const list = Array.isArray(tags)
+    ? tags.map(String)
+    : typeof tags === "string"
+      ? tags.split(",")
+      : [];
+  return list.map((t) => t.trim()).filter(Boolean);
+}

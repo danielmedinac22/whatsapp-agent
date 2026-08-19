@@ -11,7 +11,7 @@
  *
  * - Origen ventas → contenido que reconoce la compra, y diez minutos.
  * - Origen directo → contenido y demora **actuales, sin cambio alguno**. Es el
- *   camino que factura hoy (1.678 pedidos, 88,4% de confirmación) y este módulo
+ *   camino que factura hoy (1.732 pedidos, 88,4% de confirmación) y este módulo
  *   no lo altera.
  * - Ventana abierta → texto libre. Ventana cerrada → plantilla.
  *
@@ -23,6 +23,29 @@
  * y **fallaría en silencio** justo en el caso donde ya hubo un problema. Por eso
  * {@link FollowupPlan.template} no es opcional: la plantilla existe siempre, sea
  * cual sea el origen, y es el camino seguro.
+ *
+ * ## La corrección del 18-ago-2026 · el texto libre lo desbloquea el origen
+ *
+ * Este módulo nació con la regla del spec al pie de la letra —«ventana abierta →
+ * texto libre», para los dos orígenes—, y **al cablearlo resultó falsa para el
+ * pedido directo**. El spec la escribió suponiendo que quien compra en la tienda
+ * no escribió nunca y por lo tanto tiene la ventana cerrada; esa suposición se
+ * cae con un caso ordinario: un cliente que escribió hace tres horas y no volvió
+ * a escribir después del pedido tiene la ventana **abierta**, y hoy recibe
+ * plantilla. Con la regla literal habría empezado a recibir texto libre.
+ *
+ * Eso es un cambio de comportamiento observable sobre el camino que factura, y
+ * el criterio que manda en el ticket 05 dice lo contrario y es explícito: «un
+ * pedido que no viene de Sebastián conserva exactamente el flujo de hoy — misma
+ * plantilla, misma demora, mismos mensajes». **El criterio gana sobre la regla
+ * general.**
+ *
+ * Así que el mecanismo se enuncia una vuelta más preciso, sin perder la
+ * separación que le da sentido: **la ventana decide el mecanismo entre los que
+ * el origen permite**. El origen directo solo permite plantilla —porque es lo
+ * que hace hoy—, y el origen ventas permite los dos. El borde de las
+ * veinticuatro horas sigue cubierto, que era el motivo de separar las
+ * dimensiones: un pedido de ventas atascado en la cola sale por plantilla.
  */
 
 import type { ServiceWindowState } from "../kapso/service-window";
@@ -121,6 +144,10 @@ export function followupOriginFromTags(
  * fuera de la ventana no se entrega en absoluto. Es además el comportamiento
  * exacto de hoy para el pedido web, donde el cliente suele no haber escrito
  * nunca.
+ *
+ * El texto libre lo **desbloquea el origen de ventas** y lo **habilita la
+ * ventana abierta**: hacen falta los dos. Un pedido directo sale por plantilla
+ * siempre, tenga la ventana como la tenga, porque es lo que hace hoy.
  */
 export function resolveFollowupPlan(input: {
   /** Las etiquetas del pedido, tal como quedaron en la tienda. */
@@ -134,8 +161,60 @@ export function resolveFollowupPlan(input: {
   return {
     origin,
     content: sales ? "sales_purchase_ack" : "order_data_confirmation",
-    mechanism: input.window === "open" ? "free_text" : "template",
+    mechanism: sales && input.window === "open" ? "free_text" : "template",
     delayMs: sales ? SALES_FOLLOWUP_DELAY_MS : input.directDelayMs,
     template: CONFIRMACION_PEDIDO_TEMPLATE,
   };
+}
+
+/**
+ * Qué hace el job de seguimiento con un pedido: mandar el primer toque, o dar
+ * el pedido por confirmado sin mandar nada.
+ *
+ * ## El heurístico, y por qué acá se le pone una condición
+ *
+ * `jobs/followup.ts` tiene desde siempre una regla: **si el cliente escribió
+ * después de que llegó el pedido, se salta la plantilla y el pedido se marca
+ * `confirmed`**. Para un pedido de la tienda es correcta y lleva 1.732 pedidos
+ * funcionando: quien compró en la web y escribió al número está hablando con
+ * alguien, y mandarle además la plantilla de «confirmá tus datos» sobra.
+ *
+ * **Para un pedido de ventas es falsa, y peligrosa.** Ahí la conversación *es*
+ * el origen: el cliente acaba de hablar con el vendedor, así que **siempre**
+ * habrá un mensaje entrante reciente. Aplicado tal cual, todo pedido de ventas
+ * quedaría auto-confirmado sin que nadie verifique la dirección — y en
+ * contraentrega la dirección sin verificar es la causa número uno de
+ * devolución. El pedido diría «confirmado» mientras nadie lo confirmó. Es el
+ * riesgo R1 de la no-regresión.
+ *
+ * **No se resuelve bajando el heurístico**, que es lo que rompería el camino
+ * que factura: se resuelve **distinguiendo el origen antes de evaluarlo**. Un
+ * pedido sin la etiqueta de ventas pasa por exactamente la misma decisión que
+ * hoy, incluido el auto-confirmado.
+ *
+ * `customerRepliedSinceOrder` llega ya resuelto —es una consulta a `messages`—
+ * para que esta decisión sea pura y se pueda probar en las cuatro
+ * combinaciones sin base.
+ */
+export type FollowupAction =
+  /**
+   * El heurístico de siempre: el cliente ya respondió, se da por confirmado y
+   * no sale ningún mensaje. **Solo para pedidos que no vienen de ventas.**
+   */
+  | { kind: "auto_confirm" }
+  /** Sale el primer toque, con este plan. */
+  | { kind: "send"; plan: FollowupPlan };
+
+export function decideFollowupAction(input: {
+  tags: readonly string[];
+  window: ServiceWindowState;
+  directDelayMs: number;
+  /** ¿Hay algún entrante posterior a la llegada del pedido? */
+  customerRepliedSinceOrder: boolean;
+}): FollowupAction {
+  const plan = resolveFollowupPlan(input);
+  if (plan.origin === "direct" && input.customerRepliedSinceOrder) {
+    return { kind: "auto_confirm" };
+  }
+  return { kind: "send", plan };
 }

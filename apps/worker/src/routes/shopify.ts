@@ -10,6 +10,8 @@ import { shopifyOrderWebhook } from "@wa/shared";
 import { db } from "../db";
 import { logger } from "../lib/logger";
 import { verifyShopifyHmac } from "../shopify/verify";
+import { extractOrderTags } from "../shopify/extract";
+import { resolveFollowupPlan } from "../sales/followup-plan";
 import { scheduleFollowup } from "../jobs/followup";
 import { scheduleRemarketing } from "../jobs/remarketing";
 import { normalizePhone } from "../lib/phone";
@@ -109,7 +111,33 @@ shopify.post("/webhook", async (c) => {
   const settings = await getAgentSettings(
     await requireOperationOrSole(conv?.operationId),
   );
-  const followupDelay = settings?.followupDelayMs ?? 5 * 60_000;
+  const directDelay = settings?.followupDelayMs ?? 5 * 60_000;
+
+  // **La demora del primer toque depende del origen del pedido.**
+  //
+  // Un pedido del vendedor espera diez minutos en vez de los dos que Guatemala
+  // tiene configurados: el cliente acaba de despedirse de Sebastián y
+  // escribirle enseguida para preguntarle por el pedido que acaba de hacer se
+  // lee como que nadie se enteró.
+  //
+  // Un pedido que **no** viene del vendedor conserva exactamente la demora de
+  // hoy — `resolveFollowupPlan` devuelve `directDelayMs` tal cual, sin
+  // compararlo con nada. Es el camino por el que entran los 1.732 pedidos que
+  // facturan (riesgo R4) y este cambio no lo toca.
+  //
+  // El origen se lee de las etiquetas del pedido **crudo**, no del validado: el
+  // esquema de zod no declara `tags` y las descarta. Medido en producción, los
+  // 1.732 pedidos guardados traen etiquetas y ninguno la de ventas.
+  //
+  // Acá se decide **solo la demora**. El contenido y el mecanismo los vuelve a
+  // resolver el job cuando le toca correr, con la ventana medida en ese
+  // momento: entre este instante y aquel pasan minutos, y para un pedido que se
+  // atascó en la cola de reintentos pueden pasar más de veinticuatro horas.
+  const followupDelay = resolveFollowupPlan({
+    tags: extractOrderTags(json),
+    window: "unknown",
+    directDelayMs: directDelay,
+  }).delayMs;
   const remarketingDelay = settings?.remarketingDelayMs ?? 3 * 60 * 60_000;
   const followupAt = new Date(Date.now() + followupDelay);
   const remarketingAt = new Date(Date.now() + remarketingDelay);
