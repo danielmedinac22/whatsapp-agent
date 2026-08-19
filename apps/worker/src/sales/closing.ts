@@ -348,17 +348,40 @@ async function park(
     return { kind: "queued", reason: opts.reason, willRetry: true };
   }
 
-  await enqueueSalesOrder(job, closingRef(a.closing));
+  const jobId = await enqueueSalesOrder(job, closingRef(a.closing));
+  if (jobId === null) {
+    // **La cola no estaba.** Pasó de verdad: el primer despliegue dejó las colas
+    // sin crear y nadie se enteró. Si el cierre no quedó encolado no se va a
+    // reintentar solo, así que decir «quedó en la cola de reintentos» sería
+    // mentirle al equipo sobre lo único que evita perder la venta. Se avisa como
+    // lo que es —un caso que necesita una persona— y se dice que no habrá
+    // reintento.
+    await alertClosingDead(alert);
+    return { kind: "queued", reason: opts.reason, willRetry: false };
+  }
   await alertClosingQueued(alert);
   return { kind: "queued", reason: opts.reason, willRetry: true };
 }
 
-/** Deja el caso en la cola de los que esperan a una persona. */
+/**
+ * Deja el caso en la cola de los que esperan a una persona.
+ *
+ * **No lanza.** Si la cola no está disponible, lo que no puede fallar es la
+ * alerta que viene justo después: el caso perdido con aviso lo rescata alguien,
+ * y el caso perdido sin aviso no lo rescata nadie.
+ */
 async function parkAsDead(job: SalesOrderJob): Promise<void> {
-  const boss = await getBoss();
-  await boss.send(SALES_ORDER_DEAD_QUEUE, job as unknown as object, {
-    singletonKey: `${job.conversationId}:${job.closing.leadRef}`,
-  });
+  try {
+    const boss = await getBoss();
+    await boss.send(SALES_ORDER_DEAD_QUEUE, job as unknown as object, {
+      singletonKey: `${job.conversationId}:${job.closing.leadRef}`,
+    });
+  } catch (err) {
+    logger.error(
+      { err, conversationId: job.conversationId, reason: job.reason },
+      "cierre: no se pudo guardar el caso para una persona; queda solo la alerta",
+    );
+  }
 }
 
 // ────────────────────────────────────────────────────────────────────────────

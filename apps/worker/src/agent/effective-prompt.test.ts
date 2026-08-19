@@ -218,3 +218,56 @@ describe("composeEffectivePrompt · la configuración no se filtra entre agentes
     expect(true).toBe(true);
   });
 });
+
+describe("composeEffectivePrompt · el bloque de cómo registrar el pedido", () => {
+  it("con la herramienta puesta le explica que el pedido se registra desde el chat", () => {
+    const prompt = composeEffectivePrompt({
+      agent: "sales",
+      persona: SEBASTIAN,
+      canClose: true,
+      productBlock: BLOQUE_PRODUCTO,
+    });
+    expect(prompt).toContain("## Cómo registras el pedido");
+    expect(prompt).toContain("registrar_pedido");
+    expect(prompt).toContain("contraentrega");
+  });
+
+  it("sin herramienta no aparece: no se le promete algo que no puede hacer", () => {
+    // Es el mismo error que anunciarle archivos que nadie va a mandar. Sin
+    // producto identificado no hay línea que armar y lo que corresponde es la
+    // pregunta de cuál es, no una forma de registrar.
+    const prompt = composeEffectivePrompt({
+      agent: "sales",
+      persona: SEBASTIAN,
+      productBlock: null,
+      questionBlock: BLOQUE_PREGUNTA,
+    });
+    expect(prompt).not.toContain("## Cómo registras el pedido");
+    expect(prompt).not.toContain("registrar_pedido");
+  });
+
+  it("la ficha del producto sigue siendo lo último que lee", () => {
+    // El bloque del cierre va antes: lo último tiene que ser de qué producto le
+    // están hablando.
+    const prompt = composeEffectivePrompt({
+      agent: "sales",
+      persona: SEBASTIAN,
+      canClose: true,
+      productBlock: BLOQUE_PRODUCTO,
+    });
+    expect(prompt.endsWith(`\n\n${BLOQUE_PRODUCTO}`)).toBe(true);
+  });
+
+  it("Katherine no recibe nada de esto: no tiene dónde escribirlo", () => {
+    // El aislamiento entre agentes es del tipo, no de los tests. Se prueba
+    // igual porque el que venga puede ensanchar el tipo sin ver qué sostenía.
+    // @ts-expect-error — el agente de confirmación no cierra ventas.
+    composeEffectivePrompt({ agent: "confirmation", basePrompt: "x", blocks: [], canClose: true });
+    const prompt = composeEffectivePrompt({
+      agent: "confirmation",
+      basePrompt: PROMPT_KATHERINE,
+      blocks: [BLOQUE_SHOPIFY, BLOQUE_DROPI],
+    });
+    expect(prompt).not.toContain("registrar_pedido");
+  });
+});
