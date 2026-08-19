@@ -74,22 +74,28 @@ async function main() {
   const nativo = (name: string, description?: string) =>
     createNativeProduct(op, { name, description: description ?? null });
 
-  // Los nombres son los reales, con la concentración real: el primero es el 77%
-  // del volumen y los tres primeros el 96%. Los tres se parecen a propósito.
+  // Los nombres son los **reales**, con la concentración real: el primero es el
+  // 77% del volumen y los tres primeros el 96%. Se parecen a propósito — son
+  // los cuatro que motivaron toda la cascada de reconocimiento, y sobre los que
+  // el nivel semántico tiene que decir *ambiguo* y nunca elegir uno.
   const dht = await nativo(
-    "REVITALHAIR – DHT ANTICALVICIE",
+    "REVITALHAIR - DHT ANTICALVICIE",
     "Tratamiento en cápsulas para la caída por DHT. Presentación de 60 cápsulas, tratamiento de 3 meses.",
   );
   const blocker = await nativo(
-    "REVITALHAIR – DHT BLOCKER ANTICALVICIE",
+    "REVITALHAIR - DHT BLOCKER ANTICALVICIE",
     "Bloqueador de DHT en presentación reforzada. No confundir con el tratamiento base.",
   );
   const combo = await nativo(
-    "REVITALHAIR – COMBO DHT + SERUM ANTICALVICIE 360",
+    "REVITALHAIR COMBO DHT + SERUM ANTICALVICIE 360",
     "Combo del tratamiento en cápsulas más el serum capilar de aplicación diaria.",
   );
-  // Sin anuncios a propósito: es la fuga de reconocimiento que la ficha nombra.
-  await nativo("REVITALHAIR – Hair Recovery 3X");
+  // El cuarto de la familia, con su nombre real completo: es el que **no** se
+  // parece a los otros tres por su nombre, solo por lo que vende. Sin anuncios
+  // a propósito — es la fuga de reconocimiento que la ficha nombra, y ahora
+  // además es el que hace observable el nivel 2: un anuncio capilar suyo cae al
+  // match semántico porque nadie lo registró.
+  await nativo("Hair Recovery 3X - COMBO RECUPERACION CAPILAR TOTAL");
   const serum = await nativo(
     "REVITALHAIR Serum Capilar",
     "Serum de aplicación diaria. Todavía no está en la tienda.",

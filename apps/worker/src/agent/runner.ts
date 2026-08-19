@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { generateText, type ModelMessage } from "ai";
+import { generateText, stepCountIs, type ModelMessage } from "ai";
 import {
   agentRuns,
   asc,
@@ -26,6 +26,12 @@ import { enqueueApoyosVisuales } from "../sales/product-media-send";
 import { openrouter } from "./openrouter";
 import { escalateToHuman, SALES_ESCALATION_REASON } from "./escalation";
 import { buildEffectiveSystemPrompt } from "./effective-prompt";
+import { buildSalesClosingTool } from "./sales-closing-tool";
+import { closingPendingMessage } from "../sales/closing-messages";
+import {
+  resolveSalesTurnText,
+  type ClosingTurnOutcome,
+} from "../sales/closing-capture";
 
 function shortHash(s: string): string {
   return createHash("sha1").update(s).digest("hex").slice(0, 12);
@@ -129,6 +135,30 @@ async function reloadConversation(conversation: Conversation): Promise<Conversat
 }
 
 /**
+ * El registro del turno del vendedor.
+ *
+ * Existe para que el turno de cierre y el turno normal escriban la misma fila
+ * por el mismo camino: la respuesta que se guarda es la que se le mandó al
+ * cliente, que en un cierre no es la que el modelo escribió.
+ */
+async function recordRun(
+  conversationId: string,
+  model: string,
+  prompt: ModelMessage[],
+  response: string,
+  usage: { inputTokens?: number; outputTokens?: number } | undefined,
+): Promise<void> {
+  await db.insert(agentRuns).values({
+    conversationId,
+    model,
+    prompt: prompt as unknown as object,
+    response,
+    promptTokens: usage?.inputTokens ?? null,
+    completionTokens: usage?.outputTokens ?? null,
+  });
+}
+
+/**
  * El turno de Sebastián. Devuelve `false` cuando la operación no tiene vendedor
  * configurado — y entonces contesta el de confirmación, que es lo de hoy.
  *
@@ -186,20 +216,44 @@ async function flushSalesTurn(entry: Buffered): Promise<boolean> {
   });
   const prompt = await loadHistory(conversation.id, SALES_MEMORY_WINDOW);
 
+  // Cómo terminó el cierre, si es que se disparó. Se le pasa a la herramienta y
+  // se lee al volver: es cómo un `execute` que corre dentro del SDK le cuenta al
+  // turno lo que hizo, sin que el runner tenga que hurgar en los pasos.
+  const closing: ClosingTurnOutcome = {
+    suppressModelText: false,
+    result: null,
+  };
+
   try {
     const provider = openrouter();
     const result = await generateText({
       model: provider(settings.model),
       system: systemPrompt,
       messages: prompt,
+      // La herramienta del cierre va **solo cuando hay producto identificado**,
+      // la misma condición con la que su bloque entra al prompt. Sin producto no
+      // hay línea que armar y lo que corresponde es preguntar cuál es.
+      //
+      // Katherine no recibe herramientas en ningún caso: su rama de
+      // `flushBuffer` no cambió una línea, que es la no-regresión de los 1.678
+      // pedidos que confirma hoy.
+      ...(conversation.productId
+        ? {
+            tools: buildSalesClosingTool({
+              operation,
+              contact: entry.contact,
+              conversation,
+              outcome: closing,
+            }),
+            // Dos pasos: uno para llamar la herramienta y otro para que redacte
+            // con el resultado en la mano. Sin esto el SDK corta después de la
+            // llamada y el turno se quedaría sin texto en los casos en que el
+            // texto es lo único que sale.
+            stopWhen: stepCountIs(2),
+          }
+        : {}),
       ...salesReasoningOptions(settings),
     });
-
-    const reply = result.text.trim();
-    if (!reply) {
-      logger.warn("sales: model returned empty text");
-      return true;
-    }
 
     const to = contactWaId(entry.contact);
     if (!to) {
@@ -209,12 +263,38 @@ async function flushSalesTurn(entry: Buffered): Promise<boolean> {
       );
       return true;
     }
+
+    // Quién habla en este turno lo decide una función pura, para que la regla
+    // —«si el cierre habló, el modelo no habla»— se pueda probar con fixtures y
+    // no viva enredada entre efectos.
+    const turn = resolveSalesTurnText({
+      modelText: result.text,
+      closing,
+      pendingMessage: closingPendingMessage(),
+    });
+    const body = turn.body;
+
+    if (!body) {
+      logger.info(
+        {
+          conversationId: conversation.id,
+          closing: closing.result?.kind ?? null,
+          source: turn.source,
+        },
+        turn.source === "suppressed"
+          ? "sales: el cierre ya le escribió al cliente; el texto del modelo no sale"
+          : "sales: model returned empty text",
+      );
+      await recordRun(conversation.id, settings.model, prompt, "", result.usage);
+      return true;
+    }
+
     await enqueueOutbound({
       to,
-      body: reply,
+      body,
       source: "agent",
       sourceRef: conversation.id,
-      dedupKey: `agent:${conversation.id}:${shortHash(reply)}`,
+      dedupKey: `agent:${conversation.id}:${shortHash(body)}`,
       conversationId: conversation.id,
     });
 
@@ -224,14 +304,10 @@ async function flushSalesTurn(entry: Buffered): Promise<boolean> {
     // función no lanza — lo resuelve adentro.
     await enqueueApoyosVisuales({ operation, conversation, to });
 
-    await db.insert(agentRuns).values({
-      conversationId: conversation.id,
-      model: settings.model,
-      prompt: prompt as unknown as object,
-      response: reply,
-      promptTokens: result.usage?.inputTokens ?? null,
-      completionTokens: result.usage?.outputTokens ?? null,
-    });
+    // Lo que se registra es **lo que salió**, no lo que el modelo redactó: en un
+    // turno de cierre pueden diferir, y el registro existe para poder reconstruir
+    // qué leyó el cliente.
+    await recordRun(conversation.id, settings.model, prompt, body, result.usage);
   } catch (err) {
     logger.error({ err }, "sales: generateText failed");
     await db.insert(agentRuns).values({

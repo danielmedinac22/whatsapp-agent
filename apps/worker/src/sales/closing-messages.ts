@@ -177,6 +177,29 @@ export function funnelHandoffMessage(configured: string): string {
 }
 
 /**
+ * Lo que el cliente lee cuando dio todos sus datos y el pedido **todavía no
+ * existe**.
+ *
+ * Son los dos casos en que el cierre calla a propósito: el modo seco, que no
+ * escribió nada, y el cierre que no llegó a la tienda y quedó en la cola. En los
+ * dos, callar del todo tampoco sirve — el cliente acaba de dictar su dirección y
+ * el silencio se lee como que se cayó la conversación.
+ *
+ * **No dice que el pedido quedó registrado, y esa es toda su razón de ser.**
+ * Decirlo sería el mismo fallo silencioso que este camino existe para evitar,
+ * solo que al revés: el cliente se va tranquilo con un pedido que nadie creó.
+ * Dice lo único que es cierto en los dos casos — que sus datos están y que una
+ * persona le confirma— y no promete cuándo, porque no se sabe.
+ */
+export function closingPendingMessage(): string {
+  return [
+    "¡Listo! Ya tengo todos tus datos ✅",
+    "",
+    "Un asesor te confirma el pedido por este mismo chat en un ratito 🙌",
+  ].join("\n");
+}
+
+/**
  * El primer toque del pedido de ventas, diez minutos después.
  *
  * **Reconoce la compra en vez de preguntar si quiere comprar**, que es el punto

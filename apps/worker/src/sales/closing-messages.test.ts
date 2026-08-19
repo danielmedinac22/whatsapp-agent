@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   closingCorrectionMessage,
   closingErrorAudience,
+  closingPendingMessage,
   funnelHandoffMessage,
   orderRegisteredMessage,
   salesPurchaseAckMessage,
@@ -165,5 +166,30 @@ describe("salesPurchaseAckMessage · reconoce la compra, no la propone", () => {
     const msg = salesPurchaseAckMessage({ ...base, customerFirstName: "  " });
     expect(msg).toContain("¡Hola!");
     expect(msg).not.toContain("¡Hola !");
+  });
+});
+
+describe("el mensaje de cuando el pedido todavía no existe", () => {
+  it("nunca dice que el pedido quedó registrado", () => {
+    // Es toda su razón de ser. Sale en los dos casos en que el cierre calla
+    // —modo seco y cierre encolado— y en los dos el pedido NO existe: decirle
+    // que sí es el mismo fallo silencioso que este camino evita, al revés.
+    const msg = closingPendingMessage();
+    expect(msg).not.toContain("registrado");
+    expect(msg).not.toContain("#");
+  });
+
+  it("confirma que los datos están y que una persona le va a escribir", () => {
+    // El cliente acaba de dictar su dirección: el silencio se lee como que se
+    // cayó la conversación.
+    const msg = closingPendingMessage();
+    expect(msg).toContain("datos");
+    expect(msg).toContain("asesor");
+  });
+
+  it("no promete cuándo, porque no se sabe", () => {
+    const msg = closingPendingMessage();
+    expect(msg).not.toMatch(/\b\d+\s*(minutos|horas|días)\b/);
+    expect(msg).not.toContain("hoy");
   });
 });
