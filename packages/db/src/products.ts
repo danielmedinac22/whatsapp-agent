@@ -827,15 +827,23 @@ export async function listCatalogMedia(
 }
 
 /**
- * Los archivos que el vendedor puede mandar por este producto, **con sus
- * bytes**.
+ * Los archivos que el vendedor puede mandar por este producto.
  *
- * Es el camino de lectura del envío, y por eso es el único que trae la columna
- * binaria. **Sin caché, a propósito**: es lo que hace verdadero el criterio
- * «un archivo desmarcado deja de enviarse desde la siguiente conversación, sin
- * reinicio ni despliegue». Una caché acá convertiría desmarcar un archivo en
- * «desmarcado, pero sigue saliendo un rato», que es la clase de demora que
- * nadie asocia con lo que acaba de tocar.
+ * Es el camino de lectura del envío. **Sin caché, a propósito**: es lo que hace
+ * verdadero el criterio «un archivo desmarcado deja de enviarse desde la
+ * siguiente conversación, sin reinicio ni despliegue». Una caché acá
+ * convertiría desmarcar un archivo en «desmarcado, pero sigue saliendo un
+ * rato», que es la clase de demora que nadie asocia con lo que acaba de tocar.
+ *
+ * **Devuelve metadata, no bytes, y eso cambió con el ticket 03.** Nació
+ * trayendo la columna binaria porque se pensó como «lo que el envío lee», pero
+ * el envío no lee así: decide en el turno de la conversación —qué archivos
+ * corresponden y cuáles ya salieron— y **manda uno por trabajo de la cola**,
+ * que es donde se leen sus bytes ({@link getProductMediaForSend}). Traerlos
+ * acá significaba cargar en memoria hasta cuatro videos de 16 MB en cada turno
+ * de Sebastián para terminar usando uno. La regla del archivo —«los bytes no
+ * salen de acá sin que se los pidan»— es la misma; lo que se corrigió es dónde
+ * se piden.
  *
  * El `where` ya filtra por operación, producto y marca; el filtro en memoria
  * agrega el tamaño y es el que los tests ejercen.
@@ -843,10 +851,10 @@ export async function listCatalogMedia(
 export async function listSendableProductMedia(
   op: Operation,
   productId: string,
-): Promise<ProductMedia[]> {
+): Promise<ProductMediaMeta[]> {
   if (!isUuid(productId)) return [];
   const rows = await getDb()
-    .select()
+    .select(MEDIA_META_COLUMNS)
     .from(productMedia)
     .where(
       and(
@@ -857,6 +865,62 @@ export async function listSendableProductMedia(
     )
     .orderBy(asc(productMedia.createdAt));
   return sendableProductMedia(rows, op, productId);
+}
+
+/**
+ * Un archivo con sus bytes, para el trabajo de la cola que lo va a mandar.
+ *
+ * **La operación es del llamador y no del id**, y ahí está el criterio: el que
+ * pide el archivo es un trabajo de `outbound_messages`, cuya operación sale de
+ * su conversación. Buscar por `id` a secas y confiar en que la fila traiga la
+ * operación correcta es exactamente el error que la clave foránea compuesta
+ * evita en la base; esto lo evita en el código, que es donde el id viaja
+ * suelto. Un archivo de otra operación devuelve `null` — no «el archivo», sino
+ * *nada*, que es lo único que un envío puede hacer con él.
+ *
+ * **No filtra por `sendable`.** Devolver `null` para un archivo desmarcado
+ * diría lo mismo que para uno inexistente, y no es lo mismo: uno es un id que
+ * no existe y el otro es un archivo que el admin apagó mientras estaba en la
+ * cola. El que envía necesita distinguirlos para escribir en el hilo por qué no
+ * salió, y la marca la vuelve a mirar con {@link puedeEnviarse}.
+ */
+export async function getProductMediaForSend(
+  op: Operation,
+  mediaId: string,
+): Promise<ProductMedia | null> {
+  if (!isUuid(mediaId)) return null;
+  const [row] = await getDb()
+    .select()
+    .from(productMedia)
+    .where(
+      and(eq(productMedia.operationId, op.id), eq(productMedia.id, mediaId)),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
+/**
+ * Guarda —o borra— el id que Meta le dio a este archivo.
+ *
+ * Subir una vez y reusar el id es lo que evita remandar los bytes en cada
+ * conversación; **borrarlo es la otra mitad**, y por eso esta función acepta
+ * `null`: el id caduca (Meta lo conserva ~30 días) y está atado al número que
+ * lo subió, así que un envío que falla con un id guardado se cura tirándolo y
+ * volviendo a subir. Sin el `null` la caché sería una trampa permanente para el
+ * archivo que la tuvo.
+ */
+export async function setProductMediaMetaId(
+  op: Operation,
+  mediaId: string,
+  metaMediaId: string | null,
+): Promise<void> {
+  if (!isUuid(mediaId)) return;
+  await getDb()
+    .update(productMedia)
+    .set({ metaMediaId, updatedAt: new Date() })
+    .where(
+      and(eq(productMedia.operationId, op.id), eq(productMedia.id, mediaId)),
+    );
 }
 
 /** Lo que el panel manda al subir un archivo. */

@@ -234,3 +234,49 @@ export function conteoDeEnviables(archivos: readonly ArchivoGuardado[]): {
     texto: `${enviables} de ${archivos.length} enviables`,
   };
 }
+
+/**
+ * Cómo se ve en el hilo un archivo que salió hacia el cliente.
+ *
+ * El cuerpo de un mensaje de media no viaja a WhatsApp —lo que viaja son los
+ * bytes—, así que este texto es **solo para el asesor**: es lo que la burbuja
+ * muestra y lo que queda de vista previa en la lista de conversaciones. Por eso
+ * lleva el nombre del archivo y no una etiqueta genérica: el asesor que abre el
+ * chat necesita saber *cuál* de los tres videos recibió el cliente, no que
+ * recibió «un video».
+ *
+ * Sigue la forma que la nota de voz ya dejó puesta (`🎤 Nota de voz`), que es
+ * la única precedente de un mensaje saliente sin texto.
+ */
+export function etiquetaDeEnvio(filename: string, mime: string): string {
+  const icono = { image: "📷", video: "🎥", audio: "🎤", document: "📄" }[
+    mediaKind(mime)
+  ];
+  return `${icono} ${filename.trim() || "archivo"}`;
+}
+
+/**
+ * Cómo un envío del outbox dice «esto es un archivo de producto».
+ *
+ * Viaja en `outbound_messages.source_ref` —la columna que ya existe para decir
+ * de dónde salió un envío— porque `media_id` no sirve: apunta por clave foránea
+ * a `message_media`, que son las notas de voz, y una fila de `product_media` no
+ * cabe ahí. El prefijo es lo que separa este uso de los otros, que guardan ahí
+ * un id de pedido o de conversación.
+ *
+ * Vive en `@wa/shared` y no junto al envío porque lo escribe la cola y lo lee la
+ * cola, en dos archivos que se importan entre sí: es el pedazo neutral que
+ * ninguno de los dos puede tener sin el otro.
+ */
+const PRODUCT_MEDIA_REF_PREFIX = "product_media:";
+
+/** La referencia con la que un envío apunta a una fila de `product_media`. */
+export function productMediaRef(mediaId: string): string {
+  return `${PRODUCT_MEDIA_REF_PREFIX}${mediaId}`;
+}
+
+/** El archivo al que apunta un envío, o `null` si el envío no es un archivo de producto. */
+export function parseProductMediaRef(sourceRef: string | null): string | null {
+  if (!sourceRef?.startsWith(PRODUCT_MEDIA_REF_PREFIX)) return null;
+  return sourceRef.slice(PRODUCT_MEDIA_REF_PREFIX.length) || null;
+}

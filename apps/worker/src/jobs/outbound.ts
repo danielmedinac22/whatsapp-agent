@@ -2,11 +2,20 @@ import { eq } from "@wa/db";
 import {
   contacts,
   conversations,
+  getProductMediaForSend,
   messageMedia,
   messages,
   outboundMessages,
+  setProductMediaMetaId,
   type OutboundMessage,
 } from "@wa/db";
+import {
+  mediaKind as mediaKindOf,
+  parseProductMediaRef,
+  productMediaRef,
+  puedeEnviarse,
+  type MediaKind,
+} from "@wa/shared";
 import { db } from "../db";
 import { events } from "../lib/events";
 import { logger } from "../lib/logger";
@@ -15,6 +24,7 @@ import {
   classifyKapsoError,
   isWindowClosedError,
   sendAudio,
+  sendMedia,
   sendTemplate,
   sendText,
   uploadMedia,
@@ -65,6 +75,13 @@ interface EnqueueInput {
   fallbackTemplate?: TemplateSend;
   /** Nota de voz: fila de message_media ya persistida. */
   media?: { id: string; kind: "audio" };
+  /**
+   * Apoyo visual: fila de `product_media` que el vendedor manda durante la
+   * conversación. Va por `source_ref` y no por `media_id` porque esa columna
+   * apunta a `message_media` por clave foránea; el códec de la referencia es
+   * {@link productMediaRef}, compartido con el que lo lee más abajo.
+   */
+  productMedia?: { id: string; kind: MediaKind };
 }
 
 export async function enqueueOutbound(input: EnqueueInput): Promise<{
@@ -81,7 +98,9 @@ export async function enqueueOutbound(input: EnqueueInput): Promise<{
       toWaId: input.to.replace(/\D/g, ""),
       body: input.body,
       source: input.source,
-      sourceRef: input.sourceRef ?? null,
+      sourceRef: input.productMedia
+        ? productMediaRef(input.productMedia.id)
+        : (input.sourceRef ?? null),
       dedupKey: input.dedupKey,
       conversationId: input.conversationId ?? null,
       sentByUserId: input.sentByUserId ?? null,
@@ -90,7 +109,9 @@ export async function enqueueOutbound(input: EnqueueInput): Promise<{
       fallbackTemplateName: input.fallbackTemplate?.name ?? null,
       fallbackTemplateParams: input.fallbackTemplate?.params ?? null,
       mediaId: input.media?.id ?? null,
-      mediaKind: input.media?.kind ?? null,
+      // Redundante con `source_ref` para el apoyo visual, y a propósito: es lo
+      // que hace que la fila diga qué es cuando alguien la mira en la base.
+      mediaKind: input.media?.kind ?? input.productMedia?.kind ?? null,
       scheduledFor,
     })
     .onConflictDoNothing({ target: outboundMessages.dedupKey })
@@ -250,7 +271,17 @@ async function mirrorFailedSend(
   }
 }
 
-async function markPermanent(row: OutboundMessage, err: unknown): Promise<void> {
+/**
+ * `reason` existe para los fallos que **no vienen de WhatsApp**: un archivo que
+ * el admin desmarcó mientras estaba en la cola no falló al enviarse, se decidió
+ * que no se enviara, y «No se pudo enviar el mensaje» le haría buscar al asesor
+ * un problema que no existe.
+ */
+async function markPermanent(
+  row: OutboundMessage,
+  err: unknown,
+  reason?: string,
+): Promise<void> {
   await db
     .update(outboundMessages)
     .set({
@@ -262,7 +293,7 @@ async function markPermanent(row: OutboundMessage, err: unknown): Promise<void> 
       updatedAt: new Date(),
     })
     .where(eq(outboundMessages.id, row.id));
-  await mirrorFailedSend(row, humanSendError(err)).catch((mirrorErr) =>
+  await mirrorFailedSend(row, reason ?? humanSendError(err)).catch((mirrorErr) =>
     logger.error(
       { err: mirrorErr, outboundId: row.id },
       "outbound: no se pudo espejar el fallo en el hilo",
@@ -356,6 +387,7 @@ async function handleOutbound(payload: OutboundJob): Promise<void> {
   // What actually went out — mirrors into `messages` for the chat history.
   let sentBody = row.body;
   let mediaMime: string | null = null;
+  const productMediaId = parseProductMediaRef(row.sourceRef);
   try {
     if (row.mediaId) {
       // Nota de voz: los bytes ya están guardados; solo falta que Meta tenga
@@ -392,6 +424,86 @@ async function handleOutbound(payload: OutboundJob): Promise<void> {
         voice: media.mime.includes("ogg"),
       });
       waId = result.waMessageId;
+    } else if (productMediaId) {
+      // Apoyo visual: un archivo del catálogo que el vendedor manda durante la
+      // conversación. Los bytes se leen acá y de a uno —el turno solo decidió
+      // cuáles— y **siempre dentro de la operación del mensaje**: aunque el
+      // encolado se equivocara de archivo, uno de otra operación no existe para
+      // esta consulta.
+      const media = await getProductMediaForSend(op, productMediaId);
+      if (!media) {
+        await markPermanent(
+          row,
+          new Error(`product media ${productMediaId} no es de la operación ${op.id}`),
+          "El archivo ya no está disponible.",
+        );
+        return;
+      }
+      // La marca se vuelve a preguntar **al enviar**, no solo al encolar: entre
+      // las dos cosas hay una cola, y el admin pudo apagar el interruptor
+      // mientras el archivo esperaba. El que manda es el último en preguntar.
+      if (!puedeEnviarse(media)) {
+        await markPermanent(
+          row,
+          new Error(`product media ${media.id} ya no es enviable`),
+          `${media.filename} ya no está marcado como enviable: no se envió.`,
+        );
+        return;
+      }
+      mediaMime = media.mime;
+      // Subir una vez y reusar el id: con un catálogo que se repite —el 77% del
+      // volumen es un solo producto— la alternativa es volver a subir el mismo
+      // video de 16 MB en cada conversación. Es el mismo trato que ya tienen las
+      // notas de voz, y la columna `meta_media_id` de `product_media` existe
+      // desde la `0025` esperándolo.
+      const idGuardado = media.metaMediaId;
+      let metaMediaId = idGuardado;
+      if (!metaMediaId) {
+        const uploaded = await uploadMedia({
+          phoneNumberId,
+          bytes: media.bytes,
+          mime: media.mime,
+          filename: media.filename,
+        });
+        metaMediaId = uploaded.mediaId;
+        await setProductMediaMetaId(op, media.id, metaMediaId);
+      }
+      try {
+        const result = await sendMedia({
+          phoneNumberId,
+          to: row.toWaId,
+          kind: mediaKindOf(media.mime),
+          mediaId: metaMediaId,
+          filename: media.filename,
+        });
+        waId = result.waMessageId;
+      } catch (err) {
+        // El id guardado tiene dos fechas de vencimiento: Meta lo conserva ~30
+        // días, y está atado al número que lo subió —si la operación cambia de
+        // número, el guardado deja de valer—. Un 400 con un id guardado es la
+        // firma de las dos: se tira la caché y se vuelve a subir en el reintento.
+        // Solo 400: la ventana cerrada es 422 y las credenciales son 401/403,
+        // y volver a subir no arregla ninguna de esas.
+        if (!idGuardado || !(err instanceof KapsoApiError) || err.status !== 400) {
+          throw err;
+        }
+        await setProductMediaMetaId(op, media.id, null).catch((cacheErr) =>
+          logger.error(
+            { err: cacheErr, mediaId: media.id },
+            "outbound: no se pudo borrar el id de Meta vencido",
+          ),
+        );
+        logger.warn(
+          { outboundId: row.id, mediaId: media.id, err: errorDetail(err) },
+          "outbound: el id de Meta guardado no sirvió; se borra y se vuelve a subir en el reintento",
+        );
+        // Error plano a propósito: `classifyKapsoError` lo lee como transitorio,
+        // así que pg-boss reintenta y el intento siguiente sube los bytes de
+        // nuevo. Envuelto como KapsoApiError moriría acá con el 400.
+        throw new Error(
+          `id de Meta vencido para ${media.filename}: ${errorDetail(err)}`,
+        );
+      }
     } else if (row.templateName) {
       const params = row.templateParams ?? [];
       if (await isTemplateApproved(op, row.templateName)) {
@@ -486,7 +598,11 @@ async function handleOutbound(payload: OutboundJob): Promise<void> {
         body: sentBody,
         status: "sent" as const,
         // El hilo sirve el audio desde nuestro propio endpoint: la URL de Meta
-        // caduca en 5 minutos.
+        // caduca en 5 minutos. El apoyo visual no tiene endpoint que lo sirva y
+        // por eso va sin URL: la burbuja queda con su etiqueta —«📷
+        // antes-despues.jpg»—, que es lo que el asesor necesita para saber qué
+        // recibió el cliente. Verlo se ve en la ficha del producto, que es donde
+        // el archivo vive.
         mediaUrl: row.mediaId ? `/api/media/${row.mediaId}` : null,
         mediaMime,
         fromAgent: row.source === "agent",

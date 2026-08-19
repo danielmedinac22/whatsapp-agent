@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   nativeProductContext,
   renderProductContextBlock,
+  renderVisualSupportSection,
   shopifyProductContext,
 } from "./product-context";
 import type { ShopifyProduct } from "../shopify/admin";
@@ -129,5 +130,35 @@ describe("nativeProductContext · el producto del panel", () => {
   it("una fila sin nombre no produce ficha", () => {
     expect(nativeProductContext({ name: null, description: "algo" })).toBeNull();
     expect(nativeProductContext({ name: "  ", description: null })).toBeNull();
+  });
+});
+
+describe("renderVisualSupportSection · lo que el cliente está recibiendo", () => {
+  it("nombra cada archivo y de qué tipo es", () => {
+    // El vendedor tiene que poder hablar de lo que el cliente está viendo. Sin
+    // los nombres, lo único que puede hacer es no mencionarlos.
+    const seccion = renderVisualSupportSection([
+      { filename: "antes-despues.jpg", mime: "image/jpeg" },
+      { filename: "testimonio.mp4", mime: "video/mp4" },
+      { filename: "ficha-producto.pdf", mime: "application/pdf" },
+    ]);
+    expect(seccion).toContain("antes-despues.jpg (foto)");
+    expect(seccion).toContain("testimonio.mp4 (video)");
+    expect(seccion).toContain("ficha-producto.pdf (documento)");
+  });
+
+  it("le prohíbe prometer archivos que no están en la lista", () => {
+    // El error caro no es quedarse corto: es ofrecer «te paso el catálogo» y
+    // dejar al cliente esperando algo que nadie va a mandar.
+    const seccion = renderVisualSupportSection([
+      { filename: "antes.jpg", mime: "image/jpeg" },
+    ]);
+    expect(seccion).toContain("No prometas ningún otro archivo");
+  });
+
+  it("sin archivos no hay sección", () => {
+    // Una sección que dijera «no hay archivos» le daría al modelo un tema del
+    // que hablar y algo que disculpar.
+    expect(renderVisualSupportSection([])).toBeNull();
   });
 });
