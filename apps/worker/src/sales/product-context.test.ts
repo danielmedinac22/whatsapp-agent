@@ -15,8 +15,20 @@ function productoDeTienda(over: Partial<ShopifyProduct> = {}): ShopifyProduct {
     description: "Serum con biotina.",
     priceRange: { min: "199.00", max: "199.00", currency: "GTQ" },
     variants: [
-      { title: "30 ml", price: "199.00", available: true, sku: "RH-30" },
-      { title: "60 ml", price: "349.00", available: false, sku: "RH-60" },
+      {
+        id: "gid://shopify/ProductVariant/301",
+        title: "30 ml",
+        price: "199.00",
+        available: true,
+        sku: "RH-30",
+      },
+      {
+        id: "gid://shopify/ProductVariant/601",
+        title: "60 ml",
+        price: "349.00",
+        available: false,
+        sku: "RH-60",
+      },
     ],
     ...over,
   };
@@ -84,7 +96,13 @@ describe("shopifyProductContext · el producto conectado a la tienda", () => {
     const contexto = shopifyProductContext(
       productoDeTienda({
         variants: [
-          { title: "Default Title", price: "199.00", available: true, sku: null },
+          {
+            id: "gid://shopify/ProductVariant/1",
+            title: "Default Title",
+            price: "199.00",
+            available: true,
+            sku: null,
+          },
         ],
       }),
     );

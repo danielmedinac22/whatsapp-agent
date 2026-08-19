@@ -7,8 +7,9 @@ import { db } from "../db";
 import {
   getShopifyConnection,
   invalidateShopifyConnectionCache,
-  pingShopify,
+  verifyStoreConnection,
 } from "../shopify/admin";
+import { resolveStoreCapabilities } from "../shopify/scopes";
 
 export const shopifyConn = new Hono();
 
@@ -41,14 +42,20 @@ shopifyConn.put("/connection", async (c) => {
   const v = parsed.data;
   const apiVersion = v.apiVersion ?? "2025-01";
 
-  const ping = await pingShopify({
+  // **La credencial nueva se estrena leyendo.** Nombre de la tienda, permisos
+  // concedidos y un producto: nada de esto escribe. Es el riesgo R6 de la
+  // no-regresión — guardar esta conexión le da al sistema capacidad de crear
+  // pedidos en una tienda viva, y la primera escritura la decide una persona
+  // encendiendo el interruptor de modo seco, no este formulario.
+  const verified = await verifyStoreConnection({
     shopDomain: v.shopDomain,
     adminAccessToken: v.adminAccessToken,
     apiVersion,
   });
-  if (!ping.ok) {
-    return c.json({ error: `no se pudo conectar: ${ping.error}` }, 400);
+  if (!verified.ok) {
+    return c.json({ error: `no se pudo conectar: ${verified.error}` }, 400);
   }
+  const verification = verified.verification;
 
   // La tienda declara a qué operación pertenece, y ya no hay forma de guardarla
   // sin decirlo: `operation_id` es obligatoria desde la `0021`.
@@ -78,7 +85,19 @@ shopifyConn.put("/connection", async (c) => {
     await db.insert(shopifyConnection).values({ id: nextId, ...values });
   }
   invalidateShopifyConnectionCache(op);
-  return c.json({ ok: true, shopName: ping.shopName });
+  // Se devuelve qué habilitó el token, no solo que se guardó. Un token corto se
+  // guarda sin ruido y falla semanas después, en el cierre de una venta, con el
+  // cliente ya despedido creyendo que compró.
+  return c.json({
+    ok: true,
+    shopName: verification.shopName,
+    productsReadable: verification.productsReadable,
+    productError: verification.productError,
+    capabilities: verification.scopes
+      ? resolveStoreCapabilities(verification.scopes)
+      : null,
+    scopeError: verification.scopeError,
+  });
 });
 
 shopifyConn.delete("/connection", async (c) => {

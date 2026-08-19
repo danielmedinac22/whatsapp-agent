@@ -1,3 +1,28 @@
+/**
+ * El primer toque de un pedido: la confirmación de datos.
+ *
+ * ## Lo que cambió el 18-ago-2026, y lo que expresamente NO cambió
+ *
+ * Este job lleva 1.732 pedidos y un 88,4% de confirmación. Lo único que se le
+ * agregó es **distinguir de dónde viene el pedido antes de decidir**, porque el
+ * vendedor estrena un origen para el que las reglas de siempre son falsas.
+ *
+ * **Un pedido que no viene del vendedor recorre exactamente el camino de
+ * antes**: el mismo heurístico de «el cliente ya respondió», la misma plantilla,
+ * los mismos parámetros y la misma demora. No es una promesa: la decisión salió
+ * a una función pura (`sales/followup-plan.ts`) y hay tests que la ejercen en
+ * las cuatro combinaciones de origen y ventana.
+ *
+ * El heurístico es el riesgo R1 de la no-regresión: si hay un entrante posterior
+ * al pedido, este job saltaba la plantilla y marcaba el pedido `confirmed`. Para
+ * el pedido web es correcto. **Para el pedido de ventas es falso** —ahí la
+ * conversación *es* el origen, el cliente acaba de hablar con el vendedor y
+ * siempre habrá un entrante reciente—, y aplicado tal cual dejaría todo pedido
+ * de ventas auto-confirmado sin que nadie verifique la dirección. En
+ * contraentrega, la dirección sin verificar es la causa número uno de
+ * devolución.
+ */
+
 import { eq, and, gte } from "@wa/db";
 import {
   contacts,
@@ -10,12 +35,15 @@ import {
 import { db } from "../db";
 import { logger } from "../lib/logger";
 import { contactWaId } from "../lib/phone";
-import { extractOrderVariables } from "../shopify/extract";
+import { extractOrderTags, extractOrderVariables } from "../shopify/extract";
 import {
   CONFIRMACION_PEDIDO_TEMPLATE,
   renderTemplateBody,
   sanitizeParam,
 } from "../kapso/templates";
+import { getServiceWindow } from "../kapso/service-window";
+import { decideFollowupAction } from "../sales/followup-plan";
+import { salesPurchaseAckMessage } from "../sales/closing-messages";
 import { enqueueOutbound } from "./outbound";
 import { FOLLOWUP_QUEUE, getBoss } from "./queue";
 
@@ -56,7 +84,11 @@ async function handleFollowup({ orderId }: FollowupPayload) {
     .where(eq(conversations.contactId, contact.id))
     .limit(1);
 
-  // Did the customer reply since the order was received?
+  // ¿Escribió el cliente después de que llegó el pedido? Es el insumo del
+  // heurístico, y sigue siendo la misma consulta de siempre. Lo que cambia es
+  // que ahora **no basta** para decidir: hay que saber también de dónde vino el
+  // pedido.
+  let customerRepliedSinceOrder = false;
   if (conv) {
     const [reply] = await db
       .select()
@@ -69,28 +101,47 @@ async function handleFollowup({ orderId }: FollowupPayload) {
         ),
       )
       .limit(1);
-    if (reply) {
-      logger.info({ orderId }, "customer replied — skipping follow-up");
-      // Solo cambia de dónde sale la configuración: la del dueño de esta
-      // conversación. El heurístico de arriba —«hay entrante posterior al
-      // pedido, luego confirmado»— es el riesgo R1 y se corrige en
-      // `ventas-cierre-orden 05`, no aquí.
-      const s = await getAgentSettings(
-        await requireOperationOrSole(conv.operationId),
-      );
-      await db
-        .update(shopifyOrders)
-        .set({ status: "confirmed", confirmedAt: new Date() })
-        .where(eq(shopifyOrders.id, order.id));
-      if (s?.activateAgentOnConfirm) {
-        await db
-          .update(contacts)
-          .set({ agentMode: true })
-          .where(eq(contacts.id, contact.id));
-      }
-      return;
-    }
+    customerRepliedSinceOrder = Boolean(reply);
   }
+
+  // La configuración es la de la operación dueña de esta conversación, y **solo
+  // se pide si hay conversación**. Pedirla con `null` caería en «la operación
+  // única», que hoy acierta porque hay una sola y mañana lanzaría: un pedido sin
+  // conversación es raro pero existe, y no puede empezar a fallar el día que se
+  // abra Colombia. Antes tampoco se pedía en ese caso.
+  const settings = conv
+    ? await getAgentSettings(await requireOperationOrSole(conv.operationId))
+    : null;
+
+  // La ventana se mide **ahora**, no cuando llegó el pedido: entre una cosa y
+  // la otra pasaron los minutos de la demora, y para un pedido de ventas que se
+  // atascó en la cola de reintentos pueden haber pasado más de veinticuatro
+  // horas. Medirla al agendar sería decidir el mecanismo con un dato viejo.
+  const window = conv ? await getServiceWindow(conv.id) : "unknown";
+
+  const action = decideFollowupAction({
+    tags: extractOrderTags(order.rawPayload),
+    window,
+    directDelayMs: settings?.followupDelayMs ?? 5 * 60_000,
+    customerRepliedSinceOrder,
+  });
+
+  if (action.kind === "auto_confirm") {
+    logger.info({ orderId }, "customer replied — skipping follow-up");
+    await db
+      .update(shopifyOrders)
+      .set({ status: "confirmed", confirmedAt: new Date() })
+      .where(eq(shopifyOrders.id, order.id));
+    if (settings?.activateAgentOnConfirm) {
+      await db
+        .update(contacts)
+        .set({ agentMode: true })
+        .where(eq(contacts.id, contact.id));
+    }
+    return;
+  }
+
+  const { plan } = action;
 
   const to = contactWaId(contact);
   if (!to) {
@@ -117,14 +168,36 @@ async function handleFollowup({ orderId }: FollowupPayload) {
     ),
   ];
 
+  // Plantilla es el camino de siempre y el de todo pedido que no venga del
+  // vendedor. El texto libre solo lo desbloquea el origen de ventas con la
+  // ventana abierta — y aun así lleva la plantilla de respaldo, porque un
+  // rechazo por ventana cerrada no puede dejar al cliente sin el mensaje.
+  const salesFreeText =
+    plan.mechanism === "free_text" && plan.content === "sales_purchase_ack";
+
   await enqueueOutbound({
     to,
-    body: renderTemplateBody(CONFIRMACION_PEDIDO_TEMPLATE, params),
+    body: salesFreeText
+      ? salesPurchaseAckMessage({
+          customerFirstName: String(
+            vars.nombre || order.customerName || contact.name || "",
+          ),
+          productSummary: vars.producto || "tu pedido",
+          destination:
+            [vars.direccion, vars.ciudad].filter(Boolean).join(" — ") ||
+            "la dirección que nos diste",
+          total: String(vars.total || order.totalPrice || "").trim()
+            ? `${vars.total || order.totalPrice}`
+            : "el valor acordado",
+        })
+      : renderTemplateBody(CONFIRMACION_PEDIDO_TEMPLATE, params),
     source: "followup",
     sourceRef: order.id,
     dedupKey: `followup:${order.id}`,
     conversationId: conv?.id ?? null,
-    template: { name: CONFIRMACION_PEDIDO_TEMPLATE, params },
+    ...(salesFreeText
+      ? { fallbackTemplate: { name: plan.template, params } }
+      : { template: { name: plan.template, params } }),
   });
 
   await db

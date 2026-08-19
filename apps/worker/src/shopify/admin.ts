@@ -67,6 +67,16 @@ export function invalidateShopifyConnectionCache(op?: Operation): void {
 }
 
 export interface ShopifyVariant {
+  /**
+   * El id global de la variante (`gid://shopify/ProductVariant/...`).
+   *
+   * Se agregó al cablear el cierre y **no es cosmético**: la tienda crea las
+   * líneas de un pedido por variante, no por producto, así que sin este campo
+   * la lectura de un producto no alcanzaba para armar ni una línea. Lo demás de
+   * la ficha —título, precio, disponibilidad— sirve para conversar; esto es lo
+   * único que sirve para vender.
+   */
+  id: string;
   title: string;
   price: string | null;
   available: boolean;
@@ -156,6 +166,7 @@ const PRODUCT_FIELDS = /* GraphQL */ `
   variants(first: 20) {
     edges {
       node {
+        id
         title
         price
         availableForSale
@@ -199,6 +210,7 @@ interface ProductGqlNode {
   variants?: {
     edges: Array<{
       node: {
+        id: string;
         title: string;
         price: string | null;
         availableForSale: boolean;
@@ -214,6 +226,7 @@ function toProduct(node: ProductGqlNode | null | undefined): ShopifyProduct | nu
     node.variants?.edges
       ?.map((e) => e.node)
       .map<ShopifyVariant>((v) => ({
+        id: v.id,
         title: v.title,
         price: v.price,
         available: v.availableForSale,
@@ -413,4 +426,126 @@ export function extractProductIdsFromOrder(rawPayload: unknown): string[] {
     .map((it) => it.product_id)
     .filter((v): v is string | number => v !== null && v !== undefined && v !== "");
   return Array.from(new Set(ids.map(String)));
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// La verificación de solo lectura · ticket 01
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * La URL de la API de administración de una tienda, definida una sola vez.
+ *
+ * La exporta para el camino de **escritura** (`order-create.ts`), que no puede
+ * reusar `adminGraphQL`: aquel lanza una excepción con el error adentro y el
+ * camino de escritura necesita el código HTTP estructurado para decidir si
+ * reintenta o llama a una persona. Lo que sí tiene que ser uno solo es cómo se
+ * arma la URL, para que un cambio de versión de la API no deje media base
+ * apuntando a la anterior.
+ */
+export function adminEndpoint(
+  conn: Pick<ShopifyConnection, "shopDomain" | "apiVersion">,
+): string {
+  return `https://${conn.shopDomain}/admin/api/${conn.apiVersion}/graphql.json`;
+}
+
+/**
+ * Qué permisos concede el token, preguntándoselo a la tienda.
+ *
+ * Es una lectura y solo una lectura, y es la que permite decirle al admin
+ * **antes** de que se cierre una venta que su token no alcanza para crear
+ * pedidos. Sin esto, un token corto se guarda sin ruido y falla semanas después
+ * en el peor momento: con el cliente ya despedido creyendo que compró.
+ *
+ * El endpoint no lleva versión de API a propósito — es el de OAuth, no el de
+ * datos, y no cambia con la versión que tenga configurada la conexión.
+ */
+export async function readGrantedScopes(
+  conn: Pick<ShopifyConnection, "shopDomain" | "adminAccessToken">,
+): Promise<{ ok: true; scopes: string[] } | { ok: false; error: string }> {
+  if (!conn.shopDomain || !conn.adminAccessToken) {
+    return { ok: false, error: "missing domain or token" };
+  }
+  try {
+    const res = await fetch(
+      `https://${conn.shopDomain}/admin/oauth/access_scopes.json`,
+      { headers: { "X-Shopify-Access-Token": conn.adminAccessToken } },
+    );
+    if (!res.ok) {
+      return { ok: false, error: `access_scopes ${res.status}` };
+    }
+    const json = (await res.json()) as {
+      access_scopes?: Array<{ handle?: string }>;
+    };
+    return {
+      ok: true,
+      scopes: (json.access_scopes ?? [])
+        .map((s) => s.handle ?? "")
+        .filter(Boolean),
+    };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
+ * Qué se leyó de la tienda al conectarla, y qué queda habilitado.
+ *
+ * `scopeError` no vacía el informe: hay tokens antiguos de app privada a los
+ * que el endpoint de permisos no les contesta. En ese caso el sistema no puede
+ * afirmar qué falta, y **decirlo es distinto de decir que falta todo** — es la
+ * regla de lectura del proyecto: una consulta que falla no es un dato que no
+ * existe.
+ */
+export interface StoreVerification {
+  shopName: string;
+  /** Los permisos que concede el token, si se pudieron leer. */
+  scopes: string[] | null;
+  scopeError: string | null;
+  /** Cuántos productos contestó la tienda a una búsqueda de una sola página. */
+  productsReadable: number | null;
+  productError: string | null;
+}
+
+/**
+ * Verificación de la conexión, **entera de solo lectura**.
+ *
+ * Es el riesgo R6 de la no-regresión hecho código: al configurar la conexión se
+ * le da al sistema capacidad de crear pedidos en una tienda viva, así que lo
+ * primero que se hace con la credencial nueva es **leer** — nombre de la
+ * tienda, permisos concedidos y un producto— y nunca escribir. La primera
+ * escritura la decide una persona, con el interruptor de modo seco y contra un
+ * pedido desechable.
+ */
+export async function verifyStoreConnection(
+  conn: Pick<ShopifyConnection, "shopDomain" | "adminAccessToken" | "apiVersion">,
+): Promise<{ ok: true; verification: StoreVerification } | { ok: false; error: string }> {
+  const ping = await pingShopify(conn);
+  if (!ping.ok) return { ok: false, error: ping.error };
+
+  const scopes = await readGrantedScopes(conn);
+
+  let productsReadable: number | null = null;
+  let productError: string | null = null;
+  try {
+    const data = await adminGraphQL<{
+      products: { edges: Array<{ node: ProductGqlNode }> };
+    }>(conn as ShopifyConnection, {
+      query: PRODUCT_SEARCH_QUERY,
+      variables: { query: null, first: 1 },
+    });
+    productsReadable = data.products.edges.length;
+  } catch (err) {
+    productError = err instanceof Error ? err.message : String(err);
+  }
+
+  return {
+    ok: true,
+    verification: {
+      shopName: ping.shopName,
+      scopes: scopes.ok ? scopes.scopes : null,
+      scopeError: scopes.ok ? null : scopes.error,
+      productsReadable,
+      productError,
+    },
+  };
 }

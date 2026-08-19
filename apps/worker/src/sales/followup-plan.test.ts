@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { CONFIRMACION_PEDIDO_TEMPLATE } from "../kapso/templates";
 import { SALES_ORDER_TAG } from "./order";
 import {
+  decideFollowupAction,
   followupOriginFromTags,
   resolveFollowupPlan,
   SALES_FOLLOWUP_DELAY_MS,
@@ -100,11 +101,23 @@ describe("resolveFollowupPlan · la ventana decide el mecanismo", () => {
     expect(plan(DE_VENTAS, "unknown").mechanism).toBe("template");
   });
 
-  it("el mecanismo no depende del origen: mismo origen, ventanas distintas", () => {
+  it("la ventana decide el mecanismo dentro de un mismo origen", () => {
     expect(plan(DE_VENTAS, "open").mechanism).toBe("free_text");
     expect(plan(DE_VENTAS, "closed").mechanism).toBe("template");
-    // Y al revés: mismo estado de ventana, orígenes distintos, mismo mecanismo.
-    expect(plan(DIRECTO, "open").mechanism).toBe("free_text");
+  });
+
+  it("el pedido directo sale por plantilla aunque la ventana esté abierta", () => {
+    // Corrección del 18-ago-2026, al cablear el ticket 05. El spec suponía que
+    // quien compra en la tienda no escribió nunca y por lo tanto tiene la
+    // ventana cerrada. Es falso en un caso ordinario: un cliente que escribió
+    // hace tres horas y no volvió a escribir después del pedido tiene la
+    // ventana ABIERTA, y hoy recibe plantilla. Mandarle texto libre sería un
+    // cambio de comportamiento sobre el camino que factura, y el criterio que
+    // manda en el ticket es que un pedido no originado en ventas conserve
+    // exactamente el flujo de hoy.
+    for (const window of ["open", "closed", "unknown"] as const) {
+      expect(plan(DIRECTO, window).mechanism).toBe("template");
+    }
   });
 
   it("el contenido no depende de la ventana: misma ventana, orígenes distintos", () => {
@@ -119,5 +132,89 @@ describe("resolveFollowupPlan · la ventana decide el mecanismo", () => {
         expect(plan(tags, window).template).toBe(CONFIRMACION_PEDIDO_TEMPLATE);
       }
     }
+  });
+});
+
+// ── El heurístico de «el cliente ya respondió» ──────────────────────────────
+//
+// Es el riesgo R1 de la no-regresión, y el criterio que más importa del ticket
+// 05. La regla lleva 1.732 pedidos funcionando y NO se baja: se le pone una
+// condición de origen delante.
+
+describe("decideFollowupAction · el heurístico distingue el origen", () => {
+  function decidir(
+    tags: readonly string[],
+    window: "open" | "closed" | "unknown",
+    respondio: boolean,
+  ) {
+    return decideFollowupAction({
+      tags,
+      window,
+      directDelayMs: DEMORA_ACTUAL,
+      customerRepliedSinceOrder: respondio,
+    });
+  }
+
+  it("un pedido web con respuesta reciente se sigue auto-confirmando", () => {
+    // El comportamiento de hoy, intacto: si el cliente escribió después de que
+    // llegó el pedido, no sale plantilla y el pedido queda confirmado.
+    expect(decidir(DIRECTO, "open", true)).toEqual({ kind: "auto_confirm" });
+    expect(decidir(DIRECTO, "closed", true)).toEqual({ kind: "auto_confirm" });
+  });
+
+  it("un pedido de ventas con mensajes recientes NO queda auto-confirmado", () => {
+    // El fallo que esperaba a ocurrir. En una venta la conversación *es* el
+    // origen: el cliente acaba de hablar con el vendedor, así que siempre habrá
+    // un entrante reciente. Con el heurístico crudo, todo pedido de ventas
+    // diría «confirmado» sin que nadie hubiera verificado la dirección — y en
+    // contraentrega la dirección sin verificar es la causa número uno de
+    // devolución.
+    const accion = decidir(DE_VENTAS, "open", true);
+    expect(accion.kind).toBe("send");
+    if (accion.kind !== "send") throw new Error("se esperaba un envío");
+    expect(accion.plan.content).toBe("sales_purchase_ack");
+  });
+
+  it("no se salta la confirmación: el pedido de ventas siempre recibe el toque", () => {
+    // La verificación de dirección se conserva, que es donde se sostiene el
+    // contraentrega. Con o sin respuesta reciente, sale mensaje.
+    for (const respondio of [true, false]) {
+      expect(decidir(DE_VENTAS, "open", respondio).kind).toBe("send");
+      expect(decidir(DE_VENTAS, "closed", respondio).kind).toBe("send");
+    }
+  });
+
+  it("sin respuesta reciente, los dos orígenes reciben su primer toque", () => {
+    expect(decidir(DIRECTO, "closed", false).kind).toBe("send");
+    expect(decidir(DE_VENTAS, "closed", false).kind).toBe("send");
+  });
+
+  it("las cuatro combinaciones de origen y ventana, con respuesta reciente", () => {
+    // El cuadro completo que pide el ticket. La respuesta reciente es lo que
+    // hace interesante el cruce: es el estado normal de una venta y el estado
+    // que dispara el heurístico en un pedido web.
+    const cuadro = (["open", "closed"] as const).flatMap((window) =>
+      [DIRECTO, DE_VENTAS].map((tags) => ({
+        window,
+        origen: tags === DE_VENTAS ? "ventas" : "directo",
+        accion: decidir(tags, window, true),
+      })),
+    );
+    expect(
+      cuadro.map((c) => [
+        c.origen,
+        c.window,
+        c.accion.kind,
+        c.accion.kind === "send" ? c.accion.plan.mechanism : "—",
+      ]),
+    ).toEqual([
+      // El pedido web con respuesta reciente se auto-confirma, abierta o no.
+      ["directo", "open", "auto_confirm", "—"],
+      // El de ventas con la ventana abierta: texto libre, y nunca confirmado.
+      ["ventas", "open", "send", "free_text"],
+      ["directo", "closed", "auto_confirm", "—"],
+      // El de ventas atascado más de 24 h: plantilla, no un fallo en silencio.
+      ["ventas", "closed", "send", "template"],
+    ]);
   });
 });
