@@ -82,6 +82,7 @@ import {
 } from "../capi/conversion-record";
 import type { SweepCounts } from "../capi/health";
 import { getBoss } from "./queue";
+import type { SalesQueueSpec } from "./sales-order";
 
 /**
  * Las colas viven acá y no en `jobs/queue.ts` por el mismo motivo que las de
@@ -645,26 +646,62 @@ export async function announceDeadConversion(job: CapiSendJob): Promise<void> {
 // Arranque
 // ────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Las colas del reporte, **en el orden en que hay que crearlas**.
+ *
+ * El orden no es preferencia: `pg-boss` guarda la cola de descarte como clave
+ * foránea, así que **una cola no se puede crear apuntando a otra que todavía no
+ * existe**. Crear primero la de envío falla con `queue_dead_letter_fkey` y deja
+ * al worker sin ninguna de las tres.
+ *
+ * Esto no se dedujo: le pasó de verdad a la cola de cierres en su primer
+ * despliegue, y lo peor no fue el error sino que el arranque lo atrapaba y
+ * seguía — la cola simplemente no existía. Acá el efecto sería que ninguna
+ * conversión se reporta nunca **y el estado del reporte diría que todo está
+ * bien**, porque no habría fallas que contar. Por eso el orden vive como una
+ * lista y `queuesDeclaredBeforeTheirDeadLetter` lo fija con un test.
+ */
+export const CAPI_QUEUE_SPECS: readonly SalesQueueSpec[] = [
+  {
+    // Primero la de descarte: es la que la otra referencia.
+    name: CAPI_SEND_DEAD_QUEUE,
+    // Un mes, como los cierres muertos. Una conversión que no se reportó es
+    // una señal perdida, y borrarla a los catorce días es perder también el
+    // rastro de que se perdió.
+    retentionDays: 30,
+  },
+  {
+    name: CAPI_SEND_QUEUE,
+    deadLetter: CAPI_SEND_DEAD_QUEUE,
+    retryLimit: RETRY_LIMIT,
+    retryDelay: RETRY_DELAY_SECONDS,
+    retryBackoff: true,
+  },
+  // El barrido no descarta en ninguna: si un barrido falla, el siguiente vuelve
+  // a mirar lo mismo cinco minutos después.
+  { name: CAPI_SWEEP_QUEUE },
+];
+
 let queuesReady: Promise<void> | null = null;
 
-/** `createQueue` es idempotente; esto solo evita repetirlo en cada encolado. */
+/**
+ * `createQueue` es idempotente; esto solo evita repetirlo en cada encolado.
+ *
+ * Un fallo **borra la promesa memorizada**, para que el siguiente intento
+ * vuelva a probar en vez de quedarse con el error para siempre.
+ */
 async function ensureQueues(): Promise<void> {
   if (!queuesReady) {
     queuesReady = (async () => {
       const boss = await getBoss();
-      await boss.createQueue(CAPI_SWEEP_QUEUE);
-      await boss.createQueue(CAPI_SEND_QUEUE, {
-        name: CAPI_SEND_QUEUE,
-        deadLetter: CAPI_SEND_DEAD_QUEUE,
-        retryLimit: RETRY_LIMIT,
-        retryDelay: RETRY_DELAY_SECONDS,
-        retryBackoff: true,
-      });
-      await boss.createQueue(CAPI_SEND_DEAD_QUEUE, {
-        name: CAPI_SEND_DEAD_QUEUE,
-        retentionDays: 30,
-      });
-    })();
+      // En el orden declarado, que es el que la base acepta.
+      for (const spec of CAPI_QUEUE_SPECS) {
+        await boss.createQueue(spec.name, { ...spec });
+      }
+    })().catch((err) => {
+      queuesReady = null;
+      throw err;
+    });
   }
   return queuesReady;
 }
