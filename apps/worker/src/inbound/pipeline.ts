@@ -139,6 +139,35 @@ async function attributeProduct(input: {
 }
 
 /**
+ * Si la operación que recibió el mensaje tiene vendedor configurado.
+ *
+ * Es el único interruptor de no-regresión del camino de ventas —el riesgo R8—, y
+ * el listón es el que ya usaba el dueño: nombre visible no vacío, no la
+ * existencia de la fila. Con `sales_agent_settings` vacía, que es producción
+ * hoy, la respuesta es siempre `false` y nada de lo nuevo se enciende.
+ *
+ * **Nunca lanza, y eso es la mitad del sentido de esta función.** Se pregunta
+ * *antes* de crear el contacto, así que un error aquí sin atrapar se llevaría el
+ * mensaje del cliente por delante — el pipeline entero está construido sobre lo
+ * contrario. Si la lectura falla, el contacto nace apagado, que es el
+ * comportamiento de siempre.
+ */
+async function salesAgentConfiguredFor(
+  operationId: OperationId | null,
+): Promise<boolean> {
+  if (!operationId) return false;
+  try {
+    return salesAgentIsConfigured(await getSalesAgentSettings(operationId));
+  } catch (err) {
+    logger.error(
+      { err: String(err), operationId },
+      "ventas: no se pudo leer la configuración del vendedor; el contacto nuevo nace apagado",
+    );
+    return false;
+  }
+}
+
+/**
  * Qué agente es dueño de la conversación en este momento.
  *
  * **No se guarda en ninguna columna**: se deriva de la bandeja, que a su vez se
@@ -148,17 +177,16 @@ async function attributeProduct(input: {
  * Sin vendedor configurado no se consulta ni un pedido: es el riesgo R8 de la
  * no-regresión —esta lógica no puede cambiar el comportamiento del número que
  * hoy factura— y hoy, con Guatemala como única operación y sin vendedor, este
- * camino cuesta una lectura cacheada de `sales_agent_settings` y nada más.
+ * camino no cuesta ni una consulta. El vendedor ya se resolvió arriba, antes de
+ * crear el contacto, y se pasa hecho: preguntarlo dos veces sería leer dos veces
+ * lo mismo para responder lo mismo.
  */
 async function resolveOwner(input: {
   contactId: string;
-  operationId: OperationId | null;
+  salesAgentConfigured: boolean;
   lastAdClickAt: Date | null;
 }): Promise<{ owner: ConversationOwner; inbox: InboxDecision | null }> {
-  const settings = input.operationId
-    ? await getSalesAgentSettings(input.operationId)
-    : null;
-  if (!salesAgentIsConfigured(settings)) {
+  if (!input.salesAgentConfigured) {
     return {
       owner: resolveConversationOwner({ salesAgentConfigured: false }),
       inbox: null,
@@ -216,9 +244,22 @@ export async function handleInbound(parsed: ParsedInboundMessage): Promise<void>
     );
   }
 
-  const contact = await upsertContactByWaId(parsed.from, {
-    pushName: parsed.contactName,
-  });
+  // Con qué `agent_mode` nace el contacto **si resulta ser nuevo**.
+  //
+  // Se pregunta aquí y no más abajo porque «contacto nuevo» es un momento —el
+  // `INSERT`— y después no vuelve a ocurrir: es lo que hace que un asesor que
+  // apagó al agente no lo vea volver. La lectura es la misma, cacheada por
+  // operación, que el dueño de la conversación hacía más abajo; ahora se hace
+  // una sola vez y se pasa hecha.
+  const salesAgentConfigured = await salesAgentConfiguredFor(
+    decision?.operationId ?? null,
+  );
+
+  const contact = await upsertContactByWaId(
+    parsed.from,
+    { pushName: parsed.contactName },
+    { origin: "inbound_message", salesAgentConfigured },
+  );
   const conv = await ensureConversation(
     contact.id,
     decision?.operationId ?? null,
@@ -354,7 +395,7 @@ export async function handleInbound(parsed: ParsedInboundMessage): Promise<void>
 
   const ownership = await resolveOwner({
     contactId: contact.id,
-    operationId: decision?.operationId ?? null,
+    salesAgentConfigured,
     lastAdClickAt: attribution.effective.adReferralAt,
   }).catch((err): null => {
     logger.error(
