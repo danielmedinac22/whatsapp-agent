@@ -31,6 +31,7 @@
 
 import type { Operation } from "@wa/db";
 import { logger } from "../lib/logger";
+import { buildClosingToolBlock } from "../sales/closing-prompt";
 import { buildSalesPersonaPrompt, type SalesPersona } from "../sales/persona";
 import { buildProductContextBlock } from "../sales/product-context";
 import { buildProductQuestionBlock } from "../sales/product-question";
@@ -59,6 +60,21 @@ export type EffectivePromptParts =
       /** El bloque del producto identificado, o `null` si no hay ninguno. */
       productBlock: string | null;
       /**
+       * Si en este turno tiene la herramienta de registrar el pedido.
+       *
+       * **Va junto con la herramienta, no en su lugar**: el runner la pone
+       * cuando la conversación tiene producto identificado, y este bloque
+       * aparece exactamente en ese caso. Explicarle cómo registrar un pedido
+       * en un turno donde no puede registrarlo sería prometerle una capacidad
+       * que no tiene, que es el mismo error que anunciar archivos que nadie va
+       * a mandar.
+       *
+       * Opcional —y no `boolean`— para que las llamadas que ya existen no
+       * cambien de forma: omitirlo es el prompt de antes, carácter por
+       * carácter.
+       */
+      canClose?: boolean;
+      /**
        * El bloque que le dice que pregunte de qué producto le hablan, con la
        * lista corta de candidatos si la hay (`sales/product-question.ts`).
        *
@@ -84,7 +100,14 @@ export function composeEffectivePrompt(parts: EffectivePromptParts): string {
       ? [parts.basePrompt, parts.blocks]
       : [
           buildSalesPersonaPrompt(parts.persona),
-          [parts.productBlock, parts.questionBlock ?? null],
+          // El bloque del cierre va **antes** de la ficha y de la pregunta: son
+          // ellas las que cierran el prompt, para que lo último que el modelo
+          // lea sea de qué producto le están hablando.
+          [
+            parts.canClose ? buildClosingToolBlock() : null,
+            parts.productBlock,
+            parts.questionBlock ?? null,
+          ],
         ];
 
   let prompt = base;
@@ -168,6 +191,11 @@ export async function buildEffectiveSystemPrompt(
     return composeEffectivePrompt({
       agent: "sales",
       persona: request.persona,
+      // La misma condición con la que el runner pone la herramienta: sin
+      // producto identificado no hay qué vender, y lo que corresponde es que
+      // pregunte cuál —lo que ya hace el bloque de la pregunta—, no que intente
+      // registrar un pedido que sólo podría terminar en un asesor.
+      canClose: request.productId !== null,
       productBlock,
       questionBlock,
     });
