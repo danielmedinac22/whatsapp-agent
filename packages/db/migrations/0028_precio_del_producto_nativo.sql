@@ -1,0 +1,84 @@
+-- ────────────────────────────────────────────────────────────────────────────
+-- 0028 · El precio de un producto nativo — sin él no se puede vender
+--
+-- La única migración de esta ola, como siempre: drizzle-kit reescribe
+-- `meta/_journal.json` en cada generación, así que dos ramas que generen en
+-- paralelo chocan y el conflicto no lo ve ningún check local. Esta ola tiene un
+-- solo worktree y esta es su única migración.
+--
+-- **El problema, y es de venta y no de catálogo.** El catálogo tiene dos
+-- mitades: los productos **conectados** a la tienda y los **nativos**, creados
+-- en el panel porque todavía no existen allá (`ventas-panel/02`). Al armar la
+-- línea del pedido, el cierre descubre que a la mitad nativa le falta el dato
+-- que la hace vendible: **no hay columna de precio**. Hoy eso escala a un
+-- asesor —que es lo correcto: mejor que lo tome una persona a que el sistema
+-- invente un número— pero significa que **para vender, el producto tiene que
+-- estar conectado a la tienda**, que es exactamente lo contrario de la razón
+-- por la que la mitad nativa existe.
+--
+-- El `## Answer` de `ventas-ingesta-reconocimiento/03` lo dejó fuera de la
+-- `0022` a propósito y sin dueño: *«Precio de producto nativo y
+-- archivado/estado: ningún ticket de la ola los pide. Cuando hagan falta son
+-- una columna nullable más.»* Este es el ticket en que hace falta
+-- (`ventas-panel/05`).
+--
+-- **La columna es de los nativos, y el `check` lo hace cumplir.** Un producto
+-- conectado lee su precio de la tienda **en tiempo de uso**, cada vez, sin
+-- copiarlo acá. Es criterio explícito de `ventas-panel/02` —«editarlo allá se
+-- refleja acá, sin desincronización silenciosa»— y es la misma razón por la que
+-- `products.name` es nullable. Un precio propio sobre un producto conectado
+-- serían **dos precios para el mismo producto**, y el que se le cobraría al
+-- cliente sería el que eligió este panel y no el de la tienda: el repartidor
+-- cobrando en la puerta una cifra que Shopify ya no dice. Por eso no alcanza
+-- con «no lo escribimos»: la base lo impide.
+--
+-- **`> 0` y no `>= 0`.** Un producto nativo en cero no es un regalo: es un
+-- pedido contraentrega por el que el repartidor no cobra nada. Y es un dato que
+-- nadie mira hasta que pasa.
+--
+-- **Sin moneda al lado del precio, y es una decisión.** El precio va en la
+-- moneda de su operación (`operations.currency`, hoy `GTQ`), que es la misma
+-- con la que `sales/order.ts` arma el pedido — en ese módulo no hay ninguna
+-- constante de moneda y no puede haberla. Una columna de moneda propia dejaría
+-- escribir un producto guatemalteco con precio en pesos colombianos, y eso
+-- tampoco se descubre hasta la puerta del cliente.
+--
+-- **`numeric(12,2)` y no `text`.** El precedente del repo es texto
+-- (`shopify_orders.total_price`, `capi_conversions.value`) y ahí es correcto por
+-- una razón que acá no aplica: esos guardan **lo que viajó** por un cable ajeno,
+-- y reformatearlos sería perder el original. Este precio no viaja de ningún
+-- lado: lo teclea un admin en el panel. Con `numeric` el `check` de arriba puede
+-- comparar, la escala la hace cumplir la base, y el driver lo devuelve como
+-- texto igual que los otros dos.
+--
+-- **Sin backfill, y no es un olvido.** `products` tiene **0 filas** en
+-- producción (medido el 18-ago-2026, lectura pura: products 0 · product_ads 0 ·
+-- product_media 0 · capi_conversions 0 · shopify_connection 0 ·
+-- sales_agent_settings 0 · operations 1 (`GT`/`GTQ`/`active`) · shopify_orders
+-- 1.736). No hay ninguna fila que rellenar, y las que entren entre la
+-- generación y la aplicación las escribe el panel viejo, que no conoce la
+-- columna: nacen en `null`, que es exactamente lo que significa «este producto
+-- todavía no tiene precio» y lo que hace que siga escalando a un asesor.
+--
+-- **Guatemala no cambia.** `products` está vacía, no la lee ningún camino que
+-- facture, y el vendedor no atiende ninguna conversación
+-- (`sales_agent_settings` en 0 filas significa que contesta Katherine). Agregar
+-- una columna nullable a una tabla vacía no altera a quién le contesta el
+-- sistema ni qué le contesta.
+--
+-- **Compatibilidad con lo desplegado**: un worker o un panel viejos siguen
+-- funcionando —ignoran la columna—, así que se puede aplicar antes de
+-- desplegar. Al revés no: el panel de esta rama escribe `price` y el worker lo
+-- lee para armar la línea, así que **la migración va antes del deploy**.
+-- ────────────────────────────────────────────────────────────────────────────
+
+ALTER TABLE "products" ADD COLUMN "price" numeric(12, 2);--> statement-breakpoint
+
+-- El `check` va después del `ADD COLUMN` y se valida contra las filas que ya
+-- están —hoy ninguna—. Envuelto como los de la `0024`, la `0025` y la `0026`
+-- para que reaplicar la migración no falle por duplicado.
+DO $$ BEGIN
+ ALTER TABLE "products" ADD CONSTRAINT "products_price_check" CHECK ("products"."price" is null or ("products"."source" = 'native' and "products"."price" > 0));
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;

@@ -32,19 +32,33 @@
  * ## Lo que la herramienta no deja hacer
  *
  * El modelo no escribe el precio ni el id de la variante: los resuelve
- * {@link resolveClosingLine} contra la tienda, en tiempo de uso, igual que la
- * ficha del producto. Un precio que el modelo pueda escribir es un precio que el
- * modelo puede equivocar, y en contraentrega eso se descubre con el repartidor
- * en la puerta.
+ * {@link resolveClosingLine} contra el catálogo y la tienda, en tiempo de uso,
+ * igual que la ficha del producto. Un precio que el modelo pueda escribir es un
+ * precio que el modelo puede equivocar, y en contraentrega eso se descubre con
+ * el repartidor en la puerta.
+ *
+ * ## Qué decide este archivo, y qué no
+ *
+ * **Nada.** Desde `ventas-panel/05` la regla de con qué se arma la línea vive
+ * en `sales/closing-line.ts`, que es puro y está probado con fixtures; acá
+ * quedaron los efectos que esa regla necesita —leer la fila del catálogo y,
+ * **solo si es un producto de la tienda**, preguntarle a la tienda—. Un
+ * producto nativo se resuelve sin una sola llamada a Shopify: no tiene nada que
+ * preguntarle.
  */
 
 import { tool } from "ai";
 import { eq, products, type Contact, type Conversation, type Operation } from "@wa/db";
 import { db } from "../db";
 import { logger } from "../lib/logger";
-import { getProductsByIds, type ShopifyVariant } from "../shopify/admin";
+import { getProductsByIds } from "../shopify/admin";
 import { closeSale } from "../sales/closing";
-import type { ClosingLine } from "../sales/order";
+import {
+  planClosingLine,
+  storeClosingLine,
+  type LineCapture,
+  type ResolvedClosingLine,
+} from "../sales/closing-line";
 import {
   capturedToClosing,
   CLOSING_TOOL_NAME,
@@ -52,40 +66,30 @@ import {
   closingToolReport,
   closingTurnVoice,
   MAX_QUANTITY,
-  pickVariant,
   quantityOutOfRange,
   type ClosingCapture,
   type ClosingTurnOutcome,
 } from "../sales/closing-capture";
 import { escalateToHuman } from "./escalation";
 
-/** Lo que la línea del pedido necesita, o por qué no se pudo armar. */
-type LineResolution =
-  | { kind: "ok"; line: ClosingLine }
-  /** La conversación no tiene producto, o el producto no es de esta operación. */
-  | { kind: "no_product" }
-  /** El producto existe pero la tienda no ofrece nada vendible de él. */
-  | { kind: "not_sellable"; detail: string }
-  /** Varias presentaciones y el cliente no dijo cuál. Se le pregunta. */
-  | { kind: "ambiguous_variant"; options: readonly string[] };
-
 /**
- * La línea del pedido, resuelta contra la tienda de la operación.
+ * La línea del pedido, resuelta contra el catálogo de la operación.
  *
- * Lee el producto que el reconocimiento dejó en la conversación, comprueba que
- * sea de esta operación —la columna es suelta y no tiene clave foránea compuesta
- * que lo garantice— y saca de la tienda la variante, su id y su precio.
+ * Lee el producto que el reconocimiento dejó en la conversación y le pasa la
+ * fila a la regla pura. Si la regla dice que es un producto de la tienda —y
+ * solo entonces— le pregunta a la tienda por su variante y su precio, que es lo
+ * que hace verdadero el criterio de `ventas-panel/02`: **el precio de un
+ * producto conectado se lee allá, en tiempo de uso, y no se copia acá.**
  *
- * **Un producto nativo no se puede vender hoy**, y hay que decirlo en vez de
- * fabricar un precio: `products` no tiene columna de precio (la `0022` le dio el
- * mínimo que el reconocimiento necesitaba) y sin precio no hay línea. Va a una
- * persona, que es lo que corresponde a un problema del sistema.
+ * Un producto **nativo** con precio se cierra sin tocar la tienda; sin precio
+ * va a una persona, que es lo que corresponde a un dato que falta en el panel y
+ * que el cliente no puede aportar.
  */
 async function resolveClosingLine(
   operation: Operation,
   productId: string | null,
   capture: ClosingCapture,
-): Promise<LineResolution> {
+): Promise<ResolvedClosingLine> {
   if (!productId) return { kind: "no_product" };
 
   const [row] = await db
@@ -93,72 +97,33 @@ async function resolveClosingLine(
     .from(products)
     .where(eq(products.id, productId))
     .limit(1);
-  if (!row) return { kind: "no_product" };
-  if (row.operationId !== operation.id) {
-    logger.warn(
-      { productId, operationId: operation.id, productOperationId: row.operationId },
-      "cierre: el producto de la conversación es de otra operación",
-    );
-    return { kind: "no_product" };
-  }
 
-  if (row.source === "native" || !row.shopifyProductId) {
-    return {
-      kind: "not_sellable",
-      detail:
-        "el producto no está conectado a la tienda y no tiene precio con el que armar la línea",
-    };
-  }
-
-  const [live] = await getProductsByIds(operation, [row.shopifyProductId]);
-  if (!live) {
-    return {
-      kind: "not_sellable",
-      detail: "la tienda no devolvió el producto al armar el pedido",
-    };
-  }
-
-  // Solo las disponibles: cerrar sobre una presentación agotada es una venta que
-  // se cae al día siguiente, y en contraentrega se cae después de despachar.
-  const sellable = live.variants.filter(
-    (v: ShopifyVariant) => v.available && v.price !== null,
-  );
-  const pick = pickVariant(sellable, capture.presentacion);
-  if (pick.kind === "none") {
-    return {
-      kind: "not_sellable",
-      detail: "la tienda no tiene ninguna presentación disponible con precio",
-    };
-  }
-  if (pick.kind === "ambiguous") {
-    return { kind: "ambiguous_variant", options: pick.options };
-  }
-
-  const unitPrice = Number(pick.variant.price);
-  if (!Number.isFinite(unitPrice)) {
-    return {
-      kind: "not_sellable",
-      detail: `la tienda devolvió un precio ilegible (${pick.variant.price})`,
-    };
-  }
-
-  const variantTitle = pick.variant.title;
-  return {
-    kind: "ok",
-    line: {
-      productId: row.id,
-      variantId: pick.variant.id,
-      // El título que va al pedido lleva la presentación cuando la hay: es lo
-      // que el cliente lee en el mensaje de confirmación y lo que el equipo ve
-      // en la tienda, y «Colágeno» a secas no alcanza para despachar.
-      title:
-        variantTitle && variantTitle !== "Default Title"
-          ? `${live.title} — ${variantTitle}`
-          : live.title,
-      quantity: capture.cantidad,
-      unitPrice,
-    },
+  const lineCapture: LineCapture = {
+    cantidad: capture.cantidad,
+    presentacion: capture.presentacion,
   };
+  const plan = planClosingLine({
+    operationId: operation.id,
+    product: row ?? null,
+    capture: lineCapture,
+  });
+
+  if (plan.kind !== "ask_store") {
+    if (plan.kind === "no_product" && row) {
+      logger.warn(
+        { productId, operationId: operation.id, productOperationId: row.operationId },
+        "cierre: el producto de la conversación es de otra operación",
+      );
+    }
+    return plan;
+  }
+
+  const [live] = await getProductsByIds(operation, [plan.shopifyProductId]);
+  return storeClosingLine({
+    productId,
+    live: live ?? null,
+    capture: lineCapture,
+  });
 }
 
 /**

@@ -6,6 +6,7 @@ import {
   timestamp,
   integer,
   bigint,
+  numeric,
   boolean,
   jsonb,
   pgEnum,
@@ -905,9 +906,10 @@ export const salesAgentSettings = pgTable(
  * `(operation_id, shopify_product_id)`); no hay concepto de familia ni de
  * agrupación — eso lo expresa el mapeo `product_ads`.
  *
- * Deliberadamente fuera de la `0022`: assets enviables (imágenes, videos), que
- * necesitan decidir dónde viven los binarios; precio de producto nativo; y
- * archivado. Los piden tickets de olas posteriores.
+ * Los archivos enviables llegaron en la `0025` (`product_media`) y el precio de
+ * los nativos en la `0028` — el ticket en que hizo falta, porque sin precio no
+ * hay línea de pedido y un producto nativo no se podía vender. Sigue fuera y
+ * sin dueño: archivado, variantes, inventario y descuentos por producto.
  */
 export const products = pgTable(
   "products",
@@ -926,6 +928,22 @@ export const products = pgTable(
     /** Obligatorio si `source = 'native'`; nulo para los conectados (se lee de la tienda). */
     name: text("name"),
     description: text("description"),
+    /**
+     * **Solo para los nativos** (`0028`). Un producto conectado no tiene precio
+     * acá y no puede tenerlo: el suyo vive en la tienda y se lee en tiempo de
+     * uso, y una copia local sería la desincronización silenciosa que
+     * `ventas-panel/02` prohíbe — el panel cobrando un precio que Shopify ya
+     * cambió. El `check` de abajo lo hace cumplir.
+     *
+     * **Sin moneda al lado**: va en la de su operación (`operations.currency`),
+     * que es la misma con la que se arma el pedido. Guardar una moneda propia
+     * dejaría escribir un producto guatemalteco con precio colombiano, y eso no
+     * se descubre hasta que el repartidor cobra en la puerta.
+     *
+     * `numeric` viaja como texto por el driver, igual que
+     * `shopify_orders.total_price`. Se lee con `productPriceFromColumn`.
+     */
+    price: numeric("price", { precision: 12, scale: 2 }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -948,6 +966,15 @@ export const products = pgTable(
     check(
       "products_source_check",
       sql`(${t.source} = 'native' and ${t.name} is not null and ${t.shopifyProductId} is null) or (${t.source} = 'shopify' and ${t.shopifyProductId} is not null)`,
+    ),
+    // El precio es de los nativos y de nadie más, y cuando está es positivo.
+    // Un producto conectado con precio propio sería dos precios para el mismo
+    // producto, y el que se cobra sería el que este panel eligió y no el de la
+    // tienda; un nativo en cero es un pedido contraentrega por el que el
+    // repartidor no cobra nada.
+    check(
+      "products_price_check",
+      sql`${t.price} is null or (${t.source} = 'native' and ${t.price} > 0)`,
     ),
   ],
 );

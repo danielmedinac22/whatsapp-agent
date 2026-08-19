@@ -5,9 +5,11 @@ import { resolvePanelOperation } from "@/lib/operation";
 /**
  * Alta de producto, por los dos caminos que el ticket pide.
  *
- * `nativo` guarda nombre y descripción porque no hay de dónde leerlos.
- * `tienda` guarda **solo el identificador**: copiar el título acá sería la
- * desincronización silenciosa que el criterio del ticket prohíbe.
+ * `nativo` guarda nombre, descripción y **precio** porque no hay de dónde
+ * leerlos. `tienda` guarda **solo el identificador**: copiar el título —o el
+ * precio— acá sería la desincronización silenciosa que el criterio del ticket
+ * prohíbe. Un producto de la tienda que llegue con precio en el cuerpo lo
+ * pierde acá, y si alguien insistiera lo rechazaría el `check` de la base.
  *
  * La operación la resuelve `resolvePanelOperation()` y no el cuerpo de la petición: de
  * dónde es el producto no lo decide el navegador.
@@ -20,6 +22,8 @@ export async function POST(req: Request) {
     source?: string;
     name?: string;
     description?: string | null;
+    /** Tal como lo tecleó el admin. El accesor decide si es un precio. */
+    price?: string | number | null;
     shopifyProductId?: string;
   };
 
@@ -45,6 +49,10 @@ export async function POST(req: Request) {
     const product = await createNativeProduct(op, {
       name: body.name,
       description: body.description ?? null,
+      // Sin precio es un alta legítima: el producto se puede describir y
+      // mandarle archivos al cliente desde el primer día. Lo único que no se
+      // puede hasta que alguien lo escriba es **cerrarle una venta**.
+      price: body.price ?? null,
     });
     return Response.json({ ok: true, id: product.id });
   } catch (err) {

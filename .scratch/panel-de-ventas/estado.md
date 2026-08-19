@@ -10,7 +10,7 @@
 
 ## Reglas de trabajo, aprendidas a golpes
 
-- **`pnpm -r typecheck` y `pnpm --filter @wa/worker test` después de CADA ticket**, no al final. Hoy: **4 paquetes limpios, 725 tests en 46 archivos.**
+- **`pnpm -r typecheck` y `pnpm --filter @wa/worker test` después de CADA ticket**, no al final. Hoy: **4 paquetes limpios, 787 tests en 49 archivos.**
 - **`dropi_dry_run` está en `true` a propósito.** Confirmado intencional: es el default del esquema, está expuesto como interruptor en el panel, y `84b62c0` quitó el auto-confirm dejando el botón manual como único camino. **No lo cambies.**
 - **Los tests van sobre funciones puras con fixtures**, en el estilo de `kapso/inbound.test.ts`. **Nombres en español que enuncian el comportamiento**, no la mecánica.
 - **Si algo del ticket contradice el código real, para y pregunta. El código gana.** Pasó varias veces y las correcciones valieron más que los tickets.
@@ -20,7 +20,7 @@
 
 ## Qué está construido y en producción
 
-**35 de 43 tickets resueltos.** Ocho migraciones aplicadas (`0020`–`0027`). Worker en Railway y dashboard en Vercel, desplegados y verificados.
+**37 de 43 tickets resueltos.** Ocho migraciones aplicadas (`0020`–`0027`) y la **`0028` sin aplicar**. Worker en Railway y dashboard en Vercel, desplegados y verificados.
 
 - **Migración multi-operación completa** (tickets 01–06). Existe `operations`; Guatemala registrada (`GT`/`GTQ`/`active`); **cero `eq(<tabla>.id, 1)` en toda la base** — ningún accesor devuelve conexión o configuración sin decir de qué operación.
 - **La atribución del primer contacto** — referencia del anuncio y `ctwa_clid` se capturan y persisten. Era irreversible: no existe endpoint de Meta para recuperarlos después.
@@ -32,6 +32,58 @@
 - **Roles de ventas y operaciones**, sin que ningún admin pierda acceso.
 - **El pulido de comportamiento del panel** (móvil y escritorio).
 - **Los tres niveles del árbol de diseño**, cerrados con el usuario. Prototipos en `.scratch/ventas-pulido-ui/prototipos/`.
+
+## Ola 5 del 19-ago-2026 — los dos últimos tickets construibles, SIN DESPLEGAR
+
+Un solo worktree, `cierre-final`. Suite: **787 tests en 49 archivos** (venía de
+725 en 46). **Migración `0028` generada y sin aplicar.**
+
+| Ticket | Estado |
+| -- | -- |
+| `ventas-panel/05` — el precio del producto nativo | `resolved` |
+| `ventas-capi/05` — el estado del reporte, en el panel | `resolved` |
+
+**Con esto se acabó lo construible.** Todo lo que queda abierto espera algo que
+no depende del código: credenciales de Shopify, el permiso de Meta, el token con
+`ads_read`, la migración del número colombiano y el guardia de `agent_mode`.
+
+### Lo que entró
+
+1. **Un producto creado en el panel ya se puede vender.** Tiene precio
+   (`products.price`, migración `0028`) y con precio la venta se cierra sola en
+   vez de escalar. Sin precio sigue escalando, que estaba bien. **Un producto
+   conectado sigue leyendo su precio de la tienda en tiempo de uso**, y ahora
+   *no puede* tener uno propio: lo impide un `check` de la base, comprobado
+   contra una base desechable escribiendo por SQL directo.
+2. **Un producto que la tienda no conoce entra como línea suelta** —título y
+   precio, sin variante— y el pedido queda marcado para logística por dos vías:
+   la etiqueta buscable `producto-fuera-de-la-tienda` y una línea de la nota que
+   dice **cuál** renglón es. Se descartó crear el producto en Shopify al vuelo
+   (pediría `write_products`) y colgarlo de un genérico (el pedido dejaría de
+   decir qué se vendió).
+3. **El reporte de conversiones a Meta tiene pantalla**: Ventas → **Reporte a
+   Meta** (`/reporte-meta`). Sólo lectura, no enciende nada, y no ofrece
+   reintentar un `pending` viejo — a propósito, y lo dice.
+
+### Dos cosas de esta ola que vale la pena no perder
+
+- **La forma de `GET /api/capi/estado` es ahora un contrato compartido**
+  (`@wa/shared/capi-estado.ts`), y el worker está tipado contra él. La razón no
+  es ceremonia: el modo de fallar de ese tablero **es el silencio**, así que una
+  pantalla leyendo un campo renombrado diría «no hay conversiones sin llegar» y
+  nadie lo notaría.
+- **La derivación del carrito estaba escrita dos veces** —en la llave de
+  idempotencia de `sales/order.ts` y en la deduplicación de cola de
+  `sales/closing.ts`— y ahora es una sola (`cartOf`). Separadas, el mismo cierre
+  podía colisionar en una y no en la otra, y esa grieta se paga con un segundo
+  envío contraentrega.
+
+### Y una corrección al ticket de CAPI
+
+Decía que hoy el estado contesta «falta el token de usuario de sistema». Medido:
+contesta **«el reporte a Meta está apagado (META_CAPI_MODE sin poner)»**. El
+interruptor se comprueba antes que la credencial a propósito. Faltan las dos, y
+también el dataset.
 
 ## Ola 4 del 19-ago-2026 — cerrada, en producción
 
@@ -221,14 +273,17 @@ siempre, sin que ningún check local lo vea.
 
 ## Qué sigue, y qué lo bloquea
 
-**Se puede construir ya — queda poco, y nada del camino de venta:**
+**No queda nada construible.** Los dos últimos —`ventas-panel/05` y
+`ventas-capi/05`— se cerraron en la ola 5. Lo que falta para desplegarla:
 
-- **`ventas-panel/05`** — un producto nativo no se puede vender: no tiene precio,
-  y sin precio no hay línea de pedido. Hoy escala a un asesor, que es correcto,
-  pero significa que **para vender, el producto tiene que estar conectado a la
-  tienda**. Levantado el 19-ago por el worktree del cierre.
-- **Una pantalla para el estado de CAPI.** Hoy `GET /api/capi/estado` contesta
-  bien pero solo por `curl`; no hay nada en el panel. Sin dueño.
+```
+set -a && source .env && set +a && pnpm --filter @wa/db migrate   # aplica la 0028
+env -u RAILWAY_TOKEN railway up --service whatsapp-worker --ci
+vercel --prod --yes
+```
+
+**La `0028` va antes del deploy**: el panel de esa rama escribe `products.price`
+y el worker lo lee para armar la línea del pedido.
 
 **Todo lo demás que queda espera algo que no depende del código.** El camino de
 venta está construido de punta a punta: ingesta, atribución, reconocimiento con

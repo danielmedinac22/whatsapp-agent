@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildSalesOrder,
   salesOrderStore,
+  OFF_CATALOG_TAG,
   PICKUP_AT_OFFICE_TAG,
   SALES_ORDER_TAG,
   type ClosingContact,
@@ -63,10 +64,19 @@ const CONTACTO_CO: ClosingContact = {
 
 const LINEA = {
   productId: "gid://shopify/Product/1",
-  variantId: "gid://shopify/ProductVariant/11",
+  variantId: "gid://shopify/ProductVariant/11" as string | null,
   title: "Colágeno Hidrolizado",
   quantity: 1,
   unitPrice: 300,
+};
+
+/** Un producto creado en el panel: sin variante, con precio propio. */
+const LINEA_NATIVA = {
+  productId: "8f6a0d2e-1111-4c3b-9e7a-000000000001",
+  variantId: null,
+  title: "REVITALHAIR Serum Capilar",
+  quantity: 1,
+  unitPrice: 349,
 };
 
 function cierre(overrides: Partial<SalesClosing> = {}): SalesClosing {
@@ -479,5 +489,83 @@ describe("buildSalesOrder · la llave de idempotencia", () => {
       construir(cierre({ lines: [{ ...LINEA, variantId: "v-99" }] })),
     );
     expect(recompra.idempotencyKey).not.toBe(primera.idempotencyKey);
+  });
+});
+
+describe("buildSalesOrder · un producto que no está en la tienda", () => {
+  it("se puede vender: la línea sale sin variante y con su precio", () => {
+    const order = pedidoDe(construir(cierre({ lines: [LINEA_NATIVA] })));
+    expect(order.lines).toEqual([
+      {
+        productId: LINEA_NATIVA.productId,
+        variantId: null,
+        title: "REVITALHAIR Serum Capilar",
+        quantity: 1,
+        listUnitPrice: 349,
+        unitPrice: 349,
+        lineTotal: 349,
+      },
+    ]);
+    expect(order.totals.total).toBe(349);
+  });
+
+  it("el pedido lleva la etiqueta que avisa que hay algo fuera del catálogo", () => {
+    const order = pedidoDe(construir(cierre({ lines: [LINEA_NATIVA] })));
+    expect(order.tags).toContain(OFF_CATALOG_TAG);
+  });
+
+  it("basta una línea suelta entre varias para que el pedido quede marcado", () => {
+    const order = pedidoDe(construir(cierre({ lines: [LINEA, LINEA_NATIVA] })));
+    expect(order.tags).toContain(OFF_CATALOG_TAG);
+  });
+
+  it("un pedido enteramente de la tienda no lleva esa etiqueta", () => {
+    expect(pedidoDe(construir(cierre())).tags).not.toContain(OFF_CATALOG_TAG);
+  });
+
+  it("el descuento se le aplica igual que a cualquier otra línea", () => {
+    const order = pedidoDe(
+      construir(cierre({ lines: [LINEA_NATIVA], discountPct: 10 })),
+    );
+    expect(order.lines[0]?.unitPrice).toBe(314.1);
+  });
+});
+
+describe("la llave de idempotencia con productos que no están en la tienda", () => {
+  it("dos disparos del mismo cierre nativo dan la misma llave", () => {
+    const primera = pedidoDe(construir(cierre({ lines: [LINEA_NATIVA] })));
+    const segunda = pedidoDe(construir(cierre({ lines: [LINEA_NATIVA] })));
+    expect(segunda.idempotencyKey).toBe(primera.idempotencyKey);
+  });
+
+  it("dos productos nativos distintos dan llaves distintas", () => {
+    // Sin variante, lo que distingue una compra de otra es el producto. Si no
+    // entrara, la recompra de otro producto nativo colisionaría con la primera
+    // y la segunda venta no se crearía nunca.
+    const uno = pedidoDe(construir(cierre({ lines: [LINEA_NATIVA] })));
+    const otro = pedidoDe(
+      construir(
+        cierre({
+          lines: [{ ...LINEA_NATIVA, productId: "8f6a0d2e-1111-4c3b-9e7a-000000000002" }],
+        }),
+      ),
+    );
+    expect(otro.idempotencyKey).not.toBe(uno.idempotencyKey);
+  });
+
+  it("un producto de la tienda y uno nativo no comparten llave", () => {
+    const tienda = pedidoDe(construir(cierre({ lines: [LINEA] })));
+    const nativo = pedidoDe(construir(cierre({ lines: [LINEA_NATIVA] })));
+    expect(nativo.idempotencyKey).not.toBe(tienda.idempotencyKey);
+  });
+
+  it("la llave de un pedido de la tienda es la misma de siempre", () => {
+    // Es la no-regresión de este ticket sobre la parte que va a mover el
+    // volumen. El valor está fijado a mano y **se calculó con la fórmula de
+    // antes del ticket, leída de git**, no copiado de esta implementación: así
+    // el test falla si el carrito cambia de forma, que es lo que dejaría un
+    // pedido ya creado sin poder reconocerse y produciría el duplicado.
+    const order = pedidoDe(construir(cierre()));
+    expect(order.idempotencyKey).toBe("ventas-4fe6205f54e99cee46baa81f");
   });
 });

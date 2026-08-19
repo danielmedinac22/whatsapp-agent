@@ -18,11 +18,15 @@ import {
   conteoDeEnviables,
   etiquetaDeArchivo,
   formatoDeTamano,
+  formatProductPrice,
   interruptorHabilitado,
+  parseProductPrice,
+  productPriceRejectionText,
   puedeEnviarse,
   rechazoDeSubida,
   whatsappLimitBytes,
   etiquetaDeTipo,
+  type ProductPriceRejection,
 } from "@wa/shared";
 import type { CatalogFileView, CatalogRow, CatalogView } from "@/lib/catalogo";
 
@@ -57,6 +61,16 @@ const FILTERS = [
     k: "ads:shared",
     label: "Con anuncio compartido",
     test: (r: CatalogRow) => r.ads.some((a) => a.alsoPointsTo.length > 0),
+  },
+  {
+    // Un producto del panel sin precio **no se puede vender**: el cierre no
+    // tiene con qué armar la línea y el caso escala a un asesor. Es un filtro y
+    // no solo un aviso en la ficha porque con decenas de productos la pregunta
+    // que uno se hace es «¿cuáles me faltan?», y esa no se contesta abriendo
+    // fichas de a una.
+    k: "price:none",
+    label: "Sin precio",
+    test: (r: CatalogRow) => r.source === "native" && r.nativePrice === null,
   },
   {
     // El filtro que el nivel 2 pidió por su nombre. Mira **enviables** y no
@@ -213,6 +227,7 @@ export function CatalogoClient({ view }: { view: CatalogView }) {
 
       {alta === "native" ? (
         <AltaNativo
+          currency={view.operation.currency}
           onDone={() => {
             setAlta(null);
             refresh();
@@ -459,7 +474,18 @@ export function CatalogoClient({ view }: { view: CatalogView }) {
                       ) : null}
                       {cols.precio ? (
                         <td className="app-muted align-middle text-[12px]">
-                          {r.price ?? "—"}
+                          {r.price ??
+                            (r.source === "native" ? (
+                              // «—» y «no se puede vender» no son lo mismo, y
+                              // en la columna donde se escanea el catálogo esa
+                              // diferencia es la que hace que alguien lo
+                              // complete antes de que un cliente lo pida.
+                              <span className="text-amber-300">
+                                Sin precio
+                              </span>
+                            ) : (
+                              "—"
+                            ))}
                         </td>
                       ) : null}
                       {cols.agregado ? (
@@ -495,6 +521,7 @@ export function CatalogoClient({ view }: { view: CatalogView }) {
         <Ficha
           row={ficha}
           store={view.store}
+          currency={view.operation.currency}
           onChanged={refresh}
           onError={setError}
         />
@@ -560,16 +587,19 @@ function SenalDeReferencias({ signal }: { signal: CatalogView["signal"] }) {
 function Ficha({
   row,
   store,
+  currency,
   onChanged,
   onError,
 }: {
   row: CatalogRow | null;
   store: CatalogView["store"];
+  currency: string;
   onChanged: () => void;
   onError: (m: string | null) => void;
 }) {
   const [desc, setDesc] = useState(row?.description ?? "");
   const [nombre, setNombre] = useState(row?.name ?? "");
+  const [precio, setPrecio] = useState(precioEditable(row));
   const [guardando, setGuardando] = useState(false);
   const [guardado, setGuardado] = useState(false);
   const idRef = useRef<string | null>(row?.id ?? null);
@@ -579,9 +609,13 @@ function Ficha({
       idRef.current = row?.id ?? null;
       setDesc(row?.description ?? "");
       setNombre(row?.name ?? "");
+      setPrecio(precioEditable(row));
       setGuardado(false);
     }
   }, [row]);
+
+  const precioParseado = precio.trim() ? parseProductPrice(precio) : null;
+  const precioMalo = precioParseado && !precioParseado.ok ? precioParseado : null;
 
   if (!row) {
     return (
@@ -601,7 +635,10 @@ function Ficha({
       const r = await fetch(`/api/catalogo/productos/${row.id}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: nombre, description: desc }),
+        // El precio viaja siempre que la ficha lo edite: vacío significa
+        // «quitáselo», que es una corrección legítima y devuelve el producto al
+        // estado en que la venta escala a un asesor.
+        body: JSON.stringify({ name: nombre, description: desc, price: precio }),
       });
       const j = (await r.json()) as { error?: string };
       if (!r.ok) throw new Error(j.error ?? "no se pudo guardar");
@@ -641,6 +678,8 @@ function Ficha({
           <p className="app-muted mt-1 text-xs">{row.price}</p>
         ) : null}
       </div>
+
+      <SinPrecioNoSeVende row={row} />
 
       {row.source === "shopify" ? (
         <div className="rounded-md border border-[rgba(157,187,210,0.28)] bg-[rgba(18,35,48,0.9)] px-2.5 py-2 text-[11px] leading-relaxed text-[var(--color-text-dim)]">
@@ -693,11 +732,20 @@ function Ficha({
               }}
               placeholder="Descripción que el vendedor usa al hablar del producto"
             />
+            <CampoPrecio
+              currency={currency}
+              value={precio}
+              onChange={(v) => {
+                setPrecio(v);
+                setGuardado(false);
+              }}
+              rechazo={precioMalo}
+            />
             <div className="flex items-center gap-2">
               <button
                 className="app-button"
                 onClick={guardar}
-                disabled={guardando || !nombre.trim()}
+                disabled={guardando || !nombre.trim() || precioMalo !== null}
               >
                 {guardando ? "Guardando…" : "Guardar"}
               </button>
@@ -733,6 +781,85 @@ function Ficha({
 
       <Anuncios row={row} onChanged={onChanged} onError={onError} />
       <Archivos row={row} onChanged={onChanged} onError={onError} />
+    </div>
+  );
+}
+
+/** El precio guardado, tal como se escribe en el campo que lo edita. */
+function precioEditable(row: CatalogRow | null): string {
+  return row?.nativePrice === null || row?.nativePrice === undefined
+    ? ""
+    : String(row.nativePrice);
+}
+
+/**
+ * El campo del precio de un producto del panel.
+ *
+ * Valida **mientras se escribe** con la misma regla que usa la ruta al guardar
+ * (`@wa/shared`), para que «150.000» se vea entendido como ciento cincuenta mil
+ * antes de guardarlo y no después. Es la misma razón por la que el rechazo por
+ * tamaño de un archivo se hace al subir: que el problema aparezca cuando el
+ * admin lo puede resolver.
+ */
+function CampoPrecio({
+  currency,
+  value,
+  onChange,
+  rechazo,
+}: {
+  currency: string;
+  value: string;
+  onChange: (v: string) => void;
+  rechazo: { ok: false; reason: ProductPriceRejection["reason"] } | null;
+}) {
+  const leido = !rechazo && value.trim() ? parseProductPrice(value) : null;
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center gap-2">
+        <span className="app-muted w-10 shrink-0 text-[11px] tabular-nums">
+          {currency}
+        </span>
+        <input
+          className="app-input"
+          inputMode="decimal"
+          placeholder="Precio — vacío mientras no lo tengas"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      </div>
+      {rechazo ? (
+        <p className="text-[11px] text-[var(--color-danger)]">
+          {productPriceRejectionText(rechazo)}
+        </p>
+      ) : leido?.ok ? (
+        <p className="app-muted text-[11px]">
+          Se va a guardar como {formatProductPrice(leido.value, currency)}.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Lo que un producto del panel sin precio significa para la venta.
+ *
+ * No es un error ni una advertencia de formulario: es **la consecuencia
+ * operativa**, dicha donde el admin la puede resolver. Sin precio no hay línea
+ * de pedido, así que el vendedor no cierra y el caso pasa a un asesor — que es
+ * el comportamiento correcto y no un bug, pero nadie lo adivina mirando una
+ * ficha que se ve completa. Es el mismo criterio con el que la ficha explica
+ * que un producto sin anuncios es una fuga de reconocimiento.
+ */
+function SinPrecioNoSeVende({ row }: { row: CatalogRow }) {
+  if (row.source !== "native" || row.nativePrice !== null) return null;
+  return (
+    <div className="rounded-md border border-amber-400/25 bg-amber-500/10 px-2.5 py-2 text-[11px] leading-relaxed text-[var(--color-text-dim)]">
+      <strong className="text-[var(--color-text)]">
+        Sin precio, este producto no se puede vender.
+      </strong>{" "}
+      El vendedor lo puede describir y mandarle las fotos al cliente, pero al
+      registrar el pedido no hay con qué armar la línea: la venta pasa a un
+      asesor en vez de cerrarse con un importe inventado.
     </div>
   );
 }
@@ -1136,26 +1263,42 @@ function CuentaPublicitariaSinConectar() {
    Alta de producto
    ──────────────────────────────────────────────────────────────────────── */
 
+/**
+ * Crear un producto que todavía no está en la tienda.
+ *
+ * **El precio se pide acá y no es obligatorio**, y las dos mitades de esa frase
+ * son decisión del ticket `ventas-panel/05`. Se pide acá porque sin él el
+ * vendedor no puede cerrar la venta y el caso escala a un asesor — y descubrir
+ * eso con un cliente esperando es tarde. No es obligatorio porque un producto
+ * sin precio sigue sirviendo para lo demás: que el vendedor lo describa y le
+ * mande sus fotos. Lo que hace la ficha es **decir cuál es la consecuencia**,
+ * en vez de bloquear el alta.
+ */
 function AltaNativo({
+  currency,
   onDone,
   onError,
 }: {
+  currency: string;
   onDone: () => void;
   onError: (m: string | null) => void;
 }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [price, setPrice] = useState("");
   const [busy, setBusy] = useState(false);
+  const precio = price.trim() ? parseProductPrice(price) : null;
+  const precioMalo = precio && !precio.ok ? precio : null;
 
   async function crear() {
-    if (!name.trim()) return;
+    if (!name.trim() || precioMalo) return;
     setBusy(true);
     onError(null);
     try {
       const r = await fetch("/api/catalogo/productos", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ source: "native", name, description }),
+        body: JSON.stringify({ source: "native", name, description, price }),
       });
       const j = (await r.json()) as { error?: string };
       if (!r.ok) throw new Error(j.error ?? "no se pudo crear");
@@ -1171,8 +1314,8 @@ function AltaNativo({
     <div className="app-card space-y-2 p-3">
       <h2 className="text-sm font-semibold">Crear un producto en el panel</h2>
       <p className="app-muted text-[11px]">
-        Para vender algo que todavía no está en la tienda. Su nombre y su
-        descripción viven acá, y se editan acá.
+        Para vender algo que todavía no está en la tienda. Su nombre, su
+        descripción y su precio viven acá, y se editan acá.
       </p>
       <input
         className="app-input"
@@ -1187,7 +1330,17 @@ function AltaNativo({
         value={description}
         onChange={(e) => setDescription(e.target.value)}
       />
-      <button className="app-button" onClick={crear} disabled={busy || !name.trim()}>
+      <CampoPrecio
+        currency={currency}
+        value={price}
+        onChange={setPrice}
+        rechazo={precioMalo}
+      />
+      <button
+        className="app-button"
+        onClick={crear}
+        disabled={busy || !name.trim() || precioMalo !== null}
+      >
         {busy ? "Creando…" : "Crear producto"}
       </button>
     </div>

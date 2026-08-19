@@ -25,9 +25,18 @@
  *    sale con lo que hace falta para buscarla allá —dataset, momento exacto y
  *    valor— y con la instrucción escrita al lado. Un estado que nadie sabe cómo
  *    verificar es un estado que nadie verifica.
+ *
+ * ## La forma de la respuesta es un contrato, y vive en `@wa/shared`
+ *
+ * Desde `ventas-capi/05` esto tiene pantalla, así que la forma la declara
+ * `CapiEstado` y las dos mitades la comparten. No es ceremonia: el modo de
+ * fallar de este tablero **es el silencio**, así que una pantalla leyendo un
+ * campo que este archivo renombró diría «no hay conversiones sin llegar» y
+ * nadie lo notaría. Con el contrato, eso no compila.
  */
 
 import { Hono } from "hono";
+import type { CapiEstado, CapiFilaTrabada } from "@wa/shared";
 import { logger } from "../lib/logger";
 import { panelOperation } from "../operations";
 import { planOperationConversions } from "../jobs/capi-conversion";
@@ -37,6 +46,7 @@ import {
   listStalePending,
   listUnconfirmed,
   tallyConversions,
+  type StuckConversion,
 } from "./conversion-record";
 import { capiDispatch, offReasonText } from "./send-mode";
 
@@ -102,7 +112,7 @@ capiReporting.get("/estado", async (c) => {
     logger.error({ err, operacion: op.countryCode }, "capi: no se pudo mirar el barrido");
   }
 
-  return c.json({
+  const estado: CapiEstado = {
     modo: setting.mode,
     motivoApagado: setting.mode === "off" ? offReasonText(setting.reason) : null,
     // El destino es un **dataset** de la cuenta de WhatsApp, no el píxel.
@@ -125,11 +135,34 @@ capiReporting.get("/estado", async (c) => {
     pendientesSinResolver: {
       desdeHoras: Math.round(STALE_PENDING_MS / 3_600_000),
       nota: "Pidieron turno para reportarse y nunca se supo cómo terminaron — casi siempre, el worker se reinició en el medio. No se reintentan solas a propósito: no se sabe si la petición salió, y reintentar a ciegas contaría la venta dos veces.",
-      filas: stalePending,
+      filas: stalePending.map(aFila),
     },
     enDuda: {
       comoVerificar: COMO_VERIFICAR_EN_DUDA,
-      filas: enDuda,
+      filas: enDuda.map(aFila),
     },
-  });
+  };
+  return c.json(estado);
 });
+
+/**
+ * Una fila del libro, con las fechas en texto.
+ *
+ * `JSON.stringify` ya las convertiría igual; se hace explícito para que el tipo
+ * del contrato sea el que sale de verdad y no una promesa. Si mañana el libro
+ * gana una columna, es acá donde el compilador pregunta si va al panel.
+ */
+function aFila(row: StuckConversion): CapiFilaTrabada {
+  return {
+    orderId: row.orderId,
+    status: row.status,
+    mode: row.mode,
+    datasetId: row.datasetId,
+    value: row.value,
+    currency: row.currency,
+    eventTime: row.eventTime.toISOString(),
+    attempts: row.attempts,
+    lastError: row.lastError,
+    createdAt: row.createdAt.toISOString(),
+  };
+}

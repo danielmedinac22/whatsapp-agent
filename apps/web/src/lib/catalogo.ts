@@ -8,6 +8,7 @@ import {
   type Operation,
   type ProductMediaMeta,
 } from "@wa/db";
+import { formatProductPrice, productPriceFromColumn } from "@wa/shared";
 import { workerJson } from "@/lib/worker";
 
 /**
@@ -76,7 +77,20 @@ export interface CatalogRow {
   description: string;
   nameSource: NameSource;
   shopifyProductId: string | null;
+  /**
+   * El precio listo para leer, con su moneda. Para un producto de la tienda
+   * viene **de la tienda, en esta misma carga**; para uno nativo, de la columna
+   * que la `0028` agregó. `null` en los dos casos significa que no se sabe, y
+   * significan cosas distintas: en el conectado, que la tienda no contestó; en
+   * el nativo, que **nadie se lo puso todavía y por eso no se puede vender**.
+   */
   price: string | null;
+  /**
+   * El precio del panel como número, para el campo que lo edita. Solo lo tienen
+   * los nativos: un producto conectado no puede tener precio propio y la ficha
+   * no le ofrece dónde escribirlo.
+   */
+  nativePrice: number | null;
   createdAt: string;
   ads: CatalogAdView[];
   /** En orden de subida. Vacío mientras el admin no haya cargado nada. */
@@ -171,12 +185,21 @@ export async function loadCatalogView(op: Operation): Promise<CatalogView> {
   const named = entries.map((entry) => {
     const { product } = entry;
     if (product.source === "native") {
+      // El precio de un nativo sale de la base porque no hay tienda de dónde
+      // leerlo: es el ticket `ventas-panel/05`. `null` es un estado normal —el
+      // producto se puede describir y mandarle fotos al cliente— y lo único que
+      // impide es cerrar la venta, que escala a un asesor.
+      const nativePrice = productPriceFromColumn(product.price);
       return {
         entry,
         name: product.name ?? "(sin nombre)",
         description: product.description ?? "",
         nameSource: "panel" as NameSource,
-        price: null as string | null,
+        price:
+          nativePrice === null
+            ? null
+            : formatProductPrice(nativePrice, op.currency),
+        nativePrice,
       };
     }
     const gid = product.shopifyProductId ?? "";
@@ -188,6 +211,7 @@ export async function loadCatalogView(op: Operation): Promise<CatalogView> {
         description: "",
         nameSource: "sin_leer" as NameSource,
         price: null as string | null,
+        nativePrice: null as number | null,
       };
     }
     return {
@@ -196,6 +220,7 @@ export async function loadCatalogView(op: Operation): Promise<CatalogView> {
       description: fromStore.description,
       nameSource: "tienda" as NameSource,
       price: formatPrice(fromStore.priceRange),
+      nativePrice: null as number | null,
     };
   });
 
@@ -227,6 +252,7 @@ export async function loadCatalogView(op: Operation): Promise<CatalogView> {
     nameSource: n.nameSource,
     shopifyProductId: n.entry.product.shopifyProductId,
     price: n.price,
+    nativePrice: n.nativePrice,
     createdAt: n.entry.product.createdAt.toISOString(),
     ads: n.entry.ads.map((ad) => ({
       adId: ad.adId,

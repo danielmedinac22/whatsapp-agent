@@ -8,6 +8,11 @@
  * los tres nombres REVITALHAIR casi idénticos la tabla sigue siendo navegable y
  * el origen se distingue de un vistazo.
  *
+ * Desde `ventas-panel/05` siembra además **dos productos del panel sin precio**.
+ * Es el otro estado que se ve bien y no lo está: un producto sin precio no se
+ * puede vender —el cierre no tiene con qué armar la línea y escala a un
+ * asesor—, y esa diferencia tiene que notarse en la tabla sin abrir la ficha.
+ *
  * En producción `products` y `product_ads` están en cero, y **cargar el
  * catálogo de verdad es un acto del dueño de la operación, no de un agente**.
  * Por eso este script se niega a correr contra la base de producción, y además
@@ -71,8 +76,12 @@ async function main() {
   await db.execute(sql`delete from product_ads`);
   await db.execute(sql`delete from products`);
 
-  const nativo = (name: string, description?: string) =>
-    createNativeProduct(op, { name, description: description ?? null });
+  const nativo = (name: string, description?: string, price?: string) =>
+    createNativeProduct(op, {
+      name,
+      description: description ?? null,
+      price: price ?? null,
+    });
 
   // Los nombres son los **reales**, con la concentración real: el primero es el
   // 77% del volumen y los tres primeros el 96%. Se parecen a propósito — son
@@ -81,21 +90,35 @@ async function main() {
   const dht = await nativo(
     "REVITALHAIR - DHT ANTICALVICIE",
     "Tratamiento en cápsulas para la caída por DHT. Presentación de 60 cápsulas, tratamiento de 3 meses.",
+    "399",
   );
   const blocker = await nativo(
     "REVITALHAIR - DHT BLOCKER ANTICALVICIE",
     "Bloqueador de DHT en presentación reforzada. No confundir con el tratamiento base.",
+    "449.50",
   );
   const combo = await nativo(
     "REVITALHAIR COMBO DHT + SERUM ANTICALVICIE 360",
     "Combo del tratamiento en cápsulas más el serum capilar de aplicación diaria.",
+    "690",
   );
   // El cuarto de la familia, con su nombre real completo: es el que **no** se
   // parece a los otros tres por su nombre, solo por lo que vende. Sin anuncios
   // a propósito — es la fuga de reconocimiento que la ficha nombra, y ahora
   // además es el que hace observable el nivel 2: un anuncio capilar suyo cae al
   // match semántico porque nadie lo registró.
-  await nativo("Hair Recovery 3X - COMBO RECUPERACION CAPILAR TOTAL");
+  await nativo(
+    "Hair Recovery 3X - COMBO RECUPERACION CAPILAR TOTAL",
+    undefined,
+    "520",
+  );
+  // **Los dos sin precio son el estado difícil de `ventas-panel/05`**, y no un
+  // olvido del sembrador: un producto del panel sin precio se ve completo —
+  // tiene nombre, descripción, anuncios y archivos— y **no se puede vender**.
+  // Con todos los precios puestos, la pantalla aprobaría por la razón
+  // equivocada. Lo que hay que mirar es que la tabla los distinga de un vistazo
+  // («Sin precio» en su columna, y el filtro homónimo) y que la ficha diga la
+  // consecuencia: la venta pasa a un asesor en vez de cerrarse.
   const serum = await nativo(
     "REVITALHAIR Serum Capilar",
     "Serum de aplicación diaria. Todavía no está en la tienda.",
@@ -167,6 +190,12 @@ async function main() {
 
   console.log(`\n  Catálogo de ensayo cargado en ${host} (${op.countryCode}).`);
   console.log("  8 productos · 6 anuncios · 2 compartidos · 3 sin anuncios");
+  console.log(
+    "  4 nativos con precio y 2 SIN precio (Serum Capilar y Kit Barba): esos dos",
+  );
+  console.log(
+    "  no se pueden vender y la ficha lo dice — el filtro «Sin precio» los junta",
+  );
   console.log(
     "  9 archivos · 8 enviables · DHT ANTICALVICIE queda en «2 de 3 enviables»",
   );

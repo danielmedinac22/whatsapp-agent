@@ -2,6 +2,9 @@ import { and, asc, eq, gte, inArray, sql } from "drizzle-orm";
 import {
   etiquetaDeTipo,
   excedeLimiteDeWhatsapp,
+  parseProductPrice,
+  productPriceRejectionText,
+  productPriceToColumn,
   puedeEnviarse,
   rechazoDeSubida,
 } from "@wa/shared";
@@ -254,11 +257,12 @@ export function buildAdIndex<A extends ScopedProductAdRow>(
 /**
  * Qué se puede escribir sobre un producto según su origen.
  *
- * Un producto conectado **no copia** su información: nombre y descripción se
- * leen de la tienda en tiempo de uso, y por eso `products.name` es nullable en
- * vez de `NOT NULL`. Escribirlos acá sería exactamente la desincronización
- * silenciosa que esa decisión evita — el panel mostrando un nombre que la
- * tienda ya cambió, sin que nada avise.
+ * Un producto conectado **no copia** su información: nombre, descripción y
+ * **precio** se leen de la tienda en tiempo de uso, y por eso `products.name`
+ * es nullable en vez de `NOT NULL` y `products.price` solo lo pueden tener los
+ * nativos (`check` de la `0028`). Escribirlos acá sería exactamente la
+ * desincronización silenciosa que esa decisión evita — el panel mostrando, y
+ * cobrando, un precio que la tienda ya cambió, sin que nada avise.
  *
  * El `CHECK` de la base (`products_source_check`) lo impide igual; esto existe
  * para que la pantalla pueda decir *por qué* antes de intentarlo, en vez de
@@ -363,11 +367,36 @@ export async function listProductIdsForAd(
 export interface NativeProductInput {
   name: string;
   description?: string | null;
+  /**
+   * El precio, tal como lo escribió el admin (`150.000`, `Q 400`, `399,90`) o
+   * ya como número. **`null` es un valor legítimo y es el estado inicial**: un
+   * producto sin precio se puede crear, describir y mandarle fotos al cliente;
+   * lo único que no se puede es cerrarlo en una venta, y eso escala a un asesor
+   * en vez de inventar un importe.
+   */
+  price?: string | number | null;
 }
 
 /**
- * Un producto que todavía no existe en la tienda. Nombre y descripción viven
- * acá porque no hay de dónde leerlos.
+ * El precio que va a la columna, o el error que le explica al admin por qué no.
+ *
+ * La regla la decide `@wa/shared` —el mismo módulo con el que el navegador
+ * valida antes de guardar— y acá solo se traduce a lo que la base espera.
+ * Devolver `null` para vacío es lo que permite **quitarle** el precio a un
+ * producto: mandar la cadena vacía lo deja sin precio y vuelve a escalar, que
+ * es una corrección legítima y no un error.
+ */
+function priceColumn(price: string | number | null | undefined): string | null {
+  if (price === null || price === undefined) return null;
+  if (typeof price === "string" && !price.trim()) return null;
+  const parsed = parseProductPrice(price);
+  if (!parsed.ok) throw new Error(productPriceRejectionText(parsed));
+  return productPriceToColumn(parsed.value);
+}
+
+/**
+ * Un producto que todavía no existe en la tienda. Nombre, descripción y precio
+ * viven acá porque no hay de dónde leerlos.
  */
 export async function createNativeProduct(
   op: Operation,
@@ -382,6 +411,7 @@ export async function createNativeProduct(
       source: "native",
       name,
       description: input.description?.trim() || null,
+      price: priceColumn(input.price),
     })
     .returning();
   if (!row) throw new Error("no se pudo crear el producto");
@@ -454,6 +484,10 @@ export async function updateNativeProduct(
       ...(input.description !== undefined
         ? { description: input.description?.trim() || null }
         : {}),
+      // `undefined` no toca el precio; la cadena vacía se lo quita. Son dos
+      // cosas distintas y la pantalla usa las dos: guardar el nombre sin tocar
+      // el precio, y borrar el precio de un producto que dejó de venderse.
+      ...(input.price !== undefined ? { price: priceColumn(input.price) } : {}),
       updatedAt: new Date(),
     })
     .where(and(eq(products.operationId, op.id), eq(products.id, productId)))
