@@ -24,6 +24,7 @@ import { and, eq, inArray, products, type Operation } from "@wa/db";
 import { db } from "../db";
 import { logger } from "../lib/logger";
 import { getProductsByIds } from "../shopify/admin";
+import { shopifyProductIdKey } from "./catalog";
 
 /**
  * Cuántos candidatos caben en una lista corta de WhatsApp.
@@ -97,18 +98,13 @@ export function renderProductQuestionBlock(
 /** Un uuid con guiones, que es lo que la `0026` guarda en la lista. */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** El último tramo de un GID de Shopify, o el id tal cual si ya es corto. */
-function idNumerico(id: string): string {
-  return id.split("/").pop() ?? id;
-}
-
 /**
  * Los nombres de los candidatos registrados, **en el orden en que la cascada
  * los dejó** y uno por cada id: `null` en el que ya no se puede nombrar.
  *
- * El orden se conserva porque es orden de presentación —nivel 1 en el orden del
- * catálogo, nivel 2 de mayor a menor confianza— y reordenarlos al leerlos sería
- * cambiar la lista que se le ofrece al lead.
+ * El orden se conserva porque es orden de presentación —el de la cascada, que
+ * en los dos niveles termina siendo el del catálogo— y reordenarlos al leerlos
+ * sería cambiar la lista que se le ofrece al lead.
  *
  * **La operación se verifica contra la fila**, como en todos los accesores desde
  * la migración: `product_candidate_ids` es una lista suelta sin clave foránea
@@ -159,14 +155,14 @@ export async function loadCandidateNames(
   // (`getProductsByIds` normaliza al pedir). Se compara por la parte numérica
   // para que un catálogo cargado con el id corto encuentre igual su nombre.
   const titleByShopifyId = new Map(
-    live.map((p) => [idNumerico(p.id), p.title]),
+    live.map((p) => [shopifyProductIdKey(p.id), p.title]),
   );
 
   return ids.map((id) => {
     const row = byId.get(id);
     if (!row) return null;
     if (row.shopifyProductId) {
-      return titleByShopifyId.get(idNumerico(row.shopifyProductId)) ?? null;
+      return titleByShopifyId.get(shopifyProductIdKey(row.shopifyProductId)) ?? null;
     }
     return row.name?.trim() || null;
   });
