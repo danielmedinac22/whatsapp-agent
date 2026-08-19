@@ -1,8 +1,9 @@
 "use client";
 
+import { Fragment } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { NAV_GROUPS, type NavGroup, type NavItem } from "./nav";
+import { usePathname, useSearchParams } from "next/navigation";
+import { NAV_GROUPS, type NavGroup, type NavItem, type NavView } from "./nav";
 
 /**
  * La navegación de módulos, anidada dentro de la operación.
@@ -15,17 +16,49 @@ import { NAV_GROUPS, type NavGroup, type NavItem } from "./nav";
  *
  * Esconder un enlace **no es el control de acceso**: quien escribe la URL a mano
  * no pasa por aquí, lo rebota el proxy. Es solo no ofrecer una puerta cerrada.
+ *
+ * Desde la bandeja por módulo también recibe **los contadores de las vistas de
+ * ventas**, que se calculan en el servidor porque dependen de la bandeja
+ * derivada, y `null` cuando la operación no tiene vendedor configurado — que es
+ * como este componente sabe que no hay vistas que dibujar.
  */
 
-function isOpen(pathname: string, href: string): boolean {
-  return pathname === href || pathname.startsWith(`${href}/`);
+/** Los contadores de las tres vistas de la bandeja de ventas. */
+export type SalesInboxCounts = {
+  needsAttention: number;
+  automated: number;
+  all: number;
+};
+
+/** Lo que el servidor sabe del vendedor de esta operación. */
+export type SalesNav = {
+  counts: SalesInboxCounts;
+  /** El nombre configurado, para que la vista diga «Las lleva <quien sea>». */
+  sellerName: string;
+};
+
+function isOpen(pathname: string, item: NavItem, bandeja: string | null): boolean {
+  const path = item.path ?? item.href;
+  const enLaRuta = pathname === path || pathname.startsWith(`${path}/`);
+  if (!enLaRuta) return false;
+  // Los dos enlaces al Inbox comparten ruta y los distingue la bandeja: sin
+  // esto, entrar a Conversaciones encendería también el Inbox de Katherine.
+  return (item.bandeja ?? null) === bandeja;
 }
 
-function visibleGroups(allowed: readonly string[]): NavGroup[] {
+function visibleGroups(
+  allowed: readonly string[],
+  sales: SalesNav | null,
+): NavGroup[] {
   const set = new Set(allowed);
   return NAV_GROUPS.map((g) => ({
     ...g,
-    items: g.items.filter((i) => set.has(i.href)),
+    items: g.items.filter((i) => {
+      // Sin vendedor configurado no hay bandeja de ventas: el enlace no se
+      // ofrece, y `/inbox` sigue trayendo todo como hasta hoy.
+      if (i.bandeja === "ventas" && sales === null) return false;
+      return set.has(i.path ?? i.href);
+    }),
   })).filter((g) => g.items.length > 0);
 }
 
@@ -33,17 +66,32 @@ function visibleGroups(allowed: readonly string[]): NavGroup[] {
 function openGroupKey(
   groups: readonly NavGroup[],
   pathname: string,
+  bandeja: string | null,
 ): string | null {
   for (const g of groups) {
-    if (g.items.some((i) => isOpen(pathname, i.href))) return g.key;
+    if (g.items.some((i) => isOpen(pathname, i, bandeja))) return g.key;
   }
   return null;
 }
 
-export function ModuleNav({ allowed }: { allowed: readonly string[] }) {
+/** La etiqueta de la vista, con el nombre del vendedor que esté configurado. */
+function viewLabel(view: NavView, sellerName: string): string {
+  return view.key === "agente" ? `Las lleva ${sellerName}` : view.label;
+}
+
+export function ModuleNav({
+  allowed,
+  sales,
+}: {
+  allowed: readonly string[];
+  sales: SalesNav | null;
+}) {
   const pathname = usePathname();
-  const groups = visibleGroups(allowed);
-  const open = openGroupKey(groups, pathname);
+  const params = useSearchParams();
+  const bandeja = params.get("b");
+  const vista = params.get("v");
+  const groups = visibleGroups(allowed, sales);
+  const open = openGroupKey(groups, pathname, bandeja);
 
   return (
     <div className="flex flex-col gap-3">
@@ -58,13 +106,44 @@ export function ModuleNav({ allowed }: { allowed: readonly string[] }) {
             ) : null}
           </div>
           <div className="op-group-items">
-            {g.items.map((item) => (
-              <NavLink
-                key={item.href}
-                item={item}
-                current={isOpen(pathname, item.href)}
-              />
-            ))}
+            {g.items.map((item) => {
+              const current = isOpen(pathname, item, bandeja);
+              // Fragment y no `div`: un enlace sin vistas tiene que producir
+              // exactamente el mismo DOM que antes de este ticket, porque
+              // `.op-group-items` reparte su `gap` entre hijos directos.
+              return (
+                <Fragment key={item.href}>
+                  <NavLink item={item} current={current} />
+                  {item.views && sales ? (
+                    <div className="mb-1 flex flex-col gap-px pl-[26px]">
+                      {item.views.map((view) => (
+                        <Link
+                          key={view.key ?? "todas"}
+                          href={
+                            view.key
+                              ? `${item.href}&v=${view.key}`
+                              : item.href
+                          }
+                          className="app-nav-link h-7 text-xs"
+                          aria-current={
+                            current && (vista ?? null) === view.key
+                              ? "page"
+                              : undefined
+                          }
+                        >
+                          <span className="flex-1 truncate">
+                            {viewLabel(view, sales.sellerName)}
+                          </span>
+                          <span className="tabular-nums text-[10.5px] text-[var(--color-text-soft)]">
+                            {sales.counts[view.count]}
+                          </span>
+                        </Link>
+                      ))}
+                    </div>
+                  ) : null}
+                </Fragment>
+              );
+            })}
           </div>
         </div>
       ))}
@@ -97,12 +176,23 @@ function NavLink({ item, current }: { item: NavItem; current: boolean }) {
  * actual no es de ningún grupo, cae al primero que el rol alcance en vez de
  * quedarse en blanco — un riel sin navegación no es un colapso, es una
  * mutilación.
+ *
+ * Las vistas no bajan aquí: son tres contadores sin sitio en 46px, y plegado lo
+ * que se conserva es a dónde ir, no cuánto hay.
  */
-export function ModuleNavIcons({ allowed }: { allowed: readonly string[] }) {
+export function ModuleNavIcons({
+  allowed,
+  sales,
+}: {
+  allowed: readonly string[];
+  sales: SalesNav | null;
+}) {
   const pathname = usePathname();
-  const groups = visibleGroups(allowed);
+  const params = useSearchParams();
+  const bandeja = params.get("b");
+  const groups = visibleGroups(allowed, sales);
   if (groups.length === 0) return null;
-  const open = openGroupKey(groups, pathname);
+  const open = openGroupKey(groups, pathname, bandeja);
   const group = groups.find((g) => g.key === open) ?? groups[0]!;
 
   return (
@@ -110,7 +200,7 @@ export function ModuleNavIcons({ allowed }: { allowed: readonly string[] }) {
       <span className="my-1 h-px w-5 bg-[var(--color-border)]" aria-hidden />
       {group.items.map((item) => {
         const Icon = item.icon;
-        const current = isOpen(pathname, item.href);
+        const current = isOpen(pathname, item, bandeja);
         return (
           <Link
             key={item.href}

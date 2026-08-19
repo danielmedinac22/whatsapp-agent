@@ -3,6 +3,7 @@ import {
   Boxes,
   Cable,
   Inbox,
+  MessagesSquare,
   Package2,
   Shapes,
   UserRoundCog,
@@ -25,10 +26,40 @@ import {
  * lenguaje del negocio y ya se decidió respetarla en el esquema.
  */
 
+/**
+ * Una vista de la bandeja: el mismo Inbox, acotado.
+ *
+ * Cuelgan del enlace de Conversaciones y llevan contador **a propósito**:
+ * decisión 1 del nivel 2, el contador tiene que verse desde afuera de la
+ * bandeja, porque si solo aparece estando ya adentro no sirve para que entres.
+ * Es el mismo criterio por el que el riel le ganó al filo de color en el nivel 1.
+ *
+ * Las tres son las que el Inbox ya calcula con ese nombre —`needsAttention`,
+ * `automatedCount`, el total—, no vocabulario nuevo.
+ */
+export interface NavView {
+  /** Valor de `?v=`. `null` es la vista por defecto, sin parámetro. */
+  key: "atencion" | "agente" | null;
+  label: string;
+  /** Cuál de los contadores la acompaña. */
+  count: "needsAttention" | "automated" | "all";
+}
+
 export interface NavItem {
+  /** A dónde lleva el enlace. Puede traer parámetros. */
   href: string;
+  /**
+   * La ruta que deciden el acceso y el resaltado. Por defecto, {@link href}.
+   * Existe porque las dos bandejas son **la misma pantalla**: `/inbox` con y
+   * sin `?b=ventas`. Sin esto, `resolveAccess` recibiría `/inbox?b=ventas`,
+   * no la encontraría en su tabla y la cerraría.
+   */
+  path?: string;
+  /** La bandeja que abre, si abre una. Es lo que distingue los dos enlaces. */
+  bandeja?: "ventas";
   label: string;
   icon: React.ComponentType<{ className?: string }>;
+  views?: readonly NavView[];
 }
 
 export interface NavGroup {
@@ -45,11 +76,29 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     label: "Ventas",
     agent: "Sebastián",
     items: [
-      // Las dos pantallas nuevas de esta ola. Las rutas están fijadas desde la
-      // sesión coordinadora y las páginas las construyen otros worktrees: el
-      // riel *es* la navegación, así que los enlaces van aquí aunque la
-      // pantalla llegue después. Si al mergear esto primero el enlace apunta a
-      // una pantalla que aún no existe, es temporal y se cierra en la ola.
+      /**
+       * La bandeja de ventas **no es una pantalla nueva**: es el Inbox de
+       * siempre con la bandeja derivada puesta en el parámetro. Esa fue la
+       * decisión del nivel 2, y por eso este enlace apunta a `/inbox` y no a
+       * una ruta propia — el historial, el envío y el control del agente son
+       * los mismos, y duplicarlos habría sido la segunda aplicación que el
+       * veredicto rechazó.
+       *
+       * Solo aparece cuando la operación tiene vendedor configurado; lo decide
+       * el layout, que es quien sabe si `sales_agent_settings` tiene fila.
+       */
+      {
+        href: "/inbox?b=ventas",
+        path: "/inbox",
+        bandeja: "ventas",
+        label: "Conversaciones",
+        icon: MessagesSquare,
+        views: [
+          { key: "atencion", label: "Necesitan atención", count: "needsAttention" },
+          { key: "agente", label: "Las lleva Sebastián", count: "automated" },
+          { key: null, label: "Todas", count: "all" },
+        ],
+      },
       { href: "/catalogo", label: "Catálogo", icon: Boxes },
       { href: "/vendedor", label: "Vendedor", icon: UserRoundCog },
     ],
@@ -59,9 +108,9 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     label: "Confirmación",
     agent: "Katherine",
     items: [
-      // El Inbox es área común —los dos módulos lo necesitan— y aparece aquí
-      // porque hoy la bandeja es una sola. El ticket 03 de ruteo la parte en
-      // dos, y ahí cada mitad se va a su grupo.
+      // El Inbox es área común —los dos módulos lo necesitan— y este enlace es
+      // el de siempre: sin parámetro. Con vendedor configurado trae la bandeja
+      // de operaciones; sin vendedor trae todo, exactamente como hasta hoy.
       { href: "/inbox", label: "Inbox", icon: Inbox },
       { href: "/orders", label: "Pedidos", icon: Package2 },
       { href: "/templates", label: "Plantillas", icon: Shapes },
@@ -76,7 +125,11 @@ export const NAV_GROUPS: readonly NavGroup[] = [
   },
 ];
 
-/** Todas las rutas del menú, para que el layout pregunte por cada una una vez. */
+/**
+ * Todas las rutas del menú, para que el layout pregunte por cada una una vez.
+ * Son rutas y no enlaces: lo que el acceso entiende es `/inbox`, no
+ * `/inbox?b=ventas`.
+ */
 export const NAV_HREFS: readonly string[] = NAV_GROUPS.flatMap((g) =>
-  g.items.map((i) => i.href),
+  g.items.map((i) => i.path ?? i.href),
 );

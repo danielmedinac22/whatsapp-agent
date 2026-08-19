@@ -254,3 +254,60 @@ export function resolveInbox(facts: InboxFacts): InboxDecision {
     rule: anyInProgress ? "order_in_progress" : "order_finished",
   };
 }
+
+/**
+ * Los hechos tal como eran en un instante pasado.
+ *
+ * Solo recorta lo que **nació** después de `at`: los pedidos por su fecha de
+ * creación y el clic de anuncio por la suya. No intenta reconstruir el estado
+ * de un pedido a esa fecha, y no hace falta —ver {@link resolveInboxAsOf}.
+ */
+function factsAsOf(facts: InboxFacts, at: Date): InboxFacts {
+  const t = at.getTime();
+  return {
+    lastAdClickAt:
+      facts.lastAdClickAt !== null && facts.lastAdClickAt.getTime() <= t
+        ? facts.lastAdClickAt
+        : null,
+    orders: facts.orders.filter((order) => order.createdAt.getTime() <= t),
+  };
+}
+
+/**
+ * En qué bandeja estaba la conversación en un instante pasado.
+ *
+ * **Es exacto, no una aproximación**, y la razón está en las cuatro reglas: la
+ * bandeja depende de si había pedidos y de si el clic es posterior al último —
+ * dos hechos de *creación*, que ya no cambian—. La fase del pedido (`en curso`
+ * o `terminado`) sí cambia con el tiempo y aquí se usa la de hoy, pero las dos
+ * fases rutean a operaciones, así que no puede alterar la respuesta. Si algún
+ * día una fase rutea distinto, esta función deja de ser exacta y hay que
+ * cargar el estado histórico: queda dicho acá para que se vea al cambiarlo.
+ *
+ * El límite real es otro y es del esquema: `conversations.ad_referral_at`
+ * guarda **solo el clic más reciente**, así que un clic anterior a `at` que
+ * después fue pisado por otro ya no existe para nadie. En ese caso esta
+ * función responde con lo que se puede saber —sin clic—, no con un invento.
+ */
+export function resolveInboxAsOf(facts: InboxFacts, at: Date): InboxDecision {
+  return resolveInbox(factsAsOf(facts, at));
+}
+
+/**
+ * Si la conversación cambió de bandeja desde un instante.
+ *
+ * Es lo que libera la asignación (`ventas-modulos-y-ruteo/04`): quien la vendía
+ * ya no la está trabajando cuando la venta cerró y la conversación pasó a
+ * operaciones. **No hay columna de bandeja que comparar** —la bandeja se
+ * deriva, y ese es el punto de todo este archivo—, así que el cambio se detecta
+ * volviendo a preguntar la misma regla sobre los hechos de entonces.
+ *
+ * Compara bandejas y no reglas a propósito: un pedido nuevo sobre una
+ * conversación que ya estaba en operaciones cambia la regla —de
+ * `order_finished` a `order_in_progress`— y **no cambia la bandeja**. Soltarle
+ * la conversación a quien la está trabajando por eso sería castigar a un asesor
+ * por un hecho que no lo movió de sitio.
+ */
+export function inboxChangedSince(facts: InboxFacts, since: Date): boolean {
+  return resolveInboxAsOf(facts, since).inbox !== resolveInbox(facts).inbox;
+}

@@ -2,7 +2,7 @@ import { ChevronLeft, ChevronRight, LogOut } from "lucide-react";
 import { signOut } from "@/auth";
 import type { Operation } from "@wa/db";
 import { ConnectionIndicator } from "./connection-indicator";
-import { ModuleNav, ModuleNavIcons } from "./module-nav";
+import { ModuleNav, ModuleNavIcons, type SalesNav } from "./module-nav";
 import { selectOperation, toggleBars } from "./frame-actions";
 import type { PanelBars } from "@/lib/operation";
 
@@ -132,11 +132,14 @@ export function OperationRail({
   activeId,
   bars,
   allowed,
+  sales,
 }: {
   entries: readonly RailOperation[];
   activeId: string | null;
   bars: PanelBars;
   allowed: readonly string[];
+  /** El vendedor de la operación activa, o `null` si no tiene configurado. */
+  sales: SalesNav | null;
 }) {
   const tight = bars === "collapsed";
   return (
@@ -149,7 +152,7 @@ export function OperationRail({
           tight={tight}
         />
       ))}
-      {tight ? <ModuleNavIcons allowed={allowed} /> : null}
+      {tight ? <ModuleNavIcons allowed={allowed} sales={sales} /> : null}
       <div className="mt-auto flex flex-col items-center gap-1.5 pt-2">
         <SignOutButton />
         <FoldButton next={tight ? "open" : "collapsed"} />
@@ -171,10 +174,13 @@ export function OperationColumn({
   entry,
   allowed,
   email,
+  sales,
 }: {
   entry: RailOperation;
   allowed: readonly string[];
   email: string | null | undefined;
+  /** El vendedor de esta operación, o `null` si no tiene configurado. */
+  sales: SalesNav | null;
 }) {
   const op = entry.operation;
   const dormant = op.status !== "active";
@@ -202,7 +208,7 @@ export function OperationColumn({
         <FoldButton next="collapsed" />
       </div>
 
-      <ModuleNav allowed={allowed} />
+      <ModuleNav allowed={allowed} sales={sales} />
 
       <div className="mt-auto space-y-2 border-t border-[var(--color-border)] pt-3">
         <ConnectionIndicator />

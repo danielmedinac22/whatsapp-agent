@@ -1,11 +1,14 @@
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import { db, kapsoConnection } from "@/lib/db";
+import { getSalesAgentSettings } from "@wa/db";
+import { countSalesInboxViews } from "@/lib/queries";
 import { operationTint } from "@wa/shared";
 import { resolveAccess } from "@/access/resolve";
 import { resolvePanelBars, resolvePanelOperationState } from "@/lib/operation";
 import { ChooseOperation } from "./choose-operation";
 import { NAV_HREFS } from "./nav";
+import type { SalesNav } from "./module-nav";
 import {
   OperationColumn,
   OperationRail,
@@ -80,6 +83,27 @@ export default async function AppLayout({
     (href) => resolveAccess(session.user.role, href).allowed,
   );
 
+  /**
+   * El vendedor de la operación activa, y los contadores de sus vistas.
+   *
+   * **`null` es el interruptor de la no-regresión**, y aquí se nota más que en
+   * ningún otro sitio: sin fila en `sales_agent_settings` no hay enlace de
+   * Conversaciones, no hay vistas, no se derivan bandejas y no se paga ni una
+   * consulta de más. En producción esa tabla está vacía, así que hoy el marco
+   * de Katherine se dibuja exactamente igual que antes de este ticket.
+   *
+   * Los contadores se calculan en el layout y no en la bandeja porque tienen
+   * que verse **desde afuera** de ella (decisión 1 del nivel 2): un contador
+   * que solo aparece estando ya dentro no sirve para que entres.
+   */
+  const seller = active ? await getSalesAgentSettings(active) : null;
+  const sales: SalesNav | null = seller
+    ? {
+        counts: await countSalesInboxViews(active!),
+        sellerName: seller.displayName.trim() || "el vendedor",
+      }
+    : null;
+
   // Sin operación elegida el marco no toma el color de ninguna: teñirlo del
   // primero de la lista sería decir que se está trabajando sobre él.
   const tint = active
@@ -110,12 +134,14 @@ export default async function AppLayout({
         activeId={active?.id ?? null}
         bars={bars}
         allowed={allowed}
+        sales={sales}
       />
       {collapsed || !activeEntry ? null : (
         <OperationColumn
           entry={activeEntry}
           allowed={allowed}
           email={session.user.email}
+          sales={sales}
         />
       )}
 

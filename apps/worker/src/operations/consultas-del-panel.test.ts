@@ -37,12 +37,20 @@ describe("la red sobre las consultas del panel", () => {
     });
   }
 
-  it("vigila las doce consultas del panel y no solo unas cuantas", () => {
+  it("vigila todas las consultas del panel y no solo unas cuantas", () => {
     const funciones = new Set(
       analizarConsultasDelPanel(fuente(VIGILADOS[0])).map((c) => c.funcion),
     );
     for (const nombre of [
       "listConversations",
+      // Las de la bandeja por módulo: derivan y escriben, así que la red tiene
+      // que verlas por nombre y no de casualidad.
+      "loadOrderFactsByContact",
+      "releaseStaleAssignments",
+      "conversationIdsOfInbox",
+      "countSalesInboxViews",
+      "getSalesContext",
+      "setAssignment",
       "listApprovedWaTemplates",
       "getConversationById",
       "listMessages",
