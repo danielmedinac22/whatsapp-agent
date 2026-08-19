@@ -1399,6 +1399,142 @@ export const agentRuns = pgTable(
 );
 
 // ────────────────────────────────────────────────────────────────────────────
+// capi conversions — el libro de las ventas ya reportadas a Meta
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Una fila por conversión reportada —o intentada— al **dataset** de Meta.
+ * Migración `0027`.
+ *
+ * **Existe por una sola razón y no es auditoría: es la deduplicación.** El
+ * riesgo R7 de la no-regresión dice que un evento duplicado *envenena el
+ * aprendizaje del algoritmo* de la pauta que Vorare paga, y que **eso no se
+ * revierte borrando datos**. La documentación de Meta es explícita en que este
+ * flujo —*Conversions API for Business Messaging*— **no deduplica del lado de
+ * ellos**: si mandamos dos, cuentan dos. Así que el único lugar donde «este
+ * pedido ya se reportó» puede vivir es acá.
+ *
+ * **Por qué una tabla y no la cola.** pg-boss ya deduplica por `singletonKey`,
+ * y no alcanza: esa llave solo es única mientras el job está vivo. Al
+ * completarse, el job se archiva a los catorce días y después se borra — y a
+ * partir de ahí un barrido volvería a encontrar el mismo pedido «sin reportar»
+ * y lo mandaría de nuevo. La dedup de una conversión tiene que durar más que la
+ * retención de una cola. El patrón es el de `outbound_messages.dedup_key`:
+ * `insert ... on conflict do nothing`, y quien no logró insertar es quien no
+ * manda.
+ *
+ * **La fila se escribe ANTES de la llamada, no después.** Se «pide el turno» en
+ * estado `pending` y recién entonces se postea. Al revés —mandar y después
+ * anotar— deja abierta la ventana en la que el proceso se cae entre las dos
+ * cosas, y esa ventana se paga con un evento duplicado. Al derecho, la ventana
+ * se paga con un evento que no se manda: una conversión menos, visible en esta
+ * misma tabla. De los dos errores posibles, el proyecto elige el que se puede
+ * arreglar.
+ *
+ * **El destino es un dataset de la cuenta de WhatsApp, no el píxel** — la
+ * trampa más cara del proyecto, y por eso la columna se llama `dataset_id`
+ * igual que `operations.capi_dataset_id`. Ver el encabezado de
+ * `apps/worker/src/capi/purchase-event.ts`.
+ */
+export const capiConversions = pgTable(
+  "capi_conversions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    /**
+     * La operación que reportó. Obligatoria: acá el que escribe siempre la sabe
+     * —salió del pedido, que ya la trae—, así que «no la sé» no es alcanzable.
+     * `restrict` como en el resto: dar de baja una operación no puede llevarse
+     * por delante el registro de lo que ya se le reportó a Meta.
+     */
+    operationId: uuid("operation_id")
+      .notNull()
+      .references(() => operations.id, { onDelete: "restrict" }),
+    /**
+     * La llave que impide la segunda conversión del mismo pedido. Única, y es
+     * el corazón de la tabla.
+     *
+     * La deriva `buildPurchaseEvent` —`purchase:{operación}:{pedido}`— y el
+     * despachador le antepone `test:` cuando sale en modo de prueba. **Los dos
+     * modos no comparten llave a propósito**: un ensayo con el código de prueba
+     * de Meta no puede consumir el turno del envío real, o las primeras ventas
+     * de verdad —justo las que alguien está mirando— nunca llegarían al
+     * dataset.
+     */
+    dedupKey: text("dedup_key").notNull(),
+    /** `shopify_orders.order_id`: el pedido que se reportó. */
+    orderId: text("order_id").notNull(),
+    /** De qué conversación salió el clic. Para poder rastrear la atribución. */
+    conversationId: uuid("conversation_id").references(() => conversations.id, {
+      onDelete: "set null",
+    }),
+    /**
+     * A qué dataset se mandó, copiado en el momento del envío. **No se lee de
+     * `operations` al mostrar**: si mañana alguien cambia el destino, esta fila
+     * tiene que seguir diciendo a dónde fue de verdad.
+     */
+    datasetId: text("dataset_id").notNull(),
+    /** `test` o `live`. Con qué posición del interruptor salió. */
+    mode: text("mode").notNull(),
+    /**
+     * `pending` pidió el turno y todavía no hay respuesta · `sent` Meta lo
+     * recibió · `failed` Meta lo rechazó de forma permanente, o se agotaron los
+     * reintentos · `unconfirmed` la petición salió y **nunca llegó respuesta**,
+     * así que no se sabe si Meta lo tomó.
+     *
+     * `unconfirmed` es el estado que este diseño existe para poder tener. No se
+     * reintenta nunca: reintentar algo que quizás llegó es exactamente cómo se
+     * fabrica el duplicado que no se puede deshacer. Queda a la vista para que
+     * una persona decida, que es más barato que decidirlo mal en automático.
+     */
+    status: text("status").notNull().default("pending"),
+    /** El valor tal como viajó, en texto como `shopify_orders.total_price`. */
+    value: text("value").notNull(),
+    /** ISO 4217, el de la operación. */
+    currency: text("currency").notNull(),
+    /**
+     * El `event_time` que viajó dentro del evento — el momento del cierre, no
+     * el del envío.
+     *
+     * Está acá por una razón concreta y no por completitud: es lo que hace
+     * **verificable** una fila `unconfirmed`. Nadie de este lado puede saber si
+     * esa conversión llegó; lo único que puede saberlo es el administrador de
+     * eventos de Meta, y ahí los eventos se buscan por dataset, momento y
+     * valor. Sin esta columna, «no sabemos si llegó» sería un estado sin forma
+     * de averiguarlo — y el ticket `ventas-capi/04`, que existe para
+     * confirmarlo, no tendría por dónde empezar.
+     */
+    eventTime: timestamp("event_time", { withTimezone: true }).notNull(),
+    attempts: integer("attempts").notNull().default(0),
+    /** Por qué falló, en una línea. Es lo que se ve en el estado del reporte. */
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    /** Cuándo Meta confirmó que lo recibió. Solo con `status = 'sent'`. */
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+  },
+  (t) => [
+    // El único que hace que un reintento no produzca dos conversiones.
+    uniqueIndex("capi_conversions_dedup_key_idx").on(t.dedupKey),
+    // La consulta del estado del reporte: por operación y por fecha.
+    index("capi_conversions_operation_idx").on(t.operationId, t.createdAt),
+    // «¿Qué quedó sin resolver?» — lo que el admin mira para saber si funciona.
+    index("capi_conversions_status_idx").on(t.status, t.createdAt),
+    // `text` y no enum, igual que `discount_limit_behavior` de la `0025`: un
+    // quinto estado mañana es cambiar el check, y no un `ALTER TYPE ... ADD
+    // VALUE` que Postgres no deja usar en la misma transacción que lo agrega.
+    check(
+      "capi_conversions_status_check",
+      sql`${t.status} in ('pending', 'sent', 'failed', 'unconfirmed')`,
+    ),
+    check("capi_conversions_mode_check", sql`${t.mode} in ('test', 'live')`),
+  ],
+);
+
+// ────────────────────────────────────────────────────────────────────────────
 // types
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -1439,3 +1575,5 @@ export type KapsoConnection = typeof kapsoConnection.$inferSelect;
 export type NewKapsoConnection = typeof kapsoConnection.$inferInsert;
 export type WaTemplate = typeof waTemplates.$inferSelect;
 export type WebhookEvent = typeof webhookEvents.$inferSelect;
+export type CapiConversion = typeof capiConversions.$inferSelect;
+export type NewCapiConversion = typeof capiConversions.$inferInsert;

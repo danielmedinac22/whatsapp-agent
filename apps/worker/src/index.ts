@@ -20,6 +20,7 @@ import { shopify } from "./routes/shopify";
 import { shopifyConn } from "./routes/shopify-connection";
 import { catalogStore } from "./shopify/catalog-routes";
 import { storeClosings } from "./shopify/closing-routes";
+import { capiReporting } from "./capi/reporting-routes";
 import { dropi } from "./routes/dropi";
 import { kapsoAdmin, kapsoWebhook } from "./routes/kapso";
 import {
@@ -28,6 +29,10 @@ import {
 } from "./jobs/kapso-templates";
 import { startFollowupWorker } from "./jobs/followup";
 import { startSalesOrderWorker } from "./jobs/sales-order";
+import {
+  scheduleCapiSweep,
+  startCapiConversionWorker,
+} from "./jobs/capi-conversion";
 import { startOutboundWorker } from "./jobs/outbound";
 import { startRemarketingWorker } from "./jobs/remarketing";
 import {
@@ -77,6 +82,9 @@ app.route("/api/shopify", shopifyConn);
 app.route("/api/catalog", catalogStore);
 // El estado de la tienda y los cierres que no llegaron a ella.
 app.route("/api/tienda", storeClosings);
+// Si el reporte de conversiones a Meta está funcionando, y qué quedó sin
+// resolver. Sin esta pantalla, que no se envíe nada se descubre en un mes.
+app.route("/api/capi", capiReporting);
 app.route("/api/dropi", dropi);
 app.route("/api/kapso", kapsoAdmin);
 
@@ -114,6 +122,15 @@ serve({ fetch: app.fetch, port }, (info) => {
   // ella, una venta cerrada que la tienda rechaza se pierde en silencio.
   startSalesOrderWorker().catch((err) =>
     logger.error({ err }, "sales order worker failed to start"),
+  );
+  // El reporte de conversiones a Meta: barrido cada cinco minutos y cola de
+  // envío con reintentos. Arranca apagado — sin `META_CAPI_MODE` y sin token no
+  // sale ni una llamada, y el barrido solo mira.
+  startCapiConversionWorker().catch((err) =>
+    logger.error({ err }, "capi conversion worker failed to start"),
+  );
+  scheduleCapiSweep().catch((err) =>
+    logger.error({ err }, "capi conversion sweep scheduling failed"),
   );
   startRemarketingWorker().catch((err) =>
     logger.error({ err }, "remarketing worker failed to start"),
