@@ -178,6 +178,10 @@ async function flushSalesTurn(entry: Buffered): Promise<boolean> {
       ),
     },
     productId: conversation.productId,
+    // Entre qué dudó la cascada, para que la pregunta al lead salga acotada a
+    // esos candidatos y no al catálogo entero. Se relee con la conversación,
+    // así que el clic que acaba de entrar ya está registrado.
+    candidateIds: conversation.productCandidateIds,
   });
   const prompt = await loadHistory(conversation.id, SALES_MEMORY_WINDOW);
 

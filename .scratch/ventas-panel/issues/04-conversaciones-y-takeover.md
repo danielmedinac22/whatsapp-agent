@@ -4,10 +4,10 @@
 
 **Blocked by:** ventas-modulos-y-ruteo 03 · Bandejas separadas por módulo
 
-**Status:** abierto — cinco de seis criterios mergeados y desplegados. Falta distinguir «ambiguo», que **no es derivable** hoy: lo destraba [ingesta-reconocimiento 06](../../ventas-ingesta-reconocimiento/issues/06-el-resultado-de-la-cascada-no-queda-registrado.md)
+**Status:** resolved — los seis criterios. El que faltaba lo destrabó [ingesta-reconocimiento 06](../../ventas-ingesta-reconocimiento/issues/06-el-resultado-de-la-cascada-no-queda-registrado.md) y se cerró en el worktree `reconocimiento-registrado`, 19-ago-2026. Ver el segundo `## Answer`.
 
 - [x] Al abrir un chat se ve **de qué anuncio y de qué producto** viene la conversación.
-- [ ] Se ve el **estado del reconocimiento**: resuelto, ambiguo o escalado tras dos intentos. *(«resuelto» y «escalado» sí; «ambiguo» no se puede distinguir de «no encontré nada» sin persistir el resultado de la cascada.)*
+- [x] Se ve el **estado del reconocimiento**: resuelto, ambiguo o escalado tras dos intentos. *(«ambiguo» ya se distingue de «no encontré nada»: la migración `0026` persiste cómo terminó la cascada y entre qué dudó.)*
 - [x] **Tomar el chat pausa al vendedor solo para esa conversación**, nunca globalmente.
 - [x] Devolver el chat lo reactiva y el vendedor retoma con el historial completo.
 - [x] Tomar el chat comunica inequívocamente que el vendedor quedó pausado, para que nadie escriba encima de él.
@@ -106,3 +106,46 @@ contexto»*.
 Se implementó **sin el tercer panel**, siguiendo el Answer, porque es lo que el
 encargo lista como criterio. Si el panel de ficha sigue en pie, es trabajo
 distinto y de otra ronda — no un olvido de esta.
+
+## Answer · el criterio que faltaba — «ambiguo» ya se distingue (19-ago-2026, worktree `reconocimiento-registrado`)
+
+El `## Answer` de arriba cerró cinco de seis y dejó escrito por qué el sexto no
+se podía cumplir: la cascada devuelve tres formas y **ninguna se persistía**, así
+que «el vendedor dudó entre cuatro REVITALHAIR» y «el vendedor no encontró nada»
+dejaban la misma huella. Llamarle «ambiguo» a eso habría sido afirmar más de lo
+que constaba, y por eso la pantalla decía **«sin producto»** para las dos.
+
+La migración `0026` (ticket `ingesta-reconocimiento/06`) registra cómo terminó el
+reconocimiento y, cuando dudó, entre qué dudó. Con eso el criterio se cumple
+**leyendo, no recalculando**: la pantalla no vuelve a correr la cascada ni
+consulta el catálogo para decidir el estado, lo lee de la conversación.
+
+**En la fila**, dos marcas donde antes había una, y son distintas porque piden
+cosas distintas: **«ambiguo»** —azul, interrogante— se resuelve desempatando en
+el chat; **«sin producto»** —ámbar, triángulo— se resuelve cargando el anuncio
+en el catálogo, que es otra pantalla. **«Escalada» sigue ganando sobre las dos**,
+por lo mismo de siempre: es lo que le toca hacer a un humano ahora.
+
+**Y «reconocido» sigue sin marcarse**, que es la decisión 3 del nivel 2 intacta:
+marcar todo es no marcar nada.
+
+**En el hilo**, la línea nueva dice entre qué dudó, con los nombres:
+
+> *Sebastián dudó entre REVITALHAIR - DHT ANTICALVICIE · REVITALHAIR - DHT
+> BLOCKER ANTICALVICIE · REVITALHAIR COMBO DHT + SERUM ANTICALVICIE 360 · anuncio
+> 120210000000000002*
+
+Cuando algún candidato ya no se puede nombrar —borrado del catálogo, o conectado
+a la tienda, donde el nombre vive allá— la línea dice **cuántos eran** en vez de
+nombrar a medias: «dudó entre tres» sigue siendo cierto, y una lista incompleta
+apuntaría al producto equivocado.
+
+**Se fecha con el clic del anuncio, igual que antes.** El reconocimiento sigue
+sin fecha propia en el esquema y **no se le inventó una**: el instante que consta
+es el del clic, y el evento queda en el sitio correcto del hilo.
+
+**Lo demás del ticket no se tocó.** «Agente: ON/OFF» sigue siendo el control y
+no hay término nuevo para tomar ni devolver el chat. El hilo de las
+conversaciones de confirmación queda idéntico: sin vendedor configurado —el
+estado de producción— no aparece ni una marca ni una línea nueva, y se comprobó
+pidiendo la pantalla con vendedor y sin él contra una base de ensayo.

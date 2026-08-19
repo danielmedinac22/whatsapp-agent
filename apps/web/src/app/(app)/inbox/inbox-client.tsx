@@ -105,17 +105,31 @@ type FilterKey =
    *  ventas, donde es una de las tres vistas de la barra. */
   | "automated";
 
-/** Cómo se dice en la fila lo que el reconocimiento dejó a medias. */
+/**
+ * Cómo se dice en la fila lo que el reconocimiento dejó a medias.
+ *
+ * **«Ambiguo» y «sin producto» son dos marcas y no una**, porque le piden al
+ * asesor cosas opuestas: la primera se resuelve desempatando dentro del chat,
+ * la segunda cargando el anuncio en el catálogo, que es otra pantalla. Hasta la
+ * `0026` las dos dejaban la misma huella en la base y la fila no podía
+ * separarlas.
+ */
 const MARK_META: Record<RowMark, { label: string; title: string; classes: string }> = {
   escalada: {
     label: "escalada",
     title: "El vendedor pasó esta conversación a un asesor",
     classes: "border-red-400/30 bg-red-500/10 text-red-200",
   },
+  ambiguo: {
+    label: "ambiguo",
+    title:
+      "El anuncio apunta a varios productos y el vendedor no pudo elegir — hay que desempatar en el chat",
+    classes: "border-sky-400/30 bg-sky-500/10 text-sky-200",
+  },
   sin_identificar: {
     label: "sin producto",
     title:
-      "Llegó por un anuncio y el producto sigue sin identificarse — el vendedor no sabe de qué le hablan",
+      "Llegó por un anuncio y no hubo ni un candidato — hay que cargar el anuncio en el catálogo",
     classes: "border-amber-400/30 bg-amber-500/10 text-amber-200",
   },
 };
@@ -1154,6 +1168,15 @@ function MessageBubble({ m }: { m: Msg }) {
   );
 }
 
+/** De qué anuncio vino, dicho por su id o, si no lo hay, por su titular. */
+function deQueAnuncio(event: {
+  adId: string | null;
+  adHeadline: string | null;
+}): string {
+  if (event.adId) return ` · anuncio ${event.adId}`;
+  return event.adHeadline ? ` · «${event.adHeadline}»` : "";
+}
+
 /**
  * Un momento del contexto de venta, dentro del hilo.
  *
@@ -1174,13 +1197,23 @@ function SalesEventLine({
         ? `${seller} reconoció ${event.productName}${anuncio}`
         : `${seller} reconoció el producto${anuncio}`;
     }
+    if (event.kind === "producto_ambiguo") {
+      const deDonde = deQueAnuncio(event);
+      // Entre qué dudó es la información útil: sin ella el evento diría lo
+      // mismo que «no encontré nada», que es justo lo que se separó. Cuando
+      // algún candidato ya no se puede nombrar —borrado del catálogo, o su
+      // nombre vive en la tienda— se dice cuántos eran, que sigue siendo cierto.
+      const nombres = event.candidates.filter(
+        (n): n is string => typeof n === "string" && n.trim().length > 0,
+      );
+      const entreQue =
+        nombres.length === event.candidates.length && nombres.length > 0
+          ? nombres.join(" · ")
+          : `${event.candidates.length} productos del anuncio`;
+      return `${seller} dudó entre ${entreQue}${deDonde}`;
+    }
     if (event.kind === "producto_sin_identificar") {
-      const deDonde = event.adId
-        ? ` · anuncio ${event.adId}`
-        : event.adHeadline
-          ? ` · «${event.adHeadline}»`
-          : "";
-      return `${seller} no logró identificar el producto${deDonde}`;
+      return `${seller} no logró identificar el producto${deQueAnuncio(event)}`;
     }
     const frase = escalationPhrase(event.reason);
     const sufijo = frase ? ` ${frase}` : "";
@@ -1190,18 +1223,30 @@ function SalesEventLine({
       ? `${seller} escaló${sufijo}`
       : `Escalada a un asesor${sufijo}`;
   })();
-  const alarma = event.kind !== "producto_identificado";
+  // Tres tonos y no dos: la duda entre candidatos es del mismo azul con que la
+  // fila la marca —hay que desempatar, ahí mismo—, y el ámbar queda para lo que
+  // está trabado fuera del chat: un anuncio sin cargar, una escalada.
+  const tono =
+    event.kind === "producto_identificado"
+      ? "hecho"
+      : event.kind === "producto_ambiguo"
+        ? "duda"
+        : "alarma";
   return (
     <div className="flex justify-center py-1">
       <span
         className={`inline-flex max-w-[86%] items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] leading-4 ${
-          alarma
+          tono === "alarma"
             ? "border-amber-400/25 bg-amber-500/10 text-amber-100"
-            : "border-[var(--color-border)] bg-[rgba(8,21,30,0.72)] text-[var(--color-text-dim)]"
+            : tono === "duda"
+              ? "border-sky-400/25 bg-sky-500/10 text-sky-100"
+              : "border-[var(--color-border)] bg-[rgba(8,21,30,0.72)] text-[var(--color-text-dim)]"
         }`}
       >
-        {alarma ? (
+        {tono === "alarma" ? (
           <AlertTriangle className="h-3 w-3 shrink-0" />
+        ) : tono === "duda" ? (
+          <HelpCircle className="h-3 w-3 shrink-0" />
         ) : (
           <Sparkles className="h-3 w-3 shrink-0" />
         )}
@@ -1278,12 +1323,16 @@ function DropiChip({ status }: { status: DropiStatus }) {
 /** Lo que la fila dice del reconocimiento cuando no quedó limpio. */
 function MarkChip({ mark }: { mark: RowMark }) {
   const meta = MARK_META[mark];
+  // El interrogante es de la duda entre candidatos y el triángulo de lo que
+  // está trabado: de un vistazo la bandeja separa «hay que elegir» de «hay que
+  // ir a otra pantalla», que es toda la razón de que sean dos marcas.
+  const Icon = mark === "ambiguo" ? HelpCircle : AlertTriangle;
   return (
     <span
       title={meta.title}
       className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] uppercase ${meta.classes}`}
     >
-      <AlertTriangle className="h-3 w-3" />
+      <Icon className="h-3 w-3" />
       {meta.label}
     </span>
   );

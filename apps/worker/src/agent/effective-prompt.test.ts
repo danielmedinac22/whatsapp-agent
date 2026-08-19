@@ -30,6 +30,10 @@ const SEBASTIAN: SalesPersona = {
 const BLOQUE_PRODUCTO =
   "## Producto del que te escriben\nProducto: REVITALHAIR Serum Capilar\nPrecio: 199 GTQ";
 
+/** La pregunta al lead cuando la cascada dudó, con su lista corta. */
+const BLOQUE_PREGUNTA =
+  "## Todavía no sabes de qué producto te escriben\n- REVITALHAIR - DHT ANTICALVICIE\n- REVITALHAIR - DHT BLOCKER ANTICALVICIE";
+
 describe("composeEffectivePrompt · el prompt del agente de confirmación", () => {
   it("es el prompt configurado más sus bloques, en orden y separados por una línea en blanco", () => {
     // Carácter por carácter lo que el runner enviaba antes de que existiera un
@@ -76,6 +80,33 @@ describe("composeEffectivePrompt · el prompt del vendedor", () => {
     expect(prompt).toContain(SEBASTIAN.greeting);
     expect(prompt).toContain(SEBASTIAN.closingPush);
     expect(prompt).toContain(SEBASTIAN.funnelMessage);
+  });
+
+  it("sin producto identificado va la pregunta, acotada a los candidatos que la cascada registró", () => {
+    // La otra mitad de `ingesta/05`: la lista corta sale de
+    // `conversations.product_candidate_ids`, que la 0026 registra. Antes no
+    // había de dónde sacarla y lo único ofrecible era el catálogo entero.
+    const prompt = composeEffectivePrompt({
+      agent: "sales",
+      persona: SEBASTIAN,
+      productBlock: null,
+      questionBlock: BLOQUE_PREGUNTA,
+    });
+    expect(prompt).toContain("REVITALHAIR - DHT ANTICALVICIE");
+    expect(prompt.endsWith(`\n\n${BLOQUE_PREGUNTA}`)).toBe(true);
+  });
+
+  it("con producto identificado hay ficha y no hay pregunta: son excluyentes", () => {
+    // Preguntarle al lead de qué producto habla cuando ya se sabe es pedirle
+    // al modelo que pregunte por lo que tiene escrito arriba.
+    const prompt = composeEffectivePrompt({
+      agent: "sales",
+      persona: SEBASTIAN,
+      productBlock: BLOQUE_PRODUCTO,
+      questionBlock: null,
+    });
+    expect(prompt).toContain("## Producto del que te escriben");
+    expect(prompt).not.toContain("Todavía no sabes de qué producto");
   });
 
   it("con producto identificado, la ficha va pegada al final", () => {

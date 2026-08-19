@@ -5,6 +5,7 @@ import {
   dropiConnection,
   eq,
   getSalesAgentSettings,
+  parseRecognitionOutcome,
   resolveRowMark,
   type Inbox,
 } from "@wa/db";
@@ -109,14 +110,16 @@ export default async function InboxPage({
         producto: i.shopify?.producto ?? null,
         assignedTo: i.assignedTo,
         // La fila solo marca el reconocimiento cuando NO es limpio: la regla
-        // vive en `@wa/db` y aquí solo se le pasan los hechos.
+        // vive en `@wa/db` y aquí solo se le pasan los hechos. «Ambiguo» sale
+        // de lo que la cascada dejó registrado (`0026`); antes era
+        // indistinguible de «no encontré nada» y las dos se marcaban igual.
         mark: i.routing
           ? resolveRowMark({
               adReferralAt: i.conversation.adReferralAt,
-              adId: i.conversation.adId,
-              adHeadline: i.conversation.adHeadline,
-              productName: null,
               productIdentified: i.conversation.productId !== null,
+              recognitionOutcome: parseRecognitionOutcome(
+                i.conversation.productRecognition,
+              ),
               escalations: i.routing.escalations,
             })
           : null,
