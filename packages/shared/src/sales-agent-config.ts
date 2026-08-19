@@ -49,6 +49,8 @@ export const SALES_AGENT_DEFAULTS = {
   toneInstructions: "",
   /** Cero prohíbe descuentos, y es el valor seguro. */
   discountLimitPct: 0,
+  /** Escalar es el borde seguro: es el único cuyo error lo ve una persona. */
+  discountLimitBehavior: "consultar",
   model: "openai/gpt-5.4-mini",
   reasoningEffort: "low",
 } as const;
@@ -60,6 +62,92 @@ export const SALES_AGENT_DEFAULTS = {
  * cosa que llegue a la columna por otra vía sigue cayendo en `low` allá.
  */
 export const SALES_REASONING_EFFORTS = ["low", "medium", "high"] as const;
+
+/**
+ * Qué hace el vendedor cuando el cliente pide más descuento del autorizado.
+ *
+ * **Es la mitad que al ticket le faltaba.** Definía el límite y nunca decía su
+ * consecuencia — «un límite sin consecuencia declarada no está definido: está
+ * numerado». Las tres opciones se cerraron con el usuario en el nivel 2 del
+ * árbol de diseño y son excluyentes: el vendedor hace una de las tres.
+ *
+ * El orden no es alfabético ni casual: va de **más cauto a menos**. Escalar
+ * pone a una persona en el medio; ofrecer el máximo decide solo y gasta margen;
+ * no mencionar decide solo y no gasta nada, pero deja al cliente sin respuesta
+ * a lo que preguntó.
+ */
+export const SALES_DISCOUNT_BEHAVIORS = [
+  "consultar",
+  "ofrecer_maximo",
+  "no_mencionar",
+] as const;
+
+export type SalesDiscountBehavior = (typeof SALES_DISCOUNT_BEHAVIORS)[number];
+
+/** Cómo se llama y qué hace cada consecuencia, en la pantalla. */
+export interface SalesDiscountBehaviorOption {
+  key: SalesDiscountBehavior;
+  label: string;
+  /** Qué pasa de verdad, en una línea, sin eufemismos. */
+  hint: string;
+}
+
+export const SALES_DISCOUNT_BEHAVIOR_OPTIONS: readonly SalesDiscountBehaviorOption[] =
+  [
+    {
+      key: "consultar",
+      label: "Consultar con una persona",
+      // El prototipo decía «escala el chat». No se copió: escalar es un acto
+      // del sistema que hoy nadie dispara desde acá —`escalation-triggers` mira
+      // los turnos del lead y deja el descuento fuera a propósito—, así que la
+      // tarjeta prometería un traspaso que no ocurre. Lo que sí pasa es que
+      // deja de negociar y no concede nada.
+      hint: "Deja de negociar y dice que lo consulta, sin conceder nada. El cliente lo ve como «déjame confirmar».",
+    },
+    {
+      key: "ofrecer_maximo",
+      label: "Ofrecer el máximo y cerrar",
+      hint: "Aplica el límite completo y sigue empujando al cierre, sin escalar.",
+    },
+    {
+      key: "no_mencionar",
+      label: "No mencionar descuentos",
+      hint: "Ignora el pedido y vuelve al valor del producto.",
+    },
+  ];
+
+/**
+ * El valor de la columna, traído al conjunto cerrado.
+ *
+ * La columna es `text` con un `check`, así que en la base **solo pueden existir
+ * las tres**; esto no defiende de un dato imposible, sino que es el único lugar
+ * donde `string` se convierte en la unión. Sin él, cada pantalla que lea la fila
+ * tendría que decidir por su cuenta qué hacer con un valor que no reconoce, y
+ * ahí es donde dos pantallas eligen distinto.
+ *
+ * Lo desconocido cae en `consultar` por lo mismo que es el default de la
+ * columna: de las tres, es la única cuyo error lo ve una persona.
+ */
+export function parseSalesDiscountBehavior(
+  value: string | null | undefined,
+): SalesDiscountBehavior {
+  return SALES_DISCOUNT_BEHAVIORS.includes(value as SalesDiscountBehavior)
+    ? (value as SalesDiscountBehavior)
+    : "consultar";
+}
+
+/**
+ * La pregunta del borde, que **se reformula sola con el límite en cero**.
+ *
+ * Con descuentos prohibidos nadie «pide más del 0%»: pide un descuento y le
+ * dicen que no. La pregunta sigue teniendo respuesta —insistir es lo que hacen
+ * los clientes— y por eso el bloque no desaparece cuando el límite es cero.
+ */
+export function discountEdgeQuestion(pct: number): string {
+  return pct === 0
+    ? "Cuando el cliente insista con un descuento"
+    : `Cuando el cliente pida más de ${pct}%`;
+}
 
 /**
  * Lo que el panel manda al guardar.
@@ -83,6 +171,12 @@ export const salesAgentSettingsInput = z.object({
   funnelMessage: z.string().max(MAX_BASE_MESSAGE),
   toneInstructions: z.string().max(MAX_TONE),
   discountLimitPct: z.number().int().min(0).max(100),
+  /**
+   * Repite el `check` de la tabla por el mismo motivo que el límite: un valor
+   * que la base rechazaría tiene que volver como error del formulario y no
+   * como un 500 de Postgres.
+   */
+  discountLimitBehavior: z.enum(SALES_DISCOUNT_BEHAVIORS),
   model: z.string().min(1).max(120),
   reasoningEffort: z.enum(SALES_REASONING_EFFORTS),
 });
@@ -107,6 +201,7 @@ export function normalizeSalesAgentSettings(
     funnelMessage: input.funnelMessage.trim(),
     toneInstructions: input.toneInstructions.trim(),
     discountLimitPct: input.discountLimitPct,
+    discountLimitBehavior: input.discountLimitBehavior,
     model: input.model.trim(),
     reasoningEffort: input.reasoningEffort,
   };

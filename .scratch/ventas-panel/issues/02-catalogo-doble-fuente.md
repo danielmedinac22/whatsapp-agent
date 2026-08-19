@@ -4,13 +4,13 @@
 
 **Blocked by:** ventas-ingesta-reconocimiento 03 · Catálogo y mapeo anuncio→productos
 
-**Status:** claimed — worktree `assets-0025`, ola del 18-ago (2). La pantalla base ya está en producción; falta lo que esperaba la migración `0025`
+**Status:** listo para cerrar — worktree `assets-0025`, ola del 18-ago (2). Los archivos entraron con la migración `0025`, que está **generada y sin aplicar**
 
 - [x] El admin puede buscar y conectar un producto existente de la tienda. *(construido; sin verificar contra datos reales — `shopify_connection` está vacía)*
 - [x] **Un producto conectado lee su información de la tienda en tiempo de uso, no la copia** — editarlo allá se refleja acá, sin desincronización silenciosa.
-- [ ] El admin puede crear un producto nativo con nombre, descripción, imágenes y adjuntos. *(nombre y descripción, sí; imágenes y adjuntos esperan la `0025`)*
+- [x] El admin puede crear un producto nativo con nombre, descripción, imágenes y adjuntos. *(tabla `product_media`, migración `0025`; la subida del panel corta en 4,5 MB — ver el Answer)*
 - [x] El panel no escribe sobre los productos de la tienda: los lee.
-- [ ] **Un video que excede el límite de tamaño de la API de WhatsApp se rechaza al subir**, no al enviar, para que el problema aparezca cuando el admin puede resolverlo.
+- [x] **Un video que excede el límite de tamaño de la API de WhatsApp se rechaza al subir**, no al enviar, para que el problema aparezca cuando el admin puede resolverlo.
 - [x] La lista de productos es navegable con el catálogo real del cliente, que hoy son unas decenas.
 
 ## Answer — dónde viven los binarios, y qué entra en esta ola (18-ago-2026)
@@ -146,3 +146,117 @@ Con eso llega también el rechazo por tamaño al subir (el criterio del video de
 - Buscar, filtrar y ordenar corren en el navegador, no en la URL —al revés que
   la tabla de pedidos—: son decenas de filas y traerlas todas es correcto. Si el
   catálogo creciera a miles, eso es lo que cambia.
+
+---
+
+## Answer — los archivos, cerrados (18-ago-2026, worktree `assets-0025`)
+
+### La tabla, y la deuda que queda anotada
+
+`product_media` existe: los bytes en Postgres, como `message_media`, que es lo
+que el usuario decidió. La medida que respalda la decisión está tomada, no
+supuesta — `message_media` en producción son **46 filas y 1,26 MB en total, la
+mayor de 122 KB**. El disparador de la deuda quedó escrito en `schema.ts`: si el
+catálogo de las dos operaciones pasa de unos pocos GB, `bytes` se cambia por una
+llave de objeto y se muda a S3/R2. Es una tabla y una columna; no arrastra al
+resto porque **nadie más lee esos bytes**.
+
+**La operación no se hereda del producto**: columna `operation_id` y clave
+foránea compuesta `(operation_id, product_id) → products (operation_id, id)`,
+igual que `product_ads`. Comprobado contra una base de ensayo: insertar un
+archivo declarando la operación colombiana sobre un producto guatemalteco
+**lo rechaza Postgres**, no el código. Borrar el producto se lleva sus archivos.
+
+### El rechazo por tamaño, y la corrección que el código obligó
+
+El criterio se cumple en los tres lugares donde puede fallar: el navegador mide
+el archivo **antes de subirlo** —así que un video de 27 MB no viaja—, la ruta lo
+vuelve a preguntar porque lo que le llega, le llega de afuera, y el accesor lo
+pregunta por última vez antes de escribir. La regla vive una sola vez, en
+`@wa/shared`.
+
+**Y acá el código corrigió a la especificación.** El nivel 2 nombra «el límite de
+16 MB de la API de WhatsApp», pero 16 MB es el límite de **un video**, que es el
+ejemplo que usó. Meta corta las **imágenes en 5 MB**. Con un solo número, un JPG
+de 8 MB se habría subido, la pantalla lo habría mostrado enviable y Meta lo
+habría rechazado al mandarlo — que es exactamente el error de este ticket, movido
+al momento en que el admin ya no puede hacer nada. Los límites que se aplican son
+los de Meta por tipo: imagen 5 MB, video y audio 16 MB, documento 100 MB.
+
+**El prototipo dibujaba el archivo rechazado como una fila permanente**, con su
+interruptor deshabilitado y su motivo. No se guarda: un archivo que nunca se va a
+poder enviar cuesta base de datos y no compra nada, y además la subida del panel
+no podría cargarlo. El motivo se ve donde importa —en el acto, al elegirlo— y el
+estado de *interruptor deshabilitado* **sigue existiendo** para las filas que
+caigan de ese lado si Meta baja un límite, que es cuando de verdad hay algo que
+explicar.
+
+### El techo que hay que saber: la subida del panel corta en 4,5 MB
+
+**Es la afirmación incómoda de este reporte y no se puede esconder.** `apps/web`
+corre en Vercel, y una función serverless de Vercel corta el cuerpo de la
+petición en 4,5 MB. Entonces hoy: **un video de 8 MB, que WhatsApp aceptaría, no
+se puede subir por el panel.** Imágenes y PDFs, que es lo que más se carga,
+entran sin problema.
+
+No se disimula: es un motivo de rechazo **aparte**, con su propio texto —«WhatsApp
+lo aceptaría, pero la subida del panel corta en 4,5 MB; es un tope de dónde está
+alojado el panel, no del archivo»—, porque se arregla distinto que el otro: uno
+recomprimiendo, el otro cambiando por dónde viaja el archivo.
+
+La salida está identificada y **es una decisión del usuario, no de un agente**:
+que la subida vaya del navegador directo al worker, que corre en Railway y no
+tiene ese tope. Cuesta una variable pública con la URL del worker y una forma de
+autenticar esa subida sin exponer `WORKER_API_TOKEN`. No se hizo por cuenta
+propia porque estrena superficie pública en el worker.
+
+La constante está en un solo lugar (`PANEL_UPLOAD_MAX_BYTES`) con su porqué
+escrito al lado: el día que la subida cambie, se borra y el único límite vuelve a
+ser el de WhatsApp.
+
+### La pantalla
+
+En la **ficha**: sección Archivos con el conteo en la cabecera —«2 de 3
+enviables»—, una fila por archivo con su tipo, su peso y su interruptor, y el
+botón de subir. El conteo cuenta **lo que le llega al cliente**, no lo que está
+marcado: un archivo marcado que excede el límite no sale, y contarlo haría que la
+cabecera prometa de más.
+
+En la **tabla**: columna *Archivos* conmutable con `2/3 enviables`, orden por
+archivos enviables, el filtro **«Sin archivos enviables»** que el nivel 2 pidió
+por su nombre —mira enviables y no «con archivos», porque un producto con cuatro
+archivos todos desmarcados le manda al cliente lo mismo que uno sin ninguno— y el
+total al pie: «3 sin anuncios · 4 sin archivos enviables». Buscar encuentra
+también por nombre de archivo.
+
+**Los bytes no llegan al navegador.** Todo lo que la pantalla lee es metadata; se
+verificó que el payload de `/catalogo` no contiene la columna binaria. Dibujar la
+lista de archivos de 17 productos no puede significar traerse los archivos.
+
+### Cómo se verificó
+
+Contra una base de ensayo en Docker con el catálogo real cargado —los tres
+REVITALHAIR de nombre casi idéntico— y con el panel corriendo contra ella:
+
+- Subir una **imagen de 6 MB** por la ruta real responde `413` y
+  *«grande.jpg pesa 6,0 MB y excede el límite de WhatsApp para imágenes (5,0 MB):
+  no se puede enviar, así que no se sube. Recomprimilo y volvé a intentarlo.»*
+- Un PDF de 300 KB entra, y entra **apagado**: `sendable: false`. Marcarlo es un
+  acto aparte.
+- La ficha de *DHT ANTICALVICIE* renderiza «Archivos · 2 de 3 enviables» con
+  `ficha-producto.pdf · 480 KB`, `antes-despues.jpg · 1,2 MB` y
+  `margen-interno.xlsx · 44 KB` sin marcar.
+- La base rechaza el archivo de cero bytes y el que cuelga de un producto de otra
+  operación.
+- `pnpm -r typecheck` limpio; `pnpm --filter @wa/worker test` **447 verdes**
+  (423 antes).
+
+El sembrador `scripts/seed-catalogo-ensayo.ts` **no se reemplazó**: se le
+agregaron los archivos, y sigue negándose a correr contra producción.
+
+### Lo que este ticket deja para otro
+
+**El envío no está acá.** Que un archivo marcado llegue al cliente es
+`ventas-conversacion/03`, que no está construido. Lo que este ticket deja listo es
+la lectura que ese envío va a consultar: `listSendableProductMedia(op, productId)`,
+sin caché, filtrando por operación, producto, marca y tamaño.

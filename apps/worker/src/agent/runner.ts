@@ -13,6 +13,7 @@ import {
   type Contact,
   type Conversation,
 } from "@wa/db";
+import { parseSalesDiscountBehavior } from "@wa/shared";
 import { db } from "../db";
 import { logger } from "../lib/logger";
 import { contactWaId } from "../lib/phone";
@@ -166,7 +167,16 @@ async function flushSalesTurn(entry: Buffered): Promise<boolean> {
   const systemPrompt = await buildEffectiveSystemPrompt({
     agent: "sales",
     operation,
-    persona: settings,
+    // La fila trae `discount_limit_behavior` como `text` —la columna lo es, con
+    // un `check` que la cierra a tres valores—; la persona lo quiere como
+    // conjunto cerrado. La conversión pasa por el único lugar que la hace, que
+    // además elige `consultar` ante lo desconocido: el borde seguro.
+    persona: {
+      ...settings,
+      discountLimitBehavior: parseSalesDiscountBehavior(
+        settings.discountLimitBehavior,
+      ),
+    },
     productId: conversation.productId,
   });
   const prompt = await loadHistory(conversation.id, SALES_MEMORY_WINDOW);

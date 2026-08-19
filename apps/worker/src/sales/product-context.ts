@@ -24,9 +24,16 @@
  * la alternativa sería contestar con una copia vieja, que es exactamente lo que
  * «en tiempo de uso» descarta.
  *
- * **Los archivos enviables no están aquí**: no existe tabla de archivos de
- * producto (la `0022` no la creó) y el envío de apoyos visuales es el ticket 03,
- * bloqueado por esquema. Cuando exista, es una sección más de este bloque.
+ * **Los archivos enviables siguen sin estar aquí, y ahora es una decisión.**
+ * La tabla ya existe —`product_media`, migración `0025`— y su lectura también:
+ * `listSendableProductMedia(op, productId)` en `@wa/db` devuelve, sin caché,
+ * los archivos que el admin marcó y que caben en el límite de WhatsApp. Lo que
+ * no existe es el **envío**: mandar un archivo es `ventas-conversacion/03`, con
+ * su registro en el hilo y su regla de que un fallo no interrumpa la venta.
+ *
+ * Anunciarle al modelo unos archivos que no puede mandar sería peor que no
+ * nombrarlos: prometería adjuntos que nunca llegan. Cuando ese ticket construya
+ * el envío, esto es una sección más de este bloque y la lectura ya está hecha.
  */
 
 import { eq, products, type Operation, type Product } from "@wa/db";

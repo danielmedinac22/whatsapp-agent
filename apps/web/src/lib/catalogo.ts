@@ -1,9 +1,12 @@
 import {
+  groupMediaByProduct,
   listCatalog,
+  listCatalogMedia,
   getAdReferralSignal,
   readAdReferralSignal,
   type AdReferralHealth,
   type Operation,
+  type ProductMediaMeta,
 } from "@wa/db";
 import { workerJson } from "@/lib/worker";
 
@@ -48,6 +51,23 @@ export interface CatalogAdView {
   alsoPointsTo: Array<{ id: string; name: string }>;
 }
 
+/**
+ * Un archivo del producto, tal como la ficha lo dibuja.
+ *
+ * **Sin los bytes**: la lista de archivos de 17 productos no puede significar
+ * traerse los archivos de 17 productos. Lo que la pantalla necesita es el
+ * nombre, el peso y si está marcado; los bytes solo los lee el camino que los
+ * manda.
+ */
+export interface CatalogFileView {
+  id: string;
+  filename: string;
+  mime: string;
+  byteSize: number;
+  sendable: boolean;
+  createdAt: string;
+}
+
 /** Una fila de la tabla de catálogo. */
 export interface CatalogRow {
   id: string;
@@ -59,6 +79,8 @@ export interface CatalogRow {
   price: string | null;
   createdAt: string;
   ads: CatalogAdView[];
+  /** En orden de subida. Vacío mientras el admin no haya cargado nada. */
+  files: CatalogFileView[];
 }
 
 export interface CatalogView {
@@ -122,9 +144,10 @@ function formatPrice(p: StoreProduct["priceRange"]): string | null {
  * del ticket: editar el producto allá se refleja acá sin sincronizar nada.
  */
 export async function loadCatalogView(op: Operation): Promise<CatalogView> {
-  const [entries, signal] = await Promise.all([
+  const [entries, signal, media] = await Promise.all([
     listCatalog(op),
     getAdReferralSignal(op),
+    listCatalogMedia(op),
   ]);
 
   const shopifyIds = entries
@@ -178,6 +201,24 @@ export async function loadCatalogView(op: Operation): Promise<CatalogView> {
 
   const nameById = new Map(named.map((n) => [n.entry.product.id, n.name]));
 
+  // Los archivos se reparten con la función pura del accesor, que descarta los
+  // de otra operación y los que cuelgan de un producto que este catálogo no
+  // tiene. La clave foránea compuesta ya lo garantiza en la base; acá se
+  // sostiene igual porque es la misma regla que los tests ejercen.
+  const filesByProduct = groupMediaByProduct(
+    media,
+    op,
+    entries.map((e) => e.product.id),
+  );
+  const toFileView = (m: ProductMediaMeta): CatalogFileView => ({
+    id: m.id,
+    filename: m.filename,
+    mime: m.mime,
+    byteSize: m.byteSize,
+    sendable: m.sendable,
+    createdAt: m.createdAt.toISOString(),
+  });
+
   const rows: CatalogRow[] = named.map((n) => ({
     id: n.entry.product.id,
     source: n.entry.product.source,
@@ -194,6 +235,7 @@ export async function loadCatalogView(op: Operation): Promise<CatalogView> {
         name: nameById.get(id) ?? id,
       })),
     })),
+    files: (filesByProduct.get(n.entry.product.id) ?? []).map(toFileView),
   }));
 
   return {

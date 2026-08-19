@@ -3,9 +3,12 @@
 import { useMemo, useState } from "react";
 import {
   activeSalesTonePreset,
+  discountEdgeQuestion,
+  SALES_DISCOUNT_BEHAVIOR_OPTIONS,
   SALES_REASONING_EFFORTS,
   SALES_TONE_PRESETS,
   salesDiscountState,
+  type SalesDiscountBehavior,
 } from "@wa/shared";
 
 /**
@@ -34,6 +37,7 @@ type Draft = {
   funnelMessage: string;
   toneInstructions: string;
   discountLimitPct: number;
+  discountLimitBehavior: SalesDiscountBehavior;
   model: string;
   reasoningEffort: string;
 };
@@ -238,6 +242,61 @@ export function VendedorForm({
                 para prohibirlos.
               </>
             )}
+          </p>
+        </div>
+
+        {/* ── el borde ─ un límite sin consecuencia declarada no está
+            definido: está numerado. La pregunta se reformula sola con el
+            límite en cero, porque prohibir descuentos no evita que se los
+            pidan — solo cambia qué es «pasarse». ──────────────────────── */}
+        <div className="mt-4 border-t border-[rgba(244,193,109,0.25)] pt-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-text-soft)]">
+            {discountEdgeQuestion(v.discountLimitPct)}
+          </p>
+          <div className="mt-2 space-y-1.5">
+            {SALES_DISCOUNT_BEHAVIOR_OPTIONS.map((o) => {
+              const active = v.discountLimitBehavior === o.key;
+              return (
+                <button
+                  key={o.key}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  onClick={() => set("discountLimitBehavior", o.key)}
+                  className={`flex w-full items-start gap-2.5 rounded-lg border p-2.5 text-left transition ${
+                    active
+                      ? "border-[rgba(244,193,109,0.5)] bg-[rgba(244,193,109,0.1)]"
+                      : "border-[var(--color-border)] hover:border-[var(--color-border-strong)]"
+                  }`}
+                >
+                  <span
+                    className={`mt-[3px] flex h-3.5 w-3.5 flex-none items-center justify-center rounded-full border ${
+                      active
+                        ? "border-[var(--color-highlight)]"
+                        : "border-[var(--color-border-strong)]"
+                    }`}
+                  >
+                    {active ? (
+                      <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-highlight)]" />
+                    ) : null}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold">{o.label}</span>
+                    <span className="mt-0.5 block text-[11px] leading-snug text-[var(--color-text-soft)]">
+                      {o.hint}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {/* Lo que la pantalla no puede prometer, dicho donde se decide: hoy
+              las tres viajan como instrucción al vendedor. Ticket 01 ya lo
+              había dejado escrito para el límite, y vale igual para su borde. */}
+          <p className="mt-2 text-[11px] leading-snug text-[var(--color-text-dim)]">
+            Las tres viajan como instrucción al vendedor. El límite se hace
+            cumplir al armar el pedido —ahí el sistema recorta y avisa—, no en
+            medio del chat.
           </p>
         </div>
       </section>

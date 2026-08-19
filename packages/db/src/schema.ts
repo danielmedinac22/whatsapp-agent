@@ -762,6 +762,33 @@ export const salesAgentSettings = pgTable(
      * construir la orden; el prompt propone, la validación decide. `0` prohíbe.
      */
     discountLimitPct: integer("discount_limit_pct").notNull().default(0),
+    /**
+     * Qué hace el vendedor **cuando el cliente pide más de lo autorizado**.
+     * Migración `0025`.
+     *
+     * El nivel 2 del árbol de diseño destapó que el ticket definía el límite y
+     * nunca decía su consecuencia — «un límite sin consecuencia declarada no
+     * está definido: está numerado». Con el límite en `0` la pregunta se
+     * reformula sola a «cuando el cliente insista con un descuento», porque el
+     * borde existe igual: prohibir descuentos no evita que se los pidan.
+     *
+     * Tres valores cerrados con el usuario, y el default es `consultar`
+     * —escalar a una persona— **por lo que pasa con una fila a medio llenar**.
+     * La tabla la llena el panel de a poco, así que el default tiene que ser
+     * seguro sin que nadie lo elija: escalar es el único de los tres cuyo
+     * error lo ve un humano. `ofrecer_maximo` gasta margen solo y convierte el
+     * techo en piso —el que pida, recibe—; `no_mencionar` cierra la puerta en
+     * silencio y nadie se entera de que se perdió la venta. Escalar de más
+     * cuesta atención, que se nota y se corrige; los otros dos no se notan.
+     *
+     * `text` y no `pgEnum`, como `reasoning_effort`: agregar una cuarta
+     * consecuencia es cambiar el `check`, y no un `ALTER TYPE ... ADD VALUE`
+     * que Postgres no deja usar en la misma transacción que lo agrega —la
+     * trampa que la `0022` ya dejó anotada arriba.
+     */
+    discountLimitBehavior: text("discount_limit_behavior")
+      .notNull()
+      .default("consultar"),
     /** Slug de OpenRouter, como `agent_settings.model`. */
     model: text("model").notNull().default("openai/gpt-5.4-mini"),
     /** `low` | `medium` | `high` — vocabulario del proveedor, por eso texto y no enum. */
@@ -778,6 +805,13 @@ export const salesAgentSettings = pgTable(
     check(
       "sales_agent_settings_discount_limit_check",
       sql`${t.discountLimitPct} between 0 and 100`,
+    ),
+    // El vocabulario del borde es del panel, no de un proveedor: la base es
+    // el único lugar donde una cuarta consecuencia inventada por otra vía no
+    // puede entrar en silencio y salir después en el prompt del vendedor.
+    check(
+      "sales_agent_settings_discount_behavior_check",
+      sql`${t.discountLimitBehavior} in ('consultar', 'ofrecer_maximo', 'no_mencionar')`,
     ),
   ],
 );
@@ -890,6 +924,92 @@ export const productAds = pgTable(
       columns: [t.operationId, t.productId],
       foreignColumns: [products.operationId, products.id],
     }).onDelete("cascade"),
+  ],
+);
+
+// ────────────────────────────────────────────────────────────────────────────
+// product media — los archivos que el vendedor puede mandar
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Las fotos, videos y documentos que cuelgan de un producto, **con su
+ * interruptor de enviable por archivo**.
+ *
+ * **Los bytes viven en Postgres, como `message_media`.** Lo decidió el usuario
+ * el 18-ago-2026 y la razón es el volumen real, no la comodidad: WhatsApp corta
+ * en 16 MB, el catálogo de Guatemala son 17 productos y el de mañana decenas, y
+ * son unos pocos archivos por producto. Eso son cientos de MB, no terabytes.
+ * Estrenar object storage metía un proveedor, una cuenta y una credencial
+ * nuevos en el camino crítico de un módulo que todavía no factura, y hoy no hay
+ * ninguna credencial de storage en el entorno.
+ *
+ * **Deuda anotada, con disparador**: si el catálogo de las dos operaciones pasa
+ * de unos pocos GB, esto se muda a S3/R2 y la columna `bytes` se cambia por una
+ * llave de objeto. Es una migración acotada —una tabla, una columna— y no
+ * arrastra al resto del esquema porque nadie más lee estos bytes. Medida de
+ * referencia, misma fecha: `message_media` son 46 filas y 1,26 MB en total,
+ * con la mayor en 122 KB.
+ *
+ * **La operación no se hereda del producto.** Va la columna y la clave foránea
+ * compuesta `(operation_id, product_id)` → `products (operation_id, id)`, igual
+ * que `product_ads` y por lo mismo: que un archivo no pueda colgar de un
+ * producto de otra operación lo impide la base, no el cuidado del código. Acá
+ * el daño concreto es que el vendedor guatemalteco le mande al cliente la ficha
+ * del producto colombiano. `cascade`: borrar el producto se lleva sus archivos.
+ *
+ * **El tamaño se guarda, y no es adorno.** El rechazo por exceder el límite de
+ * la API de WhatsApp se hace **al subir y no al enviar**, que es el criterio
+ * del ticket 02 —«para que el problema aparezca cuando el admin puede
+ * resolverlo»—; y el camino de lectura vuelve a filtrar por tamaño antes de
+ * ofrecer un archivo para enviar, porque el límite es de WhatsApp y puede
+ * cambiar sin avisarle a esta tabla.
+ */
+export const productMedia = pgTable(
+  "product_media",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    operationId: uuid("operation_id")
+      .notNull()
+      .references(() => operations.id, { onDelete: "restrict" }),
+    productId: uuid("product_id").notNull(),
+    /** El nombre con el que el admin lo subió: `testimonio.mp4`. Es lo que la ficha muestra. */
+    filename: text("filename").notNull(),
+    mime: text("mime").notNull(),
+    bytes: bytea("bytes").notNull(),
+    byteSize: integer("byte_size").notNull(),
+    /**
+     * El interruptor del ticket 03. **Arranca apagado**, que es el estado
+     * seguro: un archivo recién subido todavía no lo revisó nadie, y el error
+     * de mandarle al cliente la hoja de márgenes internos no se deshace. Que
+     * enviarlo sea un acto explícito es la mitad del criterio «los archivos no
+     * marcados nunca se envían, aunque estén cargados».
+     */
+    sendable: boolean("sendable").notNull().default(false),
+    /** Id de media en Meta, para no re-subir el mismo archivo en cada envío. Igual que `message_media`. */
+    metaMediaId: text("meta_media_id"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    // Por operación y producto, que es como lo pide la ficha y como lo va a
+    // pedir el envío. El orden por creación es el que la pantalla muestra.
+    index("product_media_product_idx").on(
+      t.operationId,
+      t.productId,
+      t.createdAt,
+    ),
+    foreignKey({
+      name: "product_media_product_operation_fk",
+      columns: [t.operationId, t.productId],
+      foreignColumns: [products.operationId, products.id],
+    }).onDelete("cascade"),
+    // Un archivo de cero bytes es una subida que se cortó, no un archivo. Se
+    // rechaza acá porque más adelante se vería como un envío vacío al cliente.
+    check("product_media_byte_size_check", sql`${t.byteSize} > 0`),
   ],
 );
 
@@ -1235,6 +1355,8 @@ export type Product = typeof products.$inferSelect;
 export type NewProduct = typeof products.$inferInsert;
 export type ProductAd = typeof productAds.$inferSelect;
 export type NewProductAd = typeof productAds.$inferInsert;
+export type ProductMedia = typeof productMedia.$inferSelect;
+export type NewProductMedia = typeof productMedia.$inferInsert;
 export type ShopifyOrder = typeof shopifyOrders.$inferSelect;
 export type NewShopifyOrder = typeof shopifyOrders.$inferInsert;
 export type WaSession = typeof waSession.$inferSelect;

@@ -21,11 +21,13 @@
  *       npx tsx scripts/seed-catalogo-ensayo.ts
  */
 import {
+  addProductMedia,
   connectShopifyProduct,
   createNativeProduct,
   getDb,
   linkAdToProducts,
   operations,
+  setProductMediaSendable,
   sql,
   type Operation,
 } from "@wa/db";
@@ -65,6 +67,7 @@ async function main() {
   const [op] = (await db.select().from(operations)) as Operation[];
   if (!op) throw new Error("no hay ninguna operación: falta correr las migraciones");
 
+  await db.execute(sql`delete from product_media`);
   await db.execute(sql`delete from product_ads`);
   await db.execute(sql`delete from products`);
 
@@ -106,8 +109,54 @@ async function main() {
   await linkAdToProducts(op, "23990117845", [combo.id]);
   await linkAdToProducts(op, "24001233741", [combo.id, tienda.id]);
 
+  // ── Los archivos enviables (migración `0025`) ───────────────────────────
+  //
+  // Lo que hay que poder mirar acá es **el conteo de la cabecera diciendo la
+  // verdad**: «2 de 3 enviables» tiene que leerse como «al cliente le llegan
+  // 2». Por eso el catálogo de ensayo carga un archivo que a propósito NO se
+  // marca —la hoja de márgenes internos, que el admin sube para tenerla a mano
+  // y que mandársela al cliente no se deshace— y dos que sí.
+  //
+  // **El video de 27 MB del prototipo no se siembra, y no es un olvido**: el
+  // rechazo por tamaño se hace al subir, así que ese archivo nunca llega a ser
+  // una fila. Para verlo hay que intentar subirlo desde la ficha, que es
+  // exactamente el momento en que el ticket quiere que aparezca el problema.
+  const bytes = (n: number) => Buffer.alloc(n, 0x20);
+  const archivo = async (
+    productId: string,
+    filename: string,
+    mime: string,
+    size: number,
+    enviable: boolean,
+  ) => {
+    const media = await addProductMedia(op, productId, {
+      filename,
+      mime,
+      bytes: bytes(size),
+    });
+    // Nace apagado siempre: marcarlo es un acto aparte, también acá.
+    if (enviable) await setProductMediaSendable(op, media.id, true);
+  };
+
+  await archivo(dht.id, "ficha-producto.pdf", "application/pdf", 480 * 1024, true);
+  await archivo(dht.id, "antes-despues.jpg", "image/jpeg", 1_200 * 1024, true);
+  await archivo(
+    dht.id,
+    "margen-interno.xlsx",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    44 * 1024,
+    false,
+  );
+  await archivo(blocker.id, "ficha-blocker.pdf", "application/pdf", 512 * 1024, true);
+  await archivo(combo.id, "combo-360.jpg", "image/jpeg", 890 * 1024, true);
+  await archivo(combo.id, "instructivo.pdf", "application/pdf", 1_100 * 1024, true);
+  await archivo(serum.id, "modo-de-uso.pdf", "application/pdf", 220 * 1024, true);
+
   console.log(`\n  Catálogo de ensayo cargado en ${host} (${op.countryCode}).`);
-  console.log("  8 productos · 6 anuncios · 2 compartidos · 3 sin anuncios\n");
+  console.log("  8 productos · 6 anuncios · 2 compartidos · 3 sin anuncios");
+  console.log(
+    "  7 archivos · 6 enviables · DHT ANTICALVICIE queda en «2 de 3 enviables»\n",
+  );
   process.exit(0);
 }
 
