@@ -22,7 +22,7 @@ import { resolveInbox, type InboxDecision } from "@wa/db";
 import { loadOrderFacts } from "../inbox/facts";
 import type { OperationId } from "../operations";
 import { decideAdAttribution } from "../sales/attribution";
-import { SEMANTIC_LEVEL_WIRED, recognizeProductForReferral } from "../sales/catalog";
+import { recognizeProductForReferral } from "../sales/catalog";
 import { registerRecognition } from "../sales/recognition-record";
 import {
   resolveConversationOwner,
@@ -151,7 +151,6 @@ async function attributeProduct(input: {
       candidatos:
         recognition.kind === "ambiguous" ? recognition.candidates.length : null,
       registrado: registered,
-      nivelSemanticoCableado: SEMANTIC_LEVEL_WIRED,
     },
     "ventas: reconocimiento de producto",
   );

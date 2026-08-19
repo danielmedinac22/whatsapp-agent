@@ -15,7 +15,9 @@
  *    lista de ese anuncio**, no con el catálogo entero.
  * 2. Por match semántico del titular y cuerpo contra el catálogo, **solo si el
  *    anuncio no está registrado**. Sale resuelto únicamente cuando exactamente
- *    un producto supera el umbral de confianza.
+ *    un producto supera el umbral de confianza. Lo implementa
+ *    `sales/semantic-match.ts` —léxico, puro y sin red— y lo enchufa
+ *    `sales/catalog.ts`.
  * 3. Preguntar. No vive aquí: este módulo devuelve «ambiguo, con esta lista» o
  *    «desconocido», y quien pregunta, cuántas veces y qué pasa después es el
  *    ticket 05 del mapa.
@@ -114,11 +116,21 @@ export type AdCopy = Pick<AdReferralRef, "headline" | "body">;
 
 /**
  * Un producto que el matcher considera posible para el anuncio, con qué tan
- * seguro está. `confidence` está en [0, 1] y significa **probabilidad
- * calibrada de que el anuncio vende ese producto**: 0,9 es «casi seguro», 0,5
- * es «podría ser». Un matcher que use otra métrica por dentro (coseno de
- * embeddings, lo que sea) la traduce a este significado antes de devolverla,
- * porque el umbral se compara contra esto.
+ * seguro está. `confidence` está en [0, 1] y se lee **por producto, no como
+ * reparto**: «este anuncio es compatible con este producto», y no
+ * «probabilidad de que sea este y no otro». Un matcher que use otra métrica
+ * por dentro (coseno de embeddings, lo que sea) la traduce a este significado
+ * antes de devolverla, porque el umbral se compara contra esto.
+ *
+ * **La distinción no es una sutileza y hay que leerla antes de cambiar un
+ * matcher.** Bajo un reparto —que suma 1 entre todos— cuatro candidatos
+ * indistinguibles valdrían 0,25 cada uno, ninguno pasaría el umbral, y el
+ * resultado sería `unknown` **sin candidatos**: se perdería la lista corta con
+ * la que se le pregunta al lead, justo en el caso que motivó toda la cascada.
+ * Con la lectura por producto, los cuatro salen altos y el resultado es
+ * `ambiguous` con los cuatro, que es lo que el ticket pide. La regla de la
+ * cascada dice lo mismo desde el otro lado: *más de un producto sobre el
+ * umbral significa que el texto no los distingue*.
  *
  * Los productos que el matcher no menciona cuentan como confianza 0.
  */
@@ -168,9 +180,12 @@ export type ProductRecognition =
       kind: "ambiguous";
       /**
        * En el nivel 1, en el orden del catálogo. En el nivel 2, de mayor a
-       * menor confianza. Es orden de **presentación** para la lista corta de
+       * menor confianza — y como el matcher de producción devuelve **una sola
+       * confianza para todos** sus candidatos, en la práctica también queda el
+       * orden del catálogo. Es orden de **presentación** para la lista corta de
        * la pregunta — no es un ranking para elegir; si se pudiera elegir, la
-       * cascada lo habría hecho.
+       * cascada lo habría hecho, y ordenar por un margen que el matcher declara
+       * ruido empujaría al lead hacia el primero de la lista.
        */
       candidates: readonly [CatalogProduct, CatalogProduct, ...CatalogProduct[]];
       level: RecognitionLevel;
