@@ -315,17 +315,9 @@ siempre, sin que ningún check local lo vea.
 
 ## Qué sigue, y qué lo bloquea
 
-**No queda nada construible.** Los dos últimos —`ventas-panel/05` y
-`ventas-capi/05`— se cerraron en la ola 5. Lo que falta para desplegarla:
-
-```
-set -a && source .env && set +a && pnpm --filter @wa/db migrate   # aplica la 0028
-env -u RAILWAY_TOKEN railway up --service whatsapp-worker --ci
-vercel --prod --yes
-```
-
-**La `0028` va antes del deploy**: el panel de esa rama escribe `products.price`
-y el worker lo lee para armar la línea del pedido.
+**No queda nada construible, y todo está desplegado.** Los dos últimos
+—`ventas-panel/05` y `ventas-capi/05`— se cerraron en la ola final, la `0028`
+está aplicada, y worker y dashboard están en producción y verificados.
 
 **Todo lo demás que queda espera algo que no depende del código.** El camino de
 venta está construido de punta a punta: ingesta, atribución, reconocimiento con
