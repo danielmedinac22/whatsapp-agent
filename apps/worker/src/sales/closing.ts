@@ -58,6 +58,7 @@ import { createStoreOrder, type StoreOrderOutcome } from "../shopify/order-creat
 import { getSalesAgentSettings } from "./settings";
 import {
   buildSalesOrder,
+  cartOf,
   salesOrderStore,
   type SalesClosing,
   type SalesOrderDraft,
@@ -501,13 +502,17 @@ function describeDestination(draft: SalesOrderDraft): string {
   return s.kind === "delivery" ? `${s.address} — ${lugar}` : lugar;
 }
 
-/** Una referencia estable del cierre para deduplicar antes de tener la llave. */
+/**
+ * Una referencia estable del cierre para deduplicar antes de tener la llave.
+ *
+ * El carrito lo deriva `cartOf`, que es la **misma** cuenta con la que
+ * `sales/order.ts` arma la llave de idempotencia. Estaba escrita dos veces y
+ * ahora no: dos derivaciones que se separen dejan una grieta por la que el
+ * mismo cierre colisiona en una y no en la otra, y eso se paga con un segundo
+ * envío contraentrega.
+ */
 function closingRef(closing: SalesClosing): string {
-  const cart = closing.lines
-    .map((l) => `${l.variantId}x${l.quantity}`)
-    .sort()
-    .join("|");
-  return `${closing.leadRef}:${cart}`;
+  return `${closing.leadRef}:${cartOf(closing.lines)}`;
 }
 
 /** Para que dos correcciones distintas no se deduzcan como la misma. */

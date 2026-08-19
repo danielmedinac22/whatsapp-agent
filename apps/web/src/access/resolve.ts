@@ -97,6 +97,14 @@ const AREAS: Readonly<Record<string, Area>> = {
    */
   "/catalogo": "ventas",
   "/vendedor": "ventas",
+  /**
+   * El estado del reporte de conversiones a Meta (`ventas-capi/05`). Es de
+   * ventas y no `solo-admin` porque lo que informa es la salud de un camino del
+   * módulo —si las ventas del vendedor le vuelven a la pauta—, no una conexión
+   * de la operación. Es de sólo lectura y no enciende nada: el modo se cambia
+   * por entorno y con un despliegue.
+   */
+  "/reporte-meta": "ventas",
   /** Plantillas de confirmación, seguimiento, remarketing y logística. */
   "/templates": "operaciones",
   /** Prompt, modelo y automatizaciones del agente que confirma. */

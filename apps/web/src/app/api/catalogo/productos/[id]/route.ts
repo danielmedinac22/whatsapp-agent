@@ -19,6 +19,13 @@ export async function PATCH(
   const body = (await req.json()) as {
     name?: string;
     description?: string | null;
+    /**
+     * Ausente no toca el precio; la cadena vacía se lo quita. Son dos cosas
+     * distintas y la ficha usa las dos: guardar el nombre sin tocar el precio,
+     * y borrarle el precio a un producto que dejó de venderse — que lo vuelve a
+     * dejar escalando a un asesor, que es el estado seguro.
+     */
+    price?: string | number | null;
   };
 
   try {
@@ -27,6 +34,7 @@ export async function PATCH(
       ...(body.description !== undefined
         ? { description: body.description }
         : {}),
+      ...(body.price !== undefined ? { price: body.price } : {}),
     });
     return Response.json({ ok: true, id: product.id });
   } catch (err) {

@@ -5,6 +5,7 @@ import {
   Inbox,
   MessagesSquare,
   Package2,
+  Radio,
   Shapes,
   UserRoundCog,
 } from "lucide-react";
@@ -100,6 +101,22 @@ export const NAV_GROUPS: readonly NavGroup[] = [
         ],
       },
       { href: "/catalogo", label: "Catálogo", icon: Boxes },
+      /**
+       * El estado del reporte de conversiones a Meta.
+       *
+       * Va en Ventas y no en Operación aunque solo la mire un admin: lo que
+       * dice es si **las ventas del vendedor** le están volviendo a la pauta, y
+       * la pantalla hermana que registra los anuncios —el catálogo— ya vive
+       * acá. En Operación están las conexiones, que son configuración; esto es
+       * salud de un camino de ventas.
+       *
+       * **Se llama «Reporte a Meta» y no «Conversiones»**, aunque eso sea lo
+       * que reporta: en este mismo grupo ya hay un enlace que se llama
+       * «Conversaciones», y dos entradas contiguas separadas por una letra son
+       * dos entradas que alguien va a confundir. El nombre elegido es el que el
+       * sistema ya usa cuando habla de esto — «el reporte a Meta está apagado».
+       */
+      { href: "/reporte-meta", label: "Reporte a Meta", icon: Radio },
       { href: "/vendedor", label: "Vendedor", icon: UserRoundCog },
     ],
   },

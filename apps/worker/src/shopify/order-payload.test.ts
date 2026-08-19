@@ -33,10 +33,22 @@ function tienda(): SalesOrderStore {
 
 const LINEA = {
   productId: "gid://shopify/Product/1",
-  variantId: "gid://shopify/ProductVariant/11",
+  variantId: "gid://shopify/ProductVariant/11" as string | null,
   title: "Colágeno Hidrolizado",
   quantity: 2,
   unitPrice: 300,
+};
+
+/**
+ * Un producto **creado en el panel**: no existe en la tienda, así que no tiene
+ * variante y su precio es el que un admin escribió (`ventas-panel/05`).
+ */
+const LINEA_NATIVA = {
+  productId: "8f6a0d2e-1111-4c3b-9e7a-000000000001",
+  variantId: null,
+  title: "REVITALHAIR Serum Capilar",
+  quantity: 1,
+  unitPrice: 349,
 };
 
 function cierre(overrides: Partial<SalesClosing> = {}): SalesClosing {
@@ -202,5 +214,49 @@ describe("idempotencyTagQuery · buscar el pedido de un cierre", () => {
 
   it("una comilla en la llave no puede romper la consulta", () => {
     expect(idempotencyTagQuery("ventas-a'b")).toBe("tag:'ventas-ab'");
+  });
+});
+
+describe("buildOrderCreateVariables · un producto que la tienda no tiene", () => {
+  it("entra como línea suelta: con título y precio, y sin variante", () => {
+    const { order } = buildOrderCreateVariables(
+      pedido(cierre({ lines: [LINEA_NATIVA] })),
+    );
+    const [linea] = order.lineItems;
+    expect(linea).toEqual({
+      quantity: 1,
+      title: "REVITALHAIR Serum Capilar",
+      priceSet: { shopMoney: { amount: "349.00", currencyCode: "GTQ" } },
+      requiresShipping: true,
+    });
+    // Que **no** lleve variante es el criterio: mandar una inventada crearía el
+    // pedido contra un producto que no es.
+    expect(linea && "variantId" in linea).toBe(false);
+  });
+
+  it("el pedido queda marcado con una etiqueta que se puede buscar", () => {
+    // Logística tiene que poder listar los pedidos con algo fuera del catálogo:
+    // ese renglón no tiene SKU ni sale en los informes por producto.
+    const { order } = buildOrderCreateVariables(
+      pedido(cierre({ lines: [LINEA_NATIVA] })),
+    );
+    expect(order.tags).toContain("producto-fuera-de-la-tienda");
+  });
+
+  it("la nota dice cuál de los productos no está en la tienda", () => {
+    const { order } = buildOrderCreateVariables(
+      pedido(cierre({ lines: [LINEA, LINEA_NATIVA] })),
+    );
+    expect(order.note).toContain("REVITALHAIR Serum Capilar");
+    expect(order.note).toContain("Sin SKU");
+    // Y no nombra el que sí está: quien despacha no tiene que dudar de ese.
+    expect(order.note).not.toContain("Colágeno Hidrolizado");
+  });
+
+  it("un pedido enteramente de la tienda sale exactamente como antes", () => {
+    const { order } = buildOrderCreateVariables(pedido());
+    expect(order.tags).not.toContain("producto-fuera-de-la-tienda");
+    expect(order.note).not.toContain("línea suelta");
+    expect(order.lineItems[0]).not.toHaveProperty("requiresShipping");
   });
 });

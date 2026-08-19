@@ -67,6 +67,23 @@ export const SELLER_TAG_PREFIX = "vendedor:";
 /** La etiqueta que le dice a logística que el cliente reclama en oficina. */
 export const PICKUP_AT_OFFICE_TAG = "reclamo-en-oficina";
 
+/**
+ * La etiqueta que avisa que el pedido lleva algo que **la tienda no tiene**.
+ *
+ * Es la parte del ticket 05 que mira hacia afuera del sistema: un producto
+ * nativo entra como línea suelta, así que en la tienda ese renglón **no tiene
+ * variante ni SKU, no descuenta inventario y no aparece en ningún informe por
+ * producto**. Quien arma el despacho tiene que poder darse cuenta antes de ir a
+ * buscarlo a la estantería, y tiene que poder **listar** esos pedidos: las
+ * etiquetas son el único campo del pedido que la API sabe buscar (`tag:...`),
+ * que es la misma razón por la que la llave de idempotencia viaja como
+ * etiqueta.
+ *
+ * Va además de la nota del pedido, que dice **cuál** de las líneas es. La
+ * etiqueta se busca; la nota se lee.
+ */
+export const OFF_CATALOG_TAG = "producto-fuera-de-la-tienda";
+
 // ────────────────────────────────────────────────────────────────────────────
 // La tienda de la operación · el valor que no se puede mezclar
 // ────────────────────────────────────────────────────────────────────────────
@@ -148,13 +165,25 @@ export interface ClosingContact {
 
 /**
  * Una línea del pedido, ya resuelta contra el catálogo: qué producto, qué
- * variante, cuántas y a qué precio de lista. El precio va en la moneda de la
- * operación — no hay conversión en ninguna parte de este módulo.
+ * variante —si la hay—, cuántas y a qué precio de lista. El precio va en la
+ * moneda de la operación — no hay conversión en ninguna parte de este módulo.
  */
 export interface ClosingLine {
   productId: string;
-  /** Shopify crea líneas por variante, no por producto. */
-  variantId: string;
+  /**
+   * La variante de la tienda. Shopify crea líneas por variante, no por
+   * producto… **salvo cuando el producto no está en la tienda**.
+   *
+   * `null` es un producto **nativo**: creado en el panel porque todavía no
+   * existe allá, con su precio puesto a mano (`ventas-panel/05`). Entra al
+   * pedido como una **línea suelta** —título y precio, sin variante—, que es
+   * cómo la API de la tienda vende algo que su catálogo no tiene. Ver
+   * `shopify/order-payload.ts` para qué cambia en el pedido y qué ve logística.
+   *
+   * Nullable y no opcional a propósito: quien arma una línea tiene que
+   * **decidir** si tiene variante, no olvidarse del campo.
+   */
+  variantId: string | null;
   /** Nombre visible, para que el pedido se lea sin volver a consultar la tienda. */
   title: string;
   quantity: number;
@@ -256,7 +285,8 @@ export type SalesOrderShipping =
 /** Una línea del payload, con los dos precios a la vista. */
 export interface SalesOrderLine {
   productId: string;
-  variantId: string;
+  /** `null` = línea suelta: el producto no está en la tienda. Ver {@link ClosingLine}. */
+  variantId: string | null;
   title: string;
   quantity: number;
   /** Precio de lista, sin descuento. */
@@ -357,7 +387,7 @@ export function buildSalesOrder(input: {
       shipping: validated.value.shipping,
       lines,
       totals: { subtotal, discount: round2(subtotal - total), total },
-      tags: orderTags(settings.sellerName, validated.value.shipping),
+      tags: orderTags(settings.sellerName, validated.value.shipping, lines),
       idempotencyKey: idempotencyKeyFor(store, closing),
     },
   };
@@ -554,12 +584,45 @@ function priceLine(line: ClosingLine, appliedPct: number): SalesOrderLine {
 function orderTags(
   sellerName: string,
   shipping: SalesOrderShipping,
+  lines: readonly SalesOrderLine[],
 ): readonly string[] {
   const tags = [SALES_ORDER_TAG];
   const seller = sellerName.trim();
   if (seller) tags.push(`${SELLER_TAG_PREFIX}${seller}`);
   if (shipping.kind === "pickup_at_office") tags.push(PICKUP_AT_OFFICE_TAG);
+  // Basta **una** línea suelta para que el pedido entero necesite otro trato en
+  // la bodega, así que la etiqueta es del pedido y no de la línea. Un pedido
+  // enteramente de la tienda sale con exactamente las etiquetas de antes de
+  // este ticket.
+  if (lines.some((l) => l.variantId === null)) tags.push(OFF_CATALOG_TAG);
   return tags;
+}
+
+/**
+ * **Qué compró**, como un texto estable: la única derivación del carrito.
+ *
+ * Se exporta —y es la única excepción a «una sola función exportada»— porque la
+ * escribe este archivo y la lee también `sales/closing.ts`, que deduplica el
+ * cierre en la cola **antes** de que exista la llave de idempotencia. Las dos
+ * tienen que ser la misma cuenta: si se separaran, dos disparos del mismo
+ * cierre podrían colisionar en una y no en la otra, y esa grieta se paga con un
+ * segundo envío contraentrega del mismo producto al mismo cliente.
+ *
+ * Un producto **nativo** no tiene variante, así que se identifica por su
+ * producto. El prefijo impide que un id de producto pueda hacerse pasar por uno
+ * de variante — hoy no podría (uno es uuid y el otro un GID de Shopify), pero
+ * la llave que evita el pedido duplicado no es el sitio donde uno se apoya en
+ * «no puede pasar». Para un producto conectado la cuenta es **idéntica a la de
+ * antes de este ticket**: mismo texto, misma llave, mismo pedido.
+ */
+export function cartOf(lines: readonly ClosingLine[]): string {
+  return lines
+    .map(
+      (l) =>
+        `${l.variantId === null ? `producto:${l.productId}` : l.variantId}x${l.quantity}`,
+    )
+    .sort()
+    .join("|");
 }
 
 /**
@@ -585,12 +648,10 @@ function idempotencyKeyFor(
   store: SalesOrderStore,
   closing: SalesClosing,
 ): string {
-  const cart = closing.lines
-    .map((l) => `${l.variantId}x${l.quantity}`)
-    .sort()
-    .join("|");
   const digest = createHash("sha256")
-    .update([store.operationId, closing.leadRef, cart].join(" "))
+    .update(
+      [store.operationId, closing.leadRef, cartOf(closing.lines)].join(" "),
+    )
     .digest("hex");
   return `ventas-${digest.slice(0, 24)}`;
 }

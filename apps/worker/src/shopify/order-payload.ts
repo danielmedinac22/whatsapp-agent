@@ -21,6 +21,31 @@
  * 31 caracteres, por debajo del límite de 40 por etiqueta, y sin dos puntos ni
  * comillas — nada que la sintaxis de búsqueda de la tienda tenga que escapar.
  *
+ * ## Un producto que la tienda no conoce entra como línea suelta
+ *
+ * La mitad **nativa** del catálogo existe para vender algo que todavía no está
+ * en la tienda (`ventas-panel/02`), así que al llegar acá no tiene variante:
+ * `line.variantId` es `null`. La API de la tienda ya tiene forma para eso — una
+ * línea con **título y precio y sin variante**— y es la que se usa. Las otras
+ * dos opciones se descartaron: crear el producto en Shopify al vuelo pediría
+ * `write_products`, que es el permiso de más que el ticket 01 prohíbe, y además
+ * convertiría una venta en un alta de catálogo que nadie revisó; y colgar el
+ * importe de un producto genérico —«producto varios»— dejaría el pedido sin
+ * decir qué se vendió, que es lo único que logística necesita leer.
+ *
+ * **Qué cambia para quien recibe el pedido, y cómo se entera.** Ese renglón no
+ * tiene SKU, no descuenta inventario —no hay inventario que descontar— y no
+ * aparece en los informes por producto de la tienda. Para que eso no se
+ * descubra en la bodega, el pedido sale marcado por dos vías que se
+ * complementan: la etiqueta `OFF_CATALOG_TAG` de `sales/order.ts`, que es
+ * **buscable**
+ * (`tag:'producto-fuera-de-la-tienda'`) y sirve para listarlos, y una línea de
+ * la nota que dice **cuál** de los renglones es y por qué. Y lleva
+ * `requiresShipping: true`, porque una línea suelta no lo hereda de ninguna
+ * variante y sin eso el pedido podría verse como si no hubiera nada que
+ * despachar — que es lo contrario de lo que pasa: hay una caja y un cobro
+ * contraentrega.
+ *
  * ## Lo que este mapeo NO hace
  *
  * **No manda el descuento como descuento.** Las líneas ya vienen con el precio
@@ -77,10 +102,16 @@ export interface OrderCreateInput {
   note: string;
   customAttributes: Array<{ key: string; value: string }>;
   lineItems: Array<{
-    variantId: string;
+    /** Ausente en una línea suelta: el producto no está en la tienda. */
+    variantId?: string;
     quantity: number;
     title: string;
     priceSet: { shopMoney: { amount: string; currencyCode: string } };
+    /**
+     * Solo en las líneas sueltas. Una línea con variante lo hereda de ella y
+     * mandarlo cambiaría el comportamiento de los pedidos que hoy funcionan.
+     */
+    requiresShipping?: boolean;
   }>;
   shippingAddress: {
     firstName: string;
@@ -131,6 +162,17 @@ function orderNote(draft: SalesOrderDraft): string {
       `Precio de lista ${draft.totals.subtotal} ${draft.currency} · descuento aplicado ${draft.totals.discount} ${draft.currency} · total ${draft.totals.total} ${draft.currency}.`,
     );
   }
+  // Cuáles de los renglones no están en la tienda, por su nombre. La etiqueta
+  // sirve para encontrar el pedido; esto es lo que quien lo despacha necesita
+  // leer, y por eso nombra las líneas en vez de decir «tiene una».
+  const sueltas = draft.lines.filter((l) => l.variantId === null);
+  if (sueltas.length > 0) {
+    lines.push(
+      `${sueltas.length === 1 ? "Este producto no está" : "Estos productos no están"} en la tienda y ${sueltas.length === 1 ? "va" : "van"} como línea suelta, con el precio del panel: ${sueltas
+        .map((l) => l.title)
+        .join(", ")}. Sin SKU y sin descuento de inventario.`,
+    );
+  }
   if (draft.shipping.kind === "pickup_at_office") {
     lines.push("El cliente reclama en la oficina de la transportadora.");
   }
@@ -177,7 +219,13 @@ export function buildOrderCreateVariables(
         { key: "Origen", value: "Venta por WhatsApp" },
       ],
       lineItems: draft.lines.map((line) => ({
-        variantId: line.variantId,
+        // Con variante, la línea es la de siempre. Sin ella —producto nativo—
+        // sale suelta: el título y el precio ya venían en las dos, así que lo
+        // único que cambia es que no se manda variante y que hay que decir que
+        // se despacha.
+        ...(line.variantId === null
+          ? { requiresShipping: true }
+          : { variantId: line.variantId }),
         quantity: line.quantity,
         title: line.title,
         priceSet: {
