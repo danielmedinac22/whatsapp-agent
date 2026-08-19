@@ -14,20 +14,55 @@
  * momento del chat*, y el evento lo fecha. Por eso lo que sale de aquí lleva
  * `at` y se intercala con los mensajes, en vez de vivir en una tercera columna.
  *
- * ## Lo que NO se puede derivar hoy, y por qué se dice acá
+ * ## «Ambiguo» ya se puede decir, y hasta la `0026` no se podía
  *
- * El spec pide distinguir **reconocido / ambiguo / escalado**. Del esquema solo
- * salen dos de los tres: `conversations.product_id` dice si el reconocimiento
- * **resolvió**, pero la cascada de `apps/worker/src/sales/recognition.ts` no
- * persiste su forma —`resolved`, `ambiguous` con candidatos, o `unknown`—, así
- * que «ambiguo» y «no encontré nada» dejan exactamente la misma huella: un
- * `product_id` en `null`. Llamarle «ambiguo» a eso sería afirmar más de lo que
- * se sabe, así que este archivo lo llama **«sin identificar»**, que es lo que
- * de verdad consta y además es como ya lo nombra el motivo de escalada
- * `sales_product_unidentified` («dos intentos sin lograr identificar de qué
- * producto habla»). Distinguir «ambiguo» exigiría persistir el resultado de la
- * cascada, que es una columna nueva y por lo tanto otro ticket.
+ * El spec pide distinguir **reconocido / ambiguo / escalado**, y hasta agosto
+ * del 2026 del esquema salían solo dos: `conversations.product_id` decía si el
+ * reconocimiento **resolvió**, y con `null` «el matcher dudó entre cuatro
+ * REVITALHAIR» y «el matcher no encontró nada» dejaban exactamente la misma
+ * huella. Este archivo llamaba a las dos «sin identificar» porque era lo único
+ * que constaba.
+ *
+ * La `0026` persiste **cómo terminó la cascada** —`conversations.product_recognition`,
+ * con el vocabulario de la propia cascada— y, cuando quedó ambigua, **cuáles
+ * eran los candidatos**. Con eso, las dos situaciones se separan aquí; y hacía
+ * falta separarlas porque **piden cosas opuestas del asesor**: ante *ambiguo*
+ * tiene que desempatar, ante *sin candidatos* tiene que ir a cargar el anuncio
+ * al catálogo, que es otra pantalla.
+ *
+ * Lo que sigue sin poder decirse es *cuándo* se reconoció: el reconocimiento no
+ * tiene fecha propia en el esquema y se sigue fechando con el clic del anuncio.
+ * Ver {@link salesThreadEvents}.
  */
+
+/**
+ * Cómo terminó la cascada de reconocimiento, tal como queda escrito en
+ * `conversations.product_recognition` (migración `0026`).
+ *
+ * **Es el vocabulario de la cascada** (`apps/worker/src/sales/recognition.ts`),
+ * no una traducción: una copia con otras palabras sería una lista más que
+ * mantener de acuerdo. `null` —la ausencia de valor— es la tercera historia y
+ * la única que no es un resultado: la cascada **todavía no corrió**, que es el
+ * estado de toda conversación que no llegó por un anuncio.
+ */
+export type RecognitionOutcome = "resolved" | "ambiguous" | "unknown";
+
+/**
+ * La columna leída como lo que es. Es `text` con un `check` que la cierra a
+ * esos tres valores —igual que `discount_limit_behavior` de la `0025`—, y este
+ * es el borde donde ese texto se vuelve el tipo del panel.
+ *
+ * Un valor que este código no conozca se lee como **«no consta»**, y es lo
+ * único honesto: la pantalla dice entonces lo que decía antes de la `0026` en
+ * vez de inventarle un estado a una fila que alguien escribió por otra vía.
+ */
+export function parseRecognitionOutcome(
+  value: string | null,
+): RecognitionOutcome | null {
+  return value === "resolved" || value === "ambiguous" || value === "unknown"
+    ? value
+    : null;
+}
 
 /**
  * Cómo quedó el reconocimiento del producto en una conversación.
@@ -35,11 +70,17 @@
  * - `sin_anuncio`: la conversación no llegó por un anuncio. No hay nada que
  *   reconocer y no es un problema: es el caso de los 1.725 chats de hoy.
  * - `identificado`: hay un producto resuelto para la conversación.
- * - `sin_identificar`: llegó por un anuncio y el producto sigue sin resolver.
+ * - `ambiguo`: la cascada encontró varios candidatos y ninguno con confianza.
+ *   El asesor tiene que **desempatar**, y para eso la pantalla le muestra entre
+ *   qué dudó.
+ * - `sin_identificar`: llegó por un anuncio y no hubo ni un candidato. El
+ *   asesor tiene que **cargar el anuncio** en el catálogo, que es otro trabajo
+ *   y otra pantalla.
  */
 export type ProductRecognition =
   | "sin_anuncio"
   | "identificado"
+  | "ambiguo"
   | "sin_identificar";
 
 /** Una escalada a humano que de verdad salió, con su instante y su motivo. */
@@ -71,19 +112,49 @@ export interface SalesContextFacts {
   productName: string | null;
   /** Si la conversación tiene producto resuelto, tenga nombre local o no. */
   productIdentified: boolean;
+  /**
+   * `conversations.product_recognition`: cómo terminó la cascada, o `null` si
+   * no corrió — que es el caso de toda conversación que no llegó por un
+   * anuncio, incluidas las 1.736 de hoy.
+   */
+  recognitionOutcome: RecognitionOutcome | null;
+  /**
+   * Los candidatos que quedaron registrados cuando la cascada dudó, **por
+   * nombre y en el orden en que ella los presenta**. Una entrada por cada id
+   * registrado, y `null` en la que no se pudo nombrar: el producto ya no está
+   * en el catálogo de la operación, o es de los conectados a la tienda, cuyo
+   * nombre vive en Shopify y no en `products.name`.
+   *
+   * Se conserva la entrada sin nombre en vez de descartarla porque **cuántos
+   * eran es parte del hecho**: «dudó entre tres» sigue siendo verdad aunque uno
+   * de los tres no se pueda nombrar.
+   */
+  candidates: readonly (string | null)[];
   /** Las escaladas que salieron, en cualquier orden. */
   escalations: readonly EscalationFacts[];
 }
 
 /**
- * Cómo quedó el reconocimiento. Mira el clic y el producto, nunca las
- * escaladas: se puede escalar una conversación con el producto ya identificado
- * —el cliente pidió hablar con una persona— y eso no deshace el reconocimiento.
+ * Cómo quedó el reconocimiento. Mira el clic, el producto y lo que la cascada
+ * dejó registrado; nunca las escaladas: se puede escalar una conversación con
+ * el producto ya identificado —el cliente pidió hablar con una persona— y eso
+ * no deshace el reconocimiento.
+ *
+ * **El producto resuelto manda sobre el registro**, y el orden importa en un
+ * caso real: el recomprador. Hay una conversación por contacto para siempre, y
+ * un clic nuevo en un anuncio que la cascada no sabe reconocer deja
+ * `product_recognition = 'unknown'` encima de un `product_id` que sigue siendo
+ * el producto que esa persona compró. Decir «sin identificar» ahí sería borrar
+ * de la pantalla algo que la conversación sí sabe.
  */
 export function resolveProductRecognition(
-  facts: Pick<SalesContextFacts, "adReferralAt" | "productIdentified">,
+  facts: Pick<
+    SalesContextFacts,
+    "adReferralAt" | "productIdentified" | "recognitionOutcome"
+  >,
 ): ProductRecognition {
   if (facts.productIdentified) return "identificado";
+  if (facts.recognitionOutcome === "ambiguous") return "ambiguo";
   return facts.adReferralAt === null ? "sin_anuncio" : "sin_identificar";
 }
 
@@ -96,17 +167,31 @@ export function resolveProductRecognition(
  * `sin_anuncio` devuelven `null`: una bandeja donde todas las filas llevan
  * insignia es una bandeja sin insignias.
  *
- * `escalada` gana sobre `sin_identificar` porque es lo que le toca hacer a un
+ * `escalada` gana sobre los otros dos porque es lo que le toca hacer a un
  * humano ahora; el producto sin identificar es el motivo más frecuente de la
  * escalada y repetirlo al lado sería decir dos veces lo mismo.
+ *
+ * `ambiguo` y `sin_identificar` son marcas distintas y **no un matiz**: la
+ * primera pide desempatar entre los candidatos, ahí mismo, en el chat; la
+ * segunda pide ir a cargar el anuncio al catálogo, que es otra pantalla.
+ * Mostrarlas iguales manda al asesor a hacer lo que no es, y es exactamente lo
+ * que pasaba antes de la `0026`.
+ *
+ * Solo mira los hechos que decide, y no la ficha entera, para que la lista del
+ * Inbox no tenga que resolver nombres de candidatos que la fila no dibuja.
  */
-export type RowMark = "escalada" | "sin_identificar";
+export type RowMark = "escalada" | "ambiguo" | "sin_identificar";
 
-export function resolveRowMark(facts: SalesContextFacts): RowMark | null {
+export function resolveRowMark(
+  facts: Pick<
+    SalesContextFacts,
+    "adReferralAt" | "productIdentified" | "recognitionOutcome" | "escalations"
+  >,
+): RowMark | null {
   if (facts.escalations.length > 0) return "escalada";
-  return resolveProductRecognition(facts) === "sin_identificar"
-    ? "sin_identificar"
-    : null;
+  const recognition = resolveProductRecognition(facts);
+  if (recognition === "ambiguo") return "ambiguo";
+  return recognition === "sin_identificar" ? "sin_identificar" : null;
 }
 
 /**
@@ -125,6 +210,19 @@ export type SalesThreadEvent =
       at: Date;
       productName: string | null;
       adId: string | null;
+    }
+  | {
+      /**
+       * La cascada encontró varios y no pudo elegir. Lleva los candidatos
+       * porque **entre qué dudó es la información útil**: sin ellos, el evento
+       * diría lo mismo que «no encontré nada», que es justo lo que la `0026`
+       * vino a separar.
+       */
+      kind: "producto_ambiguo";
+      at: Date;
+      adId: string | null;
+      adHeadline: string | null;
+      candidates: readonly (string | null)[];
     }
   | {
       kind: "producto_sin_identificar";
@@ -153,20 +251,30 @@ export function salesThreadEvents(
 ): SalesThreadEvent[] {
   const events: SalesThreadEvent[] = [];
   if (facts.adReferralAt !== null) {
+    const at = facts.adReferralAt;
+    const recognition = resolveProductRecognition(facts);
     events.push(
-      facts.productIdentified
+      recognition === "identificado"
         ? {
             kind: "producto_identificado",
-            at: facts.adReferralAt,
+            at,
             productName: facts.productName,
             adId: facts.adId,
           }
-        : {
-            kind: "producto_sin_identificar",
-            at: facts.adReferralAt,
-            adId: facts.adId,
-            adHeadline: facts.adHeadline,
-          },
+        : recognition === "ambiguo"
+          ? {
+              kind: "producto_ambiguo",
+              at,
+              adId: facts.adId,
+              adHeadline: facts.adHeadline,
+              candidates: facts.candidates,
+            }
+          : {
+              kind: "producto_sin_identificar",
+              at,
+              adId: facts.adId,
+              adHeadline: facts.adHeadline,
+            },
     );
   }
   for (const escalation of facts.escalations) {

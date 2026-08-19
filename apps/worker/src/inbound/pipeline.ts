@@ -23,6 +23,7 @@ import { loadOrderFacts } from "../inbox/facts";
 import type { OperationId } from "../operations";
 import { decideAdAttribution } from "../sales/attribution";
 import { SEMANTIC_LEVEL_WIRED, recognizeProductForReferral } from "../sales/catalog";
+import { registerRecognition } from "../sales/recognition-record";
 import {
   resolveConversationOwner,
   type ConversationOwner,
@@ -98,15 +99,21 @@ async function ensureConversation(
 }
 
 /**
- * Reconoce el producto del anuncio y lo guarda en la conversación.
+ * Reconoce el producto del anuncio y **deja registrado cómo terminó**.
  *
  * Corre **después** de que la atribución ya está guardada y por eso puede
  * fallar sin costo: el identificador de anuncio y el de clic —lo irrecuperable—
  * ya están en la base, y el producto se deriva de ellos, así que un fallo aquí
  * deja la conversación sin producto, que es justo el estado que hace que el
- * vendedor pregunte. Nunca escribe cuando la cascada queda ambigua: elegir uno
- * de varios candidatos es mandarle al cliente información del SKU equivocado, y
- * la lista corta es del ticket 05.
+ * vendedor pregunte.
+ *
+ * Desde la `0026` se escribe **siempre**, no solo cuando resuelve: sin eso,
+ * «ambiguo» y «no encontré nada» dejaban la misma huella —un `product_id` en
+ * `null`— y piden cosas opuestas del asesor. Lo que no cambió es lo que se hace
+ * con el producto: se escribe solo cuando la cascada resolvió, porque elegir
+ * uno de varios candidatos es mandarle al cliente información del SKU
+ * equivocado. La pregunta con lista corta es del ticket 05 y sale de los
+ * candidatos que esto registra.
  */
 async function attributeProduct(input: {
   conversationId: string;
@@ -117,12 +124,23 @@ async function attributeProduct(input: {
     operationId: input.operationId,
     referral: input.referral,
   });
-  if (recognition.kind === "resolved") {
-    await db
-      .update(conversations)
-      .set({ productId: recognition.product.id })
-      .where(eq(conversations.id, input.conversationId));
-  }
+  const registered = await registerRecognition({
+    recognition,
+    save: (record) =>
+      db
+        .update(conversations)
+        .set(record)
+        .where(eq(conversations.id, input.conversationId)),
+    onFailure: (err) =>
+      logger.error(
+        {
+          err: String(err),
+          conversationId: input.conversationId,
+          kind: recognition.kind,
+        },
+        "ventas: NO se pudo registrar cómo terminó el reconocimiento; el mensaje sigue su curso",
+      ),
+  });
   logger.info(
     {
       conversationId: input.conversationId,
@@ -132,6 +150,7 @@ async function attributeProduct(input: {
       reason: recognition.kind === "unknown" ? recognition.reason : null,
       candidatos:
         recognition.kind === "ambiguous" ? recognition.candidates.length : null,
+      registrado: registered,
       nivelSemanticoCableado: SEMANTIC_LEVEL_WIRED,
     },
     "ventas: reconocimiento de producto",

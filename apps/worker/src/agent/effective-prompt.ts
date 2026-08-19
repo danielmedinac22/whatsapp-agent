@@ -33,6 +33,7 @@ import type { Operation } from "@wa/db";
 import { logger } from "../lib/logger";
 import { buildSalesPersonaPrompt, type SalesPersona } from "../sales/persona";
 import { buildProductContextBlock } from "../sales/product-context";
+import { buildProductQuestionBlock } from "../sales/product-question";
 import { buildDropiContextBlock } from "./dropi-context";
 import { buildShopifyContextBlock } from "./shopify-context";
 
@@ -57,6 +58,16 @@ export type EffectivePromptParts =
       persona: SalesPersona;
       /** El bloque del producto identificado, o `null` si no hay ninguno. */
       productBlock: string | null;
+      /**
+       * El bloque que le dice que pregunte de qué producto le hablan, con la
+       * lista corta de candidatos si la hay (`sales/product-question.ts`).
+       *
+       * **Excluyente con el anterior**: con producto identificado hay ficha y
+       * no hay pregunta, y al revés. Opcional —y no `string | null`— porque
+       * omitirlo es exactamente el caso de siempre: el prompt del vendedor
+       * cuando ya sabe de qué producto le hablan.
+       */
+      questionBlock?: string | null;
     };
 
 /**
@@ -71,7 +82,10 @@ export function composeEffectivePrompt(parts: EffectivePromptParts): string {
   const [base, blocks] =
     parts.agent === "confirmation"
       ? [parts.basePrompt, parts.blocks]
-      : [buildSalesPersonaPrompt(parts.persona), [parts.productBlock]];
+      : [
+          buildSalesPersonaPrompt(parts.persona),
+          [parts.productBlock, parts.questionBlock ?? null],
+        ];
 
   let prompt = base;
   for (const block of blocks) {
@@ -102,6 +116,12 @@ export type EffectivePromptRequest =
       persona: SalesPersona;
       /** `conversations.product_id`, lo que el reconocimiento haya resuelto. */
       productId: string | null;
+      /**
+       * `conversations.product_candidate_ids`: entre qué dudó la cascada, si
+       * dudó. Es de dónde sale la lista corta de la pregunta al lead; sin
+       * producto y sin candidatos la pregunta sale abierta.
+       */
+      candidateIds?: readonly string[] | null;
     };
 
 /**
@@ -127,10 +147,29 @@ export async function buildEffectiveSystemPrompt(
       logger.warn({ err }, "product context build failed; continuing without it");
       return null;
     });
+    // Sin producto identificado, en vez de ficha va la pregunta: cuál de estos
+    // es. La lista corta sale de los candidatos que la cascada registró
+    // (`0026`); sin candidatos la pregunta es abierta. Si falla, se conversa
+    // sin ella —igual que con la ficha—: un bloque no puede costar la
+    // respuesta.
+    const questionBlock =
+      request.productId === null
+        ? await buildProductQuestionBlock(
+            request.operation,
+            request.candidateIds ?? null,
+          ).catch((err) => {
+            logger.warn(
+              { err },
+              "product question build failed; continuing without it",
+            );
+            return null;
+          })
+        : null;
     return composeEffectivePrompt({
       agent: "sales",
       persona: request.persona,
       productBlock,
+      questionBlock,
     });
   }
 

@@ -498,6 +498,50 @@ export const conversations = pgTable(
       onDelete: "set null",
     }),
 
+    // ── Cómo terminó el reconocimiento · expand `0026` ─────────────────────
+    //
+    // `product_id` sola no alcanza: con `null` cuenta igual **tres historias
+    // distintas** —la cascada quedó ambigua, no encontró candidatos, o todavía
+    // no corrió— y las dos primeras piden cosas opuestas del asesor. Ante
+    // *ambiguo* tiene que desempatar entre los cuatro REVITALHAIR; ante *sin
+    // candidatos* tiene que ir a cargar el anuncio al catálogo, que es otra
+    // pantalla. Mostrarlas iguales lo manda a hacer lo que no es
+    // (`ventas-ingesta-reconocimiento/06`).
+
+    /**
+     * Cómo terminó la cascada de `apps/worker/src/sales/recognition.ts`, con su
+     * mismo vocabulario: `resolved`, `ambiguous` o `unknown`. Este par de
+     * columnas **registra** lo que la cascada decide; no cambia cómo decide.
+     *
+     * `null` es la tercera historia y la única que no es un resultado: **la
+     * cascada todavía no corrió para esta conversación**. Es el estado de las
+     * 1.736 filas de hoy y el de toda conversación que no llegó por un anuncio,
+     * porque el reconocimiento solo corre cuando el mensaje trae referencia.
+     *
+     * `text` y no un enum, como `discount_limit_behavior` de la `0025`: un
+     * cuarto resultado mañana es cambiar el `check` de abajo, y no un
+     * `ALTER TYPE ... ADD VALUE` cuyo valor nuevo Postgres no deja usar en la
+     * misma transacción que lo agrega.
+     */
+    productRecognition: text("product_recognition"),
+    /**
+     * Cuáles eran los candidatos cuando quedó ambigua, en el orden en que la
+     * cascada los presenta. Sin esto, la pregunta con lista corta al lead
+     * (`ventas-ingesta-reconocimiento/05`) no tiene de dónde sacarlos y la
+     * pantalla no puede decir «dudó entre estos tres», que es la información
+     * útil de verdad.
+     *
+     * Ids y no nombres: el nombre de un producto conectado a la tienda vive en
+     * Shopify y se lee en tiempo de uso (`products.name` es nullable por eso),
+     * así que copiarlo aquí sería guardar una copia que envejece. Un candidato
+     * que se borre del catálogo desaparece de la lista al leerla, que es lo
+     * mismo que hace `product_id` con su `set null`.
+     *
+     * Sin clave foránea —jsonb no la admite— y por eso el orden y la
+     * pertenencia se validan al leer, contra el catálogo de la operación.
+     */
+    productCandidateIds: jsonb("product_candidate_ids").$type<string[]>(),
+
     // ── Asignación · expand `0022` ─────────────────────────────────────────
     //
     // Lo único que se **guarda** del ruteo: quién está trabajando la
@@ -518,6 +562,29 @@ export const conversations = pgTable(
     uniqueIndex("conversations_contact_idx").on(t.contactId),
     index("conversations_last_msg_idx").on(t.lastInboundAt, t.lastOutboundAt),
     index("conversations_confirmation_idx").on(t.confirmationStatus),
+    // El vocabulario del resultado es el de la cascada, y la base es el único
+    // lugar donde un cuarto valor inventado por otra vía no puede entrar en
+    // silencio y salir después en la bandeja del asesor.
+    check(
+      "conversations_product_recognition_check",
+      sql`${t.productRecognition} is null or ${t.productRecognition} in ('resolved', 'ambiguous', 'unknown')`,
+    ),
+    // «Ambiguo» sin candidatos no es un dato, es una pantalla que no puede
+    // decir entre qué dudó y una pregunta al lead sin lista que ofrecerle. La
+    // cascada garantiza dos o más por tipo (`ambiguous.candidates` es una tupla
+    // de al menos dos); esto lo hace cumplir también a quien escriba por otra
+    // vía. Y al revés: candidatos con cualquier otro resultado serían restos de
+    // un reconocimiento anterior, así que cada escritura los deja como quedaron.
+    //
+    // **Comparaciones `is [not] distinct from` y un `is not null` explícito, no
+    // `=`.** Un `CHECK` que evalúa a NULL **pasa**, y con `=` la fila prohibida
+    // que este check existe para impedir —«ambiguo» con los candidatos en
+    // null— evaluaba a NULL y entraba. Se descubrió ensayando la migración
+    // contra una base desechable, no leyéndola.
+    check(
+      "conversations_product_candidates_check",
+      sql`(${t.productRecognition} is not distinct from 'ambiguous' and ${t.productCandidateIds} is not null and jsonb_typeof(${t.productCandidateIds}) = 'array' and jsonb_array_length(${t.productCandidateIds}) >= 2) or (${t.productRecognition} is distinct from 'ambiguous' and ${t.productCandidateIds} is null)`,
+    ),
   ],
 );
 

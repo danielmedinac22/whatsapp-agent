@@ -22,6 +22,7 @@ import {
   sql,
   escalationReasonFromDedupKey,
   inboxChangedSince,
+  parseRecognitionOutcome,
   resolveInbox,
 } from "@wa/db";
 import type { SQL } from "drizzle-orm";
@@ -626,6 +627,8 @@ export async function getSalesContext(
       adHeadline: conversations.adHeadline,
       productId: conversations.productId,
       productName: products.name,
+      productRecognition: conversations.productRecognition,
+      productCandidateIds: conversations.productCandidateIds,
       waId: contacts.waId,
     })
     .from(conversations)
@@ -652,9 +655,37 @@ export async function getSalesContext(
     adHeadline: row.adHeadline,
     productName: row.productName,
     productIdentified: row.productId !== null,
+    recognitionOutcome: parseRecognitionOutcome(row.productRecognition),
+    candidates: await candidateNames(op, row.productCandidateIds),
     escalations: (row.waId ? escaladas.get(row.waId) : null) ?? [],
   };
 }
+
+/**
+ * Los nombres de los candidatos registrados, **uno por id y en su orden**, con
+ * `null` en el que ya no se puede nombrar: borrado del catálogo, de otra
+ * operación, o conectado a la tienda —donde el nombre vive en Shopify y este
+ * paquete no la consulta, igual que ya pasa con el producto identificado—.
+ *
+ * Se conserva el hueco en vez de descartarlo porque **cuántos eran es parte del
+ * hecho**: «dudó entre tres» sigue siendo verdad aunque uno no se pueda nombrar.
+ */
+async function candidateNames(
+  op: Operation,
+  candidateIds: string[] | null,
+): Promise<(string | null)[]> {
+  const ids = (candidateIds ?? []).filter((id) => UUID.test(id));
+  if (ids.length === 0) return [];
+  const rows = await db
+    .select({ id: products.id, name: products.name })
+    .from(products)
+    .where(and(ofOperation(op, products.operationId), inArray(products.id, ids)));
+  const byId = new Map(rows.map((r) => [r.id, r.name]));
+  return ids.map((id) => byId.get(id)?.trim() || null);
+}
+
+/** Un uuid con guiones, que es lo que la `0026` guarda en la lista. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * «Esta la estoy trabajando yo», y su contrario.

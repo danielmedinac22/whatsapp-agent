@@ -183,6 +183,13 @@
       "when": 1787086090963,
       "tag": "0025_archivos_enviables_y_borde_del_limite",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1787106380486,
+      "tag": "0026_registro_del_reconocimiento",
+      "breakpoints": true
     }
   ]
 }
