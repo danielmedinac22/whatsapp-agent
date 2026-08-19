@@ -4,7 +4,7 @@
 
 **Blocked by:** None — pero toca el camino que hoy factura.
 
-**Status:** construido, y no observable todavía — worktree `lead-nuevo`, rama
+**Status:** resolved — ola del 18-ago (2), mergeado y desplegado. **No es observable en producción hasta que la operación tenga vendedor configurado**, y eso es un acto del dueño de la operación, no trabajo pendiente
 `danielmedinac22/lead-nuevo`, sin merge ni deploy. La regla no se ve en
 producción hasta que la operación tenga vendedor configurado, y eso es un acto
 del dueño de la operación. Ola del 18-ago (2)

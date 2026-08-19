@@ -4,7 +4,7 @@
 
 **Blocked by:** ventas-conversacion 01 · Sebastián responde con su persona
 
-**Status:** listo para cerrar — worktree `assets-0025`, ola del 18-ago (2). El borde del límite entró con la migración `0025`, que está **generada y sin aplicar**
+**Status:** resolved — ola del 18-ago (2), mergeado y desplegado. Migración `0025` aplicada a producción
 
 - [x] Campos estructurados para nombre visible, mensajes base (saludo, empuje al cierre, mensaje de embudo) y límite de descuento.
 - [x] Campo de texto libre para tono e instrucciones de personalidad.

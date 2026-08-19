@@ -4,7 +4,7 @@
 
 **Blocked by:** 03
 
-**Status:** resolved — worktree `bandejas`, ola del 18-ago (2)
+**Status:** resolved — ola del 18-ago (2), mergeado y desplegado
 
 - [x] Un asesor puede tomar una conversación y queda registrado como quien la trabaja.
 - [x] El resto del equipo ve quién la tiene, **antes de escribir**.

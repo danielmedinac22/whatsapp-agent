@@ -4,7 +4,7 @@
 
 **Blocked by:** ventas-ingesta-reconocimiento 03 · Catálogo y mapeo anuncio→productos
 
-**Status:** listo para cerrar — worktree `assets-0025`, ola del 18-ago (2). Los archivos entraron con la migración `0025`, que está **generada y sin aplicar**
+**Status:** resolved — ola del 18-ago (2), mergeado y desplegado. Migración `0025` aplicada a producción
 
 - [x] El admin puede buscar y conectar un producto existente de la tienda. *(construido; sin verificar contra datos reales — `shopify_connection` está vacía)*
 - [x] **Un producto conectado lee su información de la tienda en tiempo de uso, no la copia** — editarlo allá se refleja acá, sin desincronización silenciosa.

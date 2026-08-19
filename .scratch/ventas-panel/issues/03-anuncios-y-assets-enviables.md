@@ -4,7 +4,7 @@
 
 **Blocked by:** 02
 
-**Status:** **abierto** — la mitad de archivos entró con la `0025` (worktree `assets-0025`, ola del 18-ago (2)); la lista de anuncios de Meta sigue esperando el token del cliente, y el envío es `ventas-conversacion/03`
+**Status:** abierto — los archivos enviables entraron con la `0025` (mergeado y desplegado). Falta **solo** la lista de anuncios leída de Meta, que espera un token con `ads_read` sobre `act_2042265076620189` que trae Vorare
 
 - [x] El admin pega un identificador de anuncio en un solo campo y lo asocia a uno o varios productos.
 - [x] Un mismo anuncio puede quedar asociado a varios productos, y se ve claramente a cuáles.

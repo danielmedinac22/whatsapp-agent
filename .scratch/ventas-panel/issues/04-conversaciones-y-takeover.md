@@ -4,7 +4,7 @@
 
 **Blocked by:** ventas-modulos-y-ruteo 03 · Bandejas separadas por módulo
 
-**Status:** open — worktree `bandejas`, ola del 18-ago (2). Cinco de seis criterios en la rama; falta distinguir «ambiguo», que hoy **no es derivable** (ver el Answer).
+**Status:** abierto — cinco de seis criterios mergeados y desplegados. Falta distinguir «ambiguo», que **no es derivable** hoy: lo destraba [ingesta-reconocimiento 06](../../ventas-ingesta-reconocimiento/issues/06-el-resultado-de-la-cascada-no-queda-registrado.md)
 
 - [x] Al abrir un chat se ve **de qué anuncio y de qué producto** viene la conversación.
 - [ ] Se ve el **estado del reconocimiento**: resuelto, ambiguo o escalado tras dos intentos. *(«resuelto» y «escalado» sí; «ambiguo» no se puede distinguir de «no encontré nada» sin persistir el resultado de la cascada.)*

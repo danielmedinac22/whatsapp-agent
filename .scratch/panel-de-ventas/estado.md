@@ -10,7 +10,7 @@
 
 ## Reglas de trabajo, aprendidas a golpes
 
-- **`pnpm -r typecheck` y `pnpm --filter @wa/worker test` después de CADA ticket**, no al final. Hoy: **4 paquetes limpios, 423 tests en 27 archivos.**
+- **`pnpm -r typecheck` y `pnpm --filter @wa/worker test` después de CADA ticket**, no al final. Hoy: **4 paquetes limpios, 489 tests en 31 archivos.**
 - **`dropi_dry_run` está en `true` a propósito.** Confirmado intencional: es el default del esquema, está expuesto como interruptor en el panel, y `84b62c0` quitó el auto-confirm dejando el botón manual como único camino. **No lo cambies.**
 - **Los tests van sobre funciones puras con fixtures**, en el estilo de `kapso/inbound.test.ts`. **Nombres en español que enuncian el comportamiento**, no la mecánica.
 - **Si algo del ticket contradice el código real, para y pregunta. El código gana.** Pasó varias veces y las correcciones valieron más que los tickets.
@@ -20,7 +20,7 @@
 
 ## Qué está construido y en producción
 
-**24 de 41 tickets resueltos.** Cinco migraciones aplicadas (`0020`–`0024`). Worker en Railway y dashboard en Vercel, desplegados y verificados.
+**29 de 42 tickets resueltos.** Seis migraciones aplicadas (`0020`–`0025`). Worker en Railway y dashboard en Vercel, desplegados y verificados.
 
 - **Migración multi-operación completa** (tickets 01–06). Existe `operations`; Guatemala registrada (`GT`/`GTQ`/`active`); **cero `eq(<tabla>.id, 1)` en toda la base** — ningún accesor devuelve conexión o configuración sin decir de qué operación.
 - **La atribución del primer contacto** — referencia del anuncio y `ctwa_clid` se capturan y persisten. Era irreversible: no existe endpoint de Meta para recuperarlos después.
@@ -33,29 +33,49 @@
 - **El pulido de comportamiento del panel** (móvil y escritorio).
 - **Los tres niveles del árbol de diseño**, cerrados con el usuario. Prototipos en `.scratch/ventas-pulido-ui/prototipos/`.
 
-## Ola 2 del 18-ago-2026 — EN CURSO
+## Ola 2 del 18-ago-2026 — cerrada, en producción
 
-Tres worktrees, nacidos de `a980f8f`. **Siete tickets.**
+Tres worktrees, siete tickets, **mergeados y desplegados**. Migración `0025`
+aplicada. Suite: **489 tests en 31 archivos** (venía de 423 en 27).
 
-| Worktree | Tickets | Migración |
+| Worktree | Tickets | Estado |
 | -- | -- | -- |
-| `bandejas` | modulos-y-ruteo **03 + 04**, panel **04** | ninguna |
-| `assets-0025` | panel **01 + 02 + 03** (lo que faltaba) | **`0025`** |
-| `lead-nuevo` | conversacion **05** | ninguna |
+| `bandejas` | modulos **03 + 04**, panel **04** | 03 y 04 `resolved`; panel/04 abierto |
+| `assets-0025` | panel **01 + 02 + 03** | 01 y 02 `resolved`; 03 abierto |
+| `lead-nuevo` | conversacion **05** | `resolved`, no observable todavía |
 
-**Antes de repartir hubo que mudar la función de ruteo a `@wa/db`** (`e4cc81b`):
-`apps/web` no depende de `@wa/worker`, así que la bandeja no podía llamar a
-`resolveInbox`, y reescribirla en SQL habría dejado dos implementaciones de la
-misma regla. Movimiento mecánico, cero cambios de lógica, 423 tests verdes. **Lo
-hizo la sesión coordinadora** porque el archivo a tocar —`inbound/pipeline.ts`—
-es de otro ticket de la misma ola.
+**Esta vez la unión NO se rompió.** La lección de la ola 1 se aplicó antes de
+repartir: mover la función de ruteo a `@wa/db` (`e4cc81b`) desde la sesión
+coordinadora, porque el archivo a tocar era de otro ticket de la misma ola.
 
-**Decisión del usuario, ya escrita en `ventas-conversacion/05`:** un contacto
-nuevo nace con el agente encendido, **y solo si la operación tiene vendedor
-configurado**. Sin ese guardia, Katherine empezaría a contestarle a desconocidos
-que hoy no reciben nada — 109 contactos en esa situación. La forma elegida
-además **no necesita migración**: «contacto nuevo» es un momento y no un estado,
-así que un asesor que apaga el agente queda protegido por construcción.
+### Lo que quedó abierto, y de quién depende
+
+- **`ventas-panel/03`** — solo le falta la lista de anuncios de Meta. Espera un
+  **token de usuario de sistema con `ads_read` sobre `act_2042265076620189`**,
+  que trae Vorare. Los archivos enviables ya están.
+- **`ventas-panel/04`** — cinco de seis criterios. Falta distinguir «ambiguo», y
+  **no es derivable**: lo destraba el ticket nuevo de abajo.
+
+### El hallazgo de la ola, y ya tiene ticket
+
+**`ventas-ingesta-reconocimiento/06`** — el resultado de la cascada no queda
+registrado. Solo se guarda `conversations.product_id`, así que con `NULL` la base
+cuenta igual tres historias distintas: *ambiguo*, *sin candidatos* y *todavía no
+corrió*. Y las dos primeras piden cosas **opuestas** del asesor — desempatar
+versus cargar el anuncio en el catálogo. Lo levantó el worktree `bandejas` al
+chocar con el criterio, no es una idea de escritorio.
+
+**Está debajo de `ingesta/05`**, que sigue parcial: sin registrar los candidatos,
+la pregunta al lead con lista corta no tiene de dónde sacarlos.
+
+### Verificado tras desplegar
+
+Guatemala siguió operando durante todo: 12 mensajes salientes en 30 min con
+**0 muertos**, 1.736 conversaciones con **cero sin operación**. Los dos contactos
+nuevos del período tienen el agente encendido, y **no es la regla nueva**: se
+crearon 01:40 y 01:52 UTC, antes de que el worker nuevo arrancara (01:53:30), y
+los dos nacieron de un pedido. **La regla nueva no se ha ejecutado ni una vez**,
+que es lo esperado con `sales_agent_settings` en 0 filas.
 
 ## Ola del 18-ago-2026 — cerrada, en producción
 
@@ -105,15 +125,21 @@ siempre, sin que ningún check local lo vea.
 
 **Se puede construir ya:**
 
-- **La ola siguiente** (arriba): el esquema `0025` y las bandejas.
-- `ventas-conversacion/03` — envío de apoyos visuales. Depende de `product_media`.
-- `ventas-cierre-orden/03–05` y `ventas-capi/03` — ver la tabla de abajo, casi
-  todos esperan algo del cliente.
+- **`ventas-ingesta-reconocimiento/06`** — registrar el resultado de la cascada.
+  Destraba `ventas-panel/04` y está debajo de `ingesta/05`. Es el candidato
+  natural de la ola siguiente.
+- **`ventas-ingesta-reconocimiento/05`** — parcial: falta la pregunta al lead con
+  lista corta. Conviene construir el 06 antes.
+- **`ventas-conversacion/03`** — envío de apoyos visuales. **Se destrabó**: la
+  tabla `product_media` ya existe desde la `0025`.
+- `ventas-multi-operacion/09` — migrar +57 304 5430173 a Cloud API. Runbook de 5
+  pasos en el ticket; es trabajo de consola, no de código.
 
-**Ya no está pendiente** lo que la ola del 18-ago cerró: el selector de operación
-y el filtro por operación de las doce consultas del panel. **La apertura de
-Colombia dejó de estar bloqueada por el panel** — `ventas-multi-operacion/08`
-puede arrancar cuando el número colombiano esté en Cloud API.
+**El camino de venta está completo salvo el cierre.** Ingesta, atribución,
+reconocimiento, persona, escalamiento, ruteo, bandeja y el lead nuevo llegando al
+agente: todo construido y desplegado. Lo que falta para vender de verdad es
+`ventas-cierre-orden/03` — crear el pedido en la tienda—, y **eso espera las
+credenciales de administración de Shopify**.
 
 **Depende del usuario, no del código:**
 
