@@ -28,14 +28,13 @@ export default async function LoginPage({
   }
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden p-4">
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,rgba(110,231,183,0.08),transparent_35%),linear-gradient(180deg,rgba(244,193,109,0.05),transparent_32%)]" />
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[var(--color-bg)] p-4">
       <form
         action={action}
         className="app-card relative w-full max-w-sm space-y-4 p-5"
       >
         <div className="space-y-2">
-          <h1 className="text-xl font-semibold text-[var(--color-text)]">
+          <h1 className="app-title text-[var(--color-text)]">
             WhatsApp Agent
           </h1>
           <p className="text-sm leading-5 text-[var(--color-text-dim)]">
@@ -44,13 +43,13 @@ export default async function LoginPage({
         </div>
 
         {sp.error && (
-          <div className="rounded-md border border-red-500/30 bg-red-950/30 px-3 py-2 text-sm text-red-100">
+          <div className="rounded-md border border-[color-mix(in_srgb,var(--color-danger)_30%,transparent)] bg-[var(--state-escalada-bg)] px-3 py-2 text-sm text-[var(--state-escalada-fg)]">
             Email o contraseña incorrectos
           </div>
         )}
 
         <div className="space-y-2">
-          <label className="block text-xs uppercase text-[var(--color-text-soft)]">
+          <label className="app-label block">
             Email
           </label>
           <input
@@ -62,7 +61,7 @@ export default async function LoginPage({
         </div>
 
         <div className="space-y-2">
-          <label className="block text-xs uppercase text-[var(--color-text-soft)]">
+          <label className="app-label block">
             Contraseña
           </label>
           <input

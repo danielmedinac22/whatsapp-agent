@@ -46,22 +46,22 @@ import type { CapiEstadoView } from "@/lib/capi";
 
 const TONOS = {
   blocked: {
-    caja: "border-amber-400/25 bg-amber-500/10",
-    texto: "text-amber-300",
+    caja: "border-[color-mix(in_srgb,var(--state-espera-fg)_35%,transparent)] bg-[var(--state-espera-bg)]",
+    texto: "text-[var(--state-espera-fg)]",
     etiqueta: "Bloqueado",
   },
   failing: {
-    caja: "border-red-500/25 bg-red-950/20",
+    caja: "border-[color-mix(in_srgb,var(--state-escalada-fg)_35%,transparent)] bg-[var(--state-escalada-bg)]",
     texto: "text-[var(--color-danger)]",
     etiqueta: "Fallando",
   },
   working: {
-    caja: "border-[rgba(110,231,183,0.28)] bg-[rgba(110,231,183,0.08)]",
-    texto: "text-[var(--color-accent)]",
+    caja: "border-[color-mix(in_srgb,var(--color-ink)_35%,transparent)] bg-[var(--color-ink-wash)]",
+    texto: "text-[var(--color-ink)]",
     etiqueta: "Funcionando",
   },
   idle: {
-    caja: "border-[var(--color-border)] bg-[rgba(18,35,48,0.6)]",
+    caja: "border-[var(--color-border)] bg-[var(--color-surface)]",
     texto: "text-[var(--color-text-dim)]",
     etiqueta: "Encendido, sin nada que reportar",
   },
@@ -88,15 +88,15 @@ export function ReporteMetaClient({
     // conversiones sin llegar» acá sería la mentira más cara de esta pantalla.
     return (
       <div className="app-card space-y-2 p-3">
-        <div className="rounded-lg border border-red-500/25 bg-red-950/20 p-3">
+        <div className="rounded-lg border border-[color-mix(in_srgb,var(--state-escalada-fg)_35%,transparent)] bg-[var(--state-escalada-bg)] p-3">
           <p className="text-sm font-semibold text-[var(--color-text)]">
             No se pudo leer el estado del reporte
           </p>
-          <p className="mt-1 text-xs leading-5 text-[var(--color-text-dim)]">
+          <p className="mt-1 text-xs leading-5 text-[var(--state-escalada-fg)]">
             El worker no contestó. <strong>No quiere decir que el reporte esté
             bien ni que esté mal</strong>: quiere decir que no se pudo mirar.
           </p>
-          <p className="app-muted mt-2 break-words text-[11px]">{view.error}</p>
+          <p className="mt-2 break-words text-[11px] text-[var(--state-escalada-fg)]">{view.error}</p>
         </div>
         <button
           className="app-button-secondary gap-1.5"
@@ -118,7 +118,7 @@ export function ReporteMetaClient({
       <div className="app-card space-y-3 p-3">
         <div className={`rounded-lg border p-3 ${tono.caja}`}>
           <div className="flex flex-wrap items-baseline gap-x-2">
-            <span className={`app-eyebrow ${tono.texto}`}>{tono.etiqueta}</span>
+            <span className={`app-label ${tono.texto}`}>{tono.etiqueta}</span>
             <span className="app-muted text-[11px]">
               Modo: {MODOS[e.modo]}
             </span>
@@ -133,7 +133,7 @@ export function ReporteMetaClient({
 
         <dl className="grid gap-2 text-[11px] leading-5 sm:grid-cols-2">
           <div>
-            <dt className="app-eyebrow">Destino</dt>
+            <dt className="app-label">Destino</dt>
             <dd className="text-[var(--color-text-dim)]">
               {e.datasetId ? (
                 <>
@@ -142,7 +142,7 @@ export function ReporteMetaClient({
                 </>
               ) : (
                 <>
-                  <span className="text-amber-300">Sin configurar.</span> El
+                  <span className="text-[var(--state-espera-fg)]">Sin configurar.</span> El
                   destino de una conversión es un <strong>dataset</strong> de la
                   cuenta de WhatsApp, no el píxel: mandarlo al píxel llegaría a
                   un destino real y equivocado, sin error y sin alarma.
@@ -161,7 +161,7 @@ export function ReporteMetaClient({
           {e.motivoApagado &&
           !elMotivoYaEstaDicho(e.veredicto.detail, e.motivoApagado) ? (
             <div>
-              <dt className="app-eyebrow">Por qué está apagado</dt>
+              <dt className="app-label">Por qué está apagado</dt>
               <dd className="text-[var(--color-text-dim)]">{e.motivoApagado}</dd>
             </div>
           ) : null}
@@ -198,7 +198,7 @@ export function ReporteMetaClient({
  */
 function ComoSeEnciende() {
   return (
-    <div className="rounded-md border border-[rgba(157,187,210,0.28)] bg-[rgba(18,35,48,0.9)] px-2.5 py-2 text-[11px] leading-relaxed text-[var(--color-text-dim)]">
+    <div className="rounded-md border border-[var(--color-border-strong)] bg-[var(--color-hover)] px-2.5 py-2 text-[11px] leading-relaxed text-[var(--color-text-dim)]">
       <p className="font-semibold text-[var(--color-text)]">
         Qué falta para encenderlo
       </p>
@@ -251,7 +251,7 @@ function QueSeMiro({ estado }: { estado: CapiEstado }) {
       </div>
 
       {barrido === null ? (
-        <p className="rounded-md border border-red-500/25 bg-red-950/20 px-2.5 py-2 text-[11px] leading-relaxed text-[var(--color-text-dim)]">
+        <p className="rounded-md border border-[color-mix(in_srgb,var(--state-escalada-fg)_35%,transparent)] bg-[var(--state-escalada-bg)] px-2.5 py-2 text-[11px] leading-relaxed text-[var(--state-escalada-fg)]">
           <strong className="text-[var(--color-text)]">
             No se pudo mirar qué ventas faltan por reportar.
           </strong>{" "}
@@ -293,7 +293,7 @@ function Barrido({ barrido }: { barrido: NonNullable<CapiEstado["barrido"]> }) {
         <p key={l.clave} className="text-[var(--color-text-dim)]">
           <strong
             className={
-              l.accionable ? "text-amber-300" : "text-[var(--color-text)]"
+              l.accionable ? "text-[var(--state-espera-fg)]" : "text-[var(--color-text)]"
             }
           >
             {l.cantidad}
@@ -323,10 +323,10 @@ function Cifra({
   alerta?: boolean;
 }) {
   return (
-    <div className="rounded-md bg-[rgba(8,21,30,0.45)] px-2.5 py-2">
+    <div className="rounded-md bg-[var(--color-surface)] px-2.5 py-2">
       <p
         className={`text-lg font-semibold tabular-nums ${
-          alerta ? "text-amber-300" : "text-[var(--color-text)]"
+          alerta ? "text-[var(--state-espera-fg)]" : "text-[var(--color-text)]"
         }`}
       >
         {n}
@@ -439,7 +439,7 @@ function Grupo({
   return (
     <div className="app-card space-y-3 p-3">
       <div className="flex items-start gap-2">
-        <span className="mt-0.5 text-amber-300">{icono}</span>
+        <span className="mt-0.5 text-[var(--state-espera-fg)]">{icono}</span>
         <div className="flex-1">
           <h2 className="text-sm font-semibold text-[var(--color-text)]">
             {titulo}
@@ -448,7 +448,7 @@ function Grupo({
         </div>
       </div>
 
-      <p className="rounded-md border border-amber-400/25 bg-amber-500/10 px-2.5 py-2 text-[11px] leading-relaxed text-[var(--color-text-dim)]">
+      <p className="rounded-md border border-[color-mix(in_srgb,var(--state-espera-fg)_35%,transparent)] bg-[var(--state-espera-bg)] px-2.5 py-2 text-[11px] leading-relaxed text-[var(--color-text-dim)]">
         {detalle}
       </p>
 
@@ -474,7 +474,7 @@ function Grupo({
  */
 function Fila({ fila, moneda }: { fila: CapiFilaTrabada; moneda: string }) {
   return (
-    <li className="rounded-md bg-[rgba(8,21,30,0.45)] p-2 text-[11px] leading-5">
+    <li className="rounded-md bg-[var(--color-surface)] p-2 text-[11px] leading-5">
       <div className="flex flex-wrap items-baseline gap-x-2">
         <span className="font-medium text-[var(--color-text)]">
           Pedido {fila.orderId}

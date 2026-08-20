@@ -1,26 +1,82 @@
 @import "tailwindcss";
 
+/* ── El sistema visual del panel: claro, un solo juego de tokens ───────────
+   El árbol de diseño se cerró el 20-ago-2026 y el veredicto del nivel 1 fue
+   **Claro**: fondo claro en todo, riel y menú incluidos. Los valores de aquí
+   abajo no se eligen en este archivo, salen del «contrato de nombres» de
+   `.scratch/panel-orientacion/spec.md`, que es el que reparte los nombres
+   entre los tres worktrees que corren a la vez.
+
+   **No hay modo oscuro y es deliberado** (decisión 1 del 20-ago). Un juego de
+   tokens, cada color verificado una vez. Con dos modos serían 762 decisiones
+   de contraste en vez de 381, y la sombra suave que separa dos superficies en
+   claro no se ve sobre fondo oscuro, así que el segundo modo pedía además un
+   mecanismo propio para separar superficies.
+
+   **Ningún componente escribe un color a mano.** Es lo que hace que el día que
+   haga falta el oscuro alcance con darle pareja a cada token de este archivo.
+   Donde hace falta transparencia se usa `color-mix()` sobre un token, no un
+   `rgba()` nuevo: un `rgba()` suelto es un color que nadie va a encontrar. */
+
 @theme {
-  --color-bg: #071119;
-  --color-bg-soft: #0d1822;
-  --color-panel: rgba(10, 24, 34, 0.82);
-  --color-panel-2: rgba(18, 35, 48, 0.9);
-  --color-panel-3: rgba(26, 47, 62, 0.78);
-  --color-border: rgba(157, 187, 210, 0.16);
-  --color-border-strong: rgba(157, 187, 210, 0.28);
-  --color-text: #eff7fb;
-  --color-text-dim: #99adbc;
-  --color-text-soft: #6f8798;
-  --color-accent: #6ee7b7;
-  --color-accent-strong: #34d399;
-  --color-accent-hover: #5ad0a6;
-  --color-highlight: #f4c16d;
-  --color-danger: #f87171;
-  --color-bubble-out: linear-gradient(135deg, rgba(42, 93, 82, 0.96), rgba(29, 74, 67, 0.98));
-  --color-bubble-in: linear-gradient(135deg, rgba(20, 40, 54, 0.96), rgba(15, 29, 40, 0.96));
-  --shadow-panel: 0 14px 42px rgba(3, 10, 16, 0.32);
+  /* Superficies, de la más oscura a la más clara. El riel es la más oscura y
+     por eso es la que manda: un color que llega a AA sobre el riel llega en
+     todas las demás. */
+  --color-bg: #f4f6f5;
+  --color-rail: #e8edeb;
+  --color-menu: #eef1f0;
+  --color-surface: #f9fbfa;
+  --color-card: #ffffff;
+  --color-hover: #e9efec;
+
+  /* Texto. Tres niveles que sí son de texto, y un cuarto que no lo es. */
+  --color-text: #12201b;
+  --color-text-strong: #08120e;
+  --color-text-dim: #5b6f66;
+  /* «Suave». **No es color de texto**: da 2,85:1 sobre el fondo, y el listón
+     de AA para texto es 4,5:1. Queda para líneas, iconos y separadores. Los 79
+     textos que lo usaban pasaron a `--color-text-dim`. */
+  --color-text-soft: #84978d;
+
+  --color-border: #e5ebe8;
+  --color-border-strong: #d8e0dc;
+
+  /* Tinta: reemplaza al acento menta, que sobre fondo claro no llegaba a
+     marcar nada (el menta `#6ee7b7` da 1,3:1 sobre el fondo). */
+  --color-ink: #0f766e;
+  --color-ink-soft: #dbe8e4;
+  --color-ink-wash: #eef5f3;
+
+  --color-danger: #a52020;
+  --color-warn: #8a5a08;
+
+  --color-bubble-out: #dbe8e4;
+  --color-bubble-in: #ffffff;
+
+  /* Lo que separa dos superficies es aire y esta sombra, no la opacidad de
+     casi el mismo color, que es como se separaban antes. */
+  --shadow-panel:
+    0 1px 2px rgba(18, 32, 27, 0.05), 0 6px 18px -12px rgba(18, 32, 27, 0.22);
+
+  /* La familia no se toca: el veredicto del nivel 1 fue que faltaba **escala**,
+     no una segunda familia. Los dos nombres siguen con el mismo valor. */
   --font-body: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
   --font-display: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+
+  /* Los cinco pares de estado. Son tokens propios porque los usan dos tickets
+     —la fila del Inbox y la tabla de Pedidos— y un par que se copia a mano en
+     dos sitios deja de ser un par. Los cinco pasan AA entre 5,25:1 y 6,33:1;
+     está medido y no hay que rederivarlos. */
+  --state-espera-bg: #fdf0d8;
+  --state-espera-fg: #8a5a08;
+  --state-auto-bg: #d8f0e8;
+  --state-auto-fg: #0b5f52;
+  --state-escalada-bg: #fde0e0;
+  --state-escalada-fg: #a52020;
+  --state-novedad-bg: #eae4fd;
+  --state-novedad-fg: #5a41a8;
+  --state-sinprod-bg: #e6ecf0;
+  --state-sinprod-fg: #41586a;
 }
 
 @layer base {
@@ -28,10 +84,9 @@
   body {
     height: 100%;
     color: var(--color-text);
-    background:
-      linear-gradient(90deg, rgba(110, 231, 183, 0.05), transparent 34%),
-      linear-gradient(180deg, rgba(244, 193, 109, 0.04), transparent 28%),
-      linear-gradient(180deg, #09131c 0%, #071119 45%, #050d14 100%);
+    /* Un color plano y no tres degradados superpuestos: en claro los
+       degradados de antes se leían como suciedad de pantalla. */
+    background: var(--color-bg);
     font-family: var(--font-body), sans-serif;
   }
   * {
@@ -50,8 +105,8 @@
     letter-spacing: 0;
   }
   ::selection {
-    background: rgba(110, 231, 183, 0.24);
-    color: var(--color-text);
+    background: var(--color-ink-soft);
+    color: var(--color-text-strong);
   }
 }
 
@@ -59,10 +114,10 @@
   /* ── El marco: riel de operaciones, columna de módulos, contenido ────────
      El tinte (`--op*`) lo declara el layout sobre `.app-frame` y **solo lo
      usan las dos barras**. El contenido conserva la paleta neutra: si el
-     acento siguiera al país, el verde dejaría de significar «confirmado».
-     Debajo de `lg` el marco cae a una columna y las barras se vuelven una
-     banda superior — ahí se pierde la placa del país, deuda anotada del
-     nivel 1 y fuera del alcance de este ticket. */
+     acento siguiera al país, el color de «confirmado» dejaría de significar
+     una cosa sola. Debajo de `lg` el marco cae a una columna y las barras se
+     vuelven una banda superior — ahí se pierde la placa del país, deuda
+     anotada del nivel 1 y fuera del alcance de este ticket. */
 
   .app-frame {
     @apply grid min-h-screen grid-cols-1 lg:h-screen lg:overflow-hidden;
@@ -79,7 +134,7 @@
   .op-rail {
     background:
       linear-gradient(180deg, var(--op-faint), transparent 40%),
-      linear-gradient(180deg, rgba(6, 14, 21, 0.98), rgba(4, 11, 17, 0.98));
+      var(--color-rail);
     border-color: var(--color-border-strong);
     @apply flex flex-row items-center gap-2.5 overflow-x-auto border-b px-3 py-2.5 lg:h-screen lg:flex-col lg:overflow-x-visible lg:overflow-y-auto lg:border-b-0 lg:border-r lg:px-2.5 lg:py-3.5;
   }
@@ -89,7 +144,7 @@
   }
 
   .op-tile {
-    background: rgba(14, 30, 42, 0.7);
+    background: var(--color-card);
     @apply relative flex h-14 w-14 flex-none flex-col items-center justify-center gap-1 rounded-[15px] border transition hover:border-[var(--color-border-strong)];
   }
 
@@ -104,15 +159,22 @@
   .op-tile[aria-pressed="true"] {
     border-color: var(--op);
     background: var(--op-soft);
-    box-shadow: 0 0 0 1px var(--op-line), 0 8px 20px rgba(3, 10, 16, 0.5);
+    box-shadow: 0 0 0 1px var(--op-line), var(--shadow-panel);
     @apply opacity-100;
   }
 
   /* La bandera del país que no está activo va apagada: el color de la bandera
-     no compite con el tinte, que es el que dice dónde estás. */
+     no compite con el tinte, que es el que dice dónde estás. Sobre fondo claro
+     se apaga **subiendo** la transparencia, no bajando el brillo: bajarlo la
+     volvía una mancha oscura, que es lo contrario de apagada. */
   .op-flag {
-    @apply inline-block flex-none rounded-[2px] border border-white/20 shadow-sm;
-    filter: saturate(0.2) brightness(0.55);
+    /* «Tenue» y no «suave»: la bandera de Guatemala tiene una franja blanca y
+       la baldosa también es blanca, así que esta línea es lo único que separa
+       una de otra. «Suave» daba 2,61:1 sobre el riel y no llegaba a los 3:1
+       que pide un objeto gráfico. */
+    border: 1px solid var(--color-text-dim);
+    @apply inline-block flex-none rounded-[2px];
+    filter: saturate(0.2) opacity(0.55);
     transition: filter 0.18s;
   }
 
@@ -122,7 +184,7 @@
   }
 
   .op-tile-code {
-    color: var(--color-text-soft);
+    color: var(--color-text-dim);
     @apply text-[10px] font-bold tracking-wider;
   }
 
@@ -131,7 +193,7 @@
   }
 
   .op-rail-icon {
-    @apply flex h-[30px] w-8 flex-none items-center justify-center rounded-lg border border-transparent text-[var(--color-text-soft)] transition hover:border-[var(--color-border)] hover:text-[var(--color-text)];
+    @apply flex h-[30px] w-8 flex-none items-center justify-center rounded-lg border border-transparent text-[var(--color-text-dim)] transition hover:border-[var(--color-border-strong)] hover:bg-[var(--color-hover)] hover:text-[var(--color-text)];
   }
 
   .op-rail-icon[aria-current="page"] {
@@ -141,28 +203,29 @@
   }
 
   .op-fold {
-    background: rgba(8, 19, 27, 0.7);
-    @apply flex h-6 w-6 flex-none items-center justify-center rounded-[7px] border text-[var(--color-text-soft)] transition hover:border-[var(--op-line)] hover:text-[var(--color-text)];
+    background: var(--color-card);
+    @apply flex h-6 w-6 flex-none items-center justify-center rounded-[7px] border text-[var(--color-text-dim)] transition hover:border-[var(--op-line)] hover:text-[var(--color-text)];
   }
 
   /* La raya entre salir y plegar. Los 6px que había antes no alcanzaban: el
      chevrón se falla hacia arriba, y arriba estaba la salida. */
   .op-rail-sep {
-    background: var(--color-border);
+    background: var(--color-border-strong);
     @apply my-2 block h-px w-5 flex-none;
   }
 
   /* Rojo solo al pasar por encima. Un icono rojo permanente al fondo del riel
      se lee como alarma de la operación, que es justo lo que no es. */
   .op-rail-icon.is-exit:hover {
-    border-color: rgba(248, 113, 113, 0.42);
+    border-color: color-mix(in srgb, var(--color-danger) 42%, transparent);
+    background: var(--state-escalada-bg);
     color: var(--color-danger);
   }
 
   .op-dialog {
-    background: linear-gradient(180deg, rgba(20, 38, 51, 0.96), rgba(10, 24, 34, 0.98));
+    background: var(--color-card);
     border-color: var(--color-border-strong);
-    box-shadow: 0 24px 60px rgba(3, 10, 16, 0.55);
+    box-shadow: var(--shadow-panel);
     color: var(--color-text);
     width: min(340px, calc(100vw - 2rem));
     /* `m-auto` no es decoración: el preflight de Tailwind pone `margin: 0` en
@@ -171,21 +234,23 @@
   }
 
   .op-dialog::backdrop {
-    background: rgba(4, 11, 17, 0.62);
+    /* El velo es el texto más oscuro rebajado, no un gris nuevo: sobre un panel
+       claro hace falta oscurecer, y ese oscuro ya está elegido. */
+    background: color-mix(in srgb, var(--color-text-strong) 38%, transparent);
     backdrop-filter: blur(2px);
   }
 
   .op-exit-confirm {
-    background: rgba(248, 113, 113, 0.14);
-    border-color: rgba(248, 113, 113, 0.45);
+    background: var(--state-escalada-bg);
+    border-color: color-mix(in srgb, var(--color-danger) 45%, transparent);
     color: var(--color-danger);
-    @apply inline-flex h-9 items-center justify-center rounded-md border px-3 text-sm font-semibold transition hover:bg-[rgba(248,113,113,0.22)] disabled:cursor-not-allowed disabled:opacity-60;
+    @apply inline-flex h-9 items-center justify-center rounded-md border px-3 text-sm font-semibold transition hover:brightness-[0.97] disabled:cursor-not-allowed disabled:opacity-60;
   }
 
   .op-column {
     background:
       linear-gradient(180deg, var(--op-soft), var(--op-faint) 38%, transparent 72%),
-      rgba(9, 20, 28, 0.86);
+      var(--color-menu);
     @apply flex flex-col border-b px-3 py-3 lg:h-screen lg:overflow-y-auto lg:border-b-0 lg:border-r lg:px-3 lg:py-4;
   }
 
@@ -195,7 +260,7 @@
   }
 
   .op-group-label {
-    color: var(--color-text-soft);
+    color: var(--color-text-dim);
     @apply text-[10px] font-semibold uppercase tracking-[0.1em];
   }
 
@@ -204,7 +269,7 @@
   }
 
   .op-group-items {
-    @apply ml-2.5 flex flex-col gap-0.5 border-l border-[var(--color-border)] pl-2.5;
+    @apply ml-2.5 flex flex-col gap-0.5 border-l border-[var(--color-border-strong)] pl-2.5;
   }
 
   .op-group.is-on .op-group-items {
@@ -214,6 +279,7 @@
   .app-main {
     /* min-w-0: es item de grid, y sin esto su mínimo lo fija el contenido
        (una línea con white-space:nowrap basta para empujar el documento). */
+    background: var(--color-surface);
     @apply min-h-screen min-w-0 lg:h-screen lg:min-h-0 lg:overflow-y-auto;
   }
 
@@ -222,70 +288,133 @@
   }
 
   .app-card {
-    background: var(--color-panel);
+    background: var(--color-card);
+    border-color: var(--color-border);
     box-shadow: var(--shadow-panel);
-    backdrop-filter: blur(18px);
     @apply rounded-lg border;
   }
 
   .app-card-muted {
-    background: var(--color-panel-2);
+    background: var(--color-surface);
+    border-color: var(--color-border);
     @apply rounded-lg border;
   }
 
-  .app-eyebrow {
-    color: var(--color-highlight);
-    @apply text-xs font-medium uppercase;
+  /* ── La escala de encabezados ─────────────────────────────────────────
+     Tres niveles con significado propio, que es lo que el panel no tenía: un
+     título se distinguía del cuerpo por tamaño y nada más.
+
+     `.app-eyebrow` **ya no existe**. Hacía dos trabajos a la vez —línea de
+     contexto de la página y encabezado de sección dentro del Catálogo— con un
+     solo aspecto, y son dos cosas distintas. Sus ocho usos se repartieron
+     entre `.app-context`, `.app-section` y `.app-label`. */
+
+  /* Dice de qué operación y de qué pantalla se trata. Va **sobre** el `h1`,
+     siempre, y una sola vez por pantalla. */
+  .app-context {
+    color: var(--color-ink);
+    @apply text-[10.5px] font-bold uppercase tracking-[0.11em];
+  }
+
+  .app-title {
+    @apply text-[34px] font-bold leading-tight tracking-[-0.03em];
+  }
+
+  /* Divide una pantalla por dentro. Es lo que no existía ni en el Inbox ni en
+     Pedidos, las dos que más se abren. */
+  .app-section {
+    color: var(--color-text-strong);
+    @apply text-base font-semibold;
+  }
+
+  /* Etiqueta de campo, para `dt` y `legend`: la misma forma que la línea de
+     contexto, pero en gris. La forma dice «esto rotula»; el color dice si
+     rotula la pantalla o un dato. */
+  .app-label {
+    color: var(--color-text-dim);
+    @apply text-[10.5px] font-bold uppercase tracking-[0.11em];
   }
 
   .app-muted {
     color: var(--color-text-dim);
   }
 
-  .app-soft {
-    color: var(--color-text-soft);
-  }
-
-  .app-title {
-    @apply text-xl font-semibold md:text-2xl;
-  }
-
   .app-subtitle {
     @apply max-w-2xl text-sm leading-5;
   }
 
+  /* ── Las etiquetas de estado de la fila ───────────────────────────────
+     **Ningún estado se codifica solo con color**: la etiqueta lleva el nombre
+     escrito y el color acompaña. Era criterio de aceptación, y con cinco
+     estados que pueden coincidir en una misma fila el matiz solo no alcanza. */
+
+  .state-chip {
+    @apply inline-flex items-center rounded-[5px] px-1.5 py-0.5 text-[9.5px] font-extrabold uppercase leading-none tracking-[0.06em];
+  }
+
+  .state-chip--espera {
+    background: var(--state-espera-bg);
+    color: var(--state-espera-fg);
+  }
+
+  .state-chip--auto {
+    background: var(--state-auto-bg);
+    color: var(--state-auto-fg);
+  }
+
+  .state-chip--escalada {
+    background: var(--state-escalada-bg);
+    color: var(--state-escalada-fg);
+  }
+
+  .state-chip--novedad {
+    background: var(--state-novedad-bg);
+    color: var(--state-novedad-fg);
+  }
+
+  .state-chip--sin-producto {
+    background: var(--state-sinprod-bg);
+    color: var(--state-sinprod-fg);
+  }
+
+  /* ── Controles ────────────────────────────────────────────────────────── */
+
   .app-input {
-    background: rgba(14, 29, 40, 0.9);
-    @apply h-9 w-full rounded-md border px-3 text-sm text-[var(--color-text)] outline-none transition focus:border-[var(--color-accent)] focus:ring-2 focus:ring-[rgba(110,231,183,0.16)];
+    background: var(--color-card);
+    @apply h-9 w-full rounded-md border px-3 text-sm text-[var(--color-text)] outline-none transition focus:border-[var(--color-ink)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--color-ink)_22%,transparent)];
   }
 
   .app-select {
-    background: rgba(14, 29, 40, 0.9);
-    @apply h-9 w-full rounded-md border px-3 text-sm text-[var(--color-text)] outline-none transition focus:border-[var(--color-accent)] focus:ring-2 focus:ring-[rgba(110,231,183,0.16)];
+    background: var(--color-card);
+    @apply h-9 w-full rounded-md border px-3 text-sm text-[var(--color-text)] outline-none transition focus:border-[var(--color-ink)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--color-ink)_22%,transparent)];
   }
 
   .app-textarea {
-    background: rgba(14, 29, 40, 0.9);
-    @apply w-full rounded-md border px-3 py-2 text-sm text-[var(--color-text)] outline-none transition focus:border-[var(--color-accent)] focus:ring-2 focus:ring-[rgba(110,231,183,0.16)];
+    background: var(--color-card);
+    @apply w-full rounded-md border px-3 py-2 text-sm text-[var(--color-text)] outline-none transition focus:border-[var(--color-ink)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--color-ink)_22%,transparent)];
   }
 
+  /* Tinta plena y texto blanco: 5,03:1. El degradado de menta que había aquí
+     no sobrevive al fondo claro — sobre menta, el texto oscuro que llevaba
+     daba menos de 2:1. */
   .app-button {
-    background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-strong) 100%);
-    color: #032617;
-    @apply inline-flex h-9 items-center justify-center rounded-md px-3 text-sm font-semibold transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50;
+    background: var(--color-ink);
+    color: var(--color-card);
+    @apply inline-flex h-9 items-center justify-center rounded-md px-3 text-sm font-semibold transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .app-button-secondary {
-    background: rgba(15, 31, 43, 0.88);
-    @apply inline-flex h-9 items-center justify-center rounded-md border px-3 text-sm font-semibold text-[var(--color-text)] transition hover:border-[var(--color-border-strong)] hover:bg-[rgba(22,40,53,0.96)];
+    background: var(--color-card);
+    @apply inline-flex h-9 items-center justify-center rounded-md border px-3 text-sm font-semibold text-[var(--color-text)] transition hover:border-[var(--color-border-strong)] hover:bg-[var(--color-hover)];
   }
 
   .app-pill {
+    color: var(--color-text-dim);
     @apply inline-flex items-center gap-2 rounded-md border px-2 py-1 text-xs font-medium;
   }
 
   .app-nav-link {
-    @apply flex h-[34px] items-center gap-2 rounded-lg border border-transparent px-2.5 text-[13px] font-medium text-[var(--color-text-dim)] transition hover:border-[var(--color-border)] hover:bg-[rgba(18,35,48,0.72)] hover:text-[var(--color-text)];
+    @apply flex h-[34px] items-center gap-2 rounded-lg border border-transparent px-2.5 text-[13px] font-medium text-[var(--color-text-dim)] transition hover:border-[var(--color-border)] hover:bg-[var(--color-hover)] hover:text-[var(--color-text)];
   }
 
   .app-nav-link[aria-current="page"] {
@@ -299,7 +428,7 @@
   }
 
   .app-table thead {
-    @apply text-left text-[11px] uppercase text-[var(--color-text-soft)];
+    @apply text-left text-[11px] uppercase text-[var(--color-text-dim)];
   }
 
   .app-table th {
@@ -319,9 +448,9 @@
      todavía no llegó. La **silueta** la pone cada pantalla — esta clase no
      sabe nada de bandejas ni de tablas, solo pinta el hueco.
 
-     Es `--color-panel-3`, el mismo gris con el que el panel dibuja su tercera
-     capa, y no un gris nuevo: el esqueleto tiene que leerse como parte de la
-     pantalla que viene, no como otra cosa encima.
+     Es `--color-border-strong`, la línea de énfasis, y no un gris nuevo: el
+     esqueleto tiene que leerse como parte de la pantalla que viene, no como
+     otra cosa encima.
 
      **Late en cada barra y no en un grupo**, y aun así va acompasado: todas
      las barras de un `loading.tsx` nacen en el mismo fotograma, así que sus
@@ -330,7 +459,7 @@
      latido, que es lo que la vuelve información y no adorno. */
 
   .app-skeleton {
-    background: var(--color-panel-3);
+    background: var(--color-border-strong);
     @apply rounded-md motion-safe:animate-pulse;
   }
 }

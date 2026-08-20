@@ -254,7 +254,7 @@ export function CatalogoClient({ view }: { view: CatalogView }) {
           {/* ── barra: buscar · filtrar · ordenar · columnas ─────────── */}
           <div className="flex flex-wrap items-center gap-2 border-b border-[var(--color-border)] p-2">
             <div className="relative min-w-[220px] flex-1">
-              <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--color-text-soft)]" />
+              <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--color-text-dim)]" />
               <input
                 className="app-input pl-7"
                 placeholder="Buscar producto o ID de anuncio"
@@ -296,7 +296,7 @@ export function CatalogoClient({ view }: { view: CatalogView }) {
                   {s.label}
                 </MenuItem>
               ))}
-              <div className="px-3 py-1 text-[10px] uppercase text-[var(--color-text-soft)]">
+              <div className="px-3 py-1 text-[10px] uppercase text-[var(--color-text-dim)]">
                 Dirección
               </div>
               <MenuItem
@@ -338,7 +338,7 @@ export function CatalogoClient({ view }: { view: CatalogView }) {
                 </Chip>
               ))}
               <button
-                className="ml-1 text-[11px] text-[var(--color-text-soft)] underline underline-offset-2 hover:text-[var(--color-text)]"
+                className="ml-1 text-[11px] text-[var(--color-text-dim)] underline underline-offset-2 hover:text-[var(--color-text)]"
                 onClick={() => {
                   setFilters([]);
                   setQ("");
@@ -390,8 +390,8 @@ export function CatalogoClient({ view }: { view: CatalogView }) {
                     <tr
                       key={r.id}
                       onClick={() => setSelected(r.id)}
-                      className={`cursor-pointer transition hover:bg-[rgba(18,35,48,0.6)] ${
-                        selected === r.id ? "bg-[rgba(18,35,48,0.9)]" : ""
+                      className={`cursor-pointer transition hover:bg-[var(--color-surface)] ${
+                        selected === r.id ? "bg-[var(--color-hover)]" : ""
                       }`}
                     >
                       <td
@@ -408,7 +408,7 @@ export function CatalogoClient({ view }: { view: CatalogView }) {
                         <span
                           className={`flex h-4 w-4 items-center justify-center rounded border ${
                             picked.includes(r.id)
-                              ? "border-[var(--color-accent)] bg-[var(--color-accent)] text-[#04121a]"
+                              ? "border-[var(--color-ink)] bg-[var(--color-ink)] text-[var(--color-card)]"
                               : "border-[var(--color-border-strong)]"
                           }`}
                         >
@@ -437,7 +437,7 @@ export function CatalogoClient({ view }: { view: CatalogView }) {
                       {cols.anuncios ? (
                         <td className="align-middle">
                           {r.ads.length === 0 ? (
-                            <span className="app-pill border-[rgba(248,113,113,0.4)] bg-[rgba(248,113,113,0.12)] text-[var(--color-danger)]">
+                            <span className="app-pill border-[color-mix(in_srgb,var(--state-escalada-fg)_35%,transparent)] bg-[var(--state-escalada-bg)] text-[var(--color-danger)]">
                               sin anuncios
                             </span>
                           ) : (
@@ -460,7 +460,7 @@ export function CatalogoClient({ view }: { view: CatalogView }) {
                             <span
                               className={
                                 enviablesDe(r) === 0
-                                  ? "text-[var(--color-text-soft)]"
+                                  ? "text-[var(--color-text-dim)]"
                                   : "text-[var(--color-text)]"
                               }
                             >
@@ -480,7 +480,7 @@ export function CatalogoClient({ view }: { view: CatalogView }) {
                               // en la columna donde se escanea el catálogo esa
                               // diferencia es la que hace que alguien lo
                               // complete antes de que un cliente lo pida.
-                              <span className="text-amber-300">
+                              <span className="text-[var(--state-espera-fg)]">
                                 Sin precio
                               </span>
                             ) : (
@@ -502,7 +502,7 @@ export function CatalogoClient({ view }: { view: CatalogView }) {
 
           {/* ── total y estado del filtro, al pie ────────────────────── */}
           {view.rows.length > 0 ? (
-            <div className="flex items-center gap-2 border-t border-[var(--color-border)] px-3 py-2 text-[11px] text-[var(--color-text-soft)]">
+            <div className="flex items-center gap-2 border-t border-[var(--color-border)] px-3 py-2 text-[11px] text-[var(--color-text-dim)]">
               <span>
                 {visible.length} de {view.rows.length} producto
                 {view.rows.length === 1 ? "" : "s"}
@@ -545,8 +545,8 @@ export function CatalogoClient({ view }: { view: CatalogView }) {
 function SenalDeReferencias({ signal }: { signal: CatalogView["signal"] }) {
   const tono =
     signal.health === "el_mapa_se_esta_consultando"
-      ? "border-[rgba(110,231,183,0.35)] bg-[rgba(110,231,183,0.08)]"
-      : "border-[rgba(244,193,109,0.35)] bg-[rgba(244,193,109,0.08)]";
+      ? "border-[color-mix(in_srgb,var(--color-ink)_35%,transparent)] bg-[var(--color-ink-wash)]"
+      : "border-[color-mix(in_srgb,var(--state-espera-fg)_35%,transparent)] bg-[var(--state-espera-bg)]";
 
   const titulo =
     signal.health === "el_mapa_se_esta_consultando"
@@ -570,7 +570,7 @@ function SenalDeReferencias({ signal }: { signal: CatalogView["signal"] }) {
     <div className={`rounded-lg border px-3 py-2.5 ${tono}`}>
       <p className="text-xs font-semibold text-[var(--color-text)]">{titulo}</p>
       <p className="app-muted mt-1 text-[11px] leading-relaxed">{cuerpo}</p>
-      <p className="mt-1 text-[10px] text-[var(--color-text-soft)]">
+      <p className="mt-1 text-[10px] text-[var(--color-text-dim)]">
         {signal.registeredAds} anuncio{signal.registeredAds === 1 ? "" : "s"} registrado
         {signal.registeredAds === 1 ? "" : "s"} · {signal.clicksAllTime} clic
         {signal.clicksAllTime === 1 ? "" : "s"} recibidos desde siempre
@@ -682,7 +682,7 @@ function Ficha({
       <SinPrecioNoSeVende row={row} />
 
       {row.source === "shopify" ? (
-        <div className="rounded-md border border-[rgba(157,187,210,0.28)] bg-[rgba(18,35,48,0.9)] px-2.5 py-2 text-[11px] leading-relaxed text-[var(--color-text-dim)]">
+        <div className="rounded-md border border-[var(--color-border-strong)] bg-[var(--color-hover)] px-2.5 py-2 text-[11px] leading-relaxed text-[var(--color-text-dim)]">
           {store.store === "connected" ? (
             <>
               Este producto vive en <strong>{store.shopDomain}</strong>. Nombre,
@@ -708,7 +708,7 @@ function Ficha({
       ) : null}
 
       <section className="space-y-1.5">
-        <h3 className="app-eyebrow">
+        <h3 className="app-section">
           {editable ? "Información · editable acá" : "Información · de la tienda"}
         </h3>
         {editable ? (
@@ -750,7 +750,7 @@ function Ficha({
                 {guardando ? "Guardando…" : "Guardar"}
               </button>
               {guardado ? (
-                <span className="text-[11px] text-[var(--color-accent)]">
+                <span className="text-[11px] text-[var(--color-ink)]">
                   Guardado
                 </span>
               ) : null}
@@ -851,7 +851,7 @@ function CampoPrecio({
 function SinPrecioNoSeVende({ row }: { row: CatalogRow }) {
   if (row.source !== "native" || row.nativePrice !== null) return null;
   return (
-    <div className="rounded-md border border-amber-400/25 bg-amber-500/10 px-2.5 py-2 text-[11px] leading-relaxed text-[var(--color-text-dim)]">
+    <div className="rounded-md border border-[color-mix(in_srgb,var(--state-espera-fg)_35%,transparent)] bg-[var(--state-espera-bg)] px-2.5 py-2 text-[11px] leading-relaxed text-[var(--color-text-dim)]">
       <strong className="text-[var(--color-text)]">
         Sin precio, este producto no se puede vender.
       </strong>{" "}
@@ -921,7 +921,7 @@ function Anuncios({
 
   return (
     <section className="space-y-2 border-t border-[var(--color-border)] pt-3">
-      <h3 className="app-eyebrow">
+      <h3 className="app-section">
         Anuncios que apuntan acá · {row.ads.length}
       </h3>
 
@@ -957,12 +957,12 @@ function Anuncios({
       {anuncios?.account !== "connected" && <CuentaPublicitariaSinConectar />}
 
       {row.ads.length === 0 ? (
-        <div className="rounded-md border border-[rgba(248,113,113,0.35)] bg-[rgba(248,113,113,0.08)] px-2.5 py-2">
+        <div className="rounded-md border border-[color-mix(in_srgb,var(--state-escalada-fg)_35%,transparent)] bg-[var(--state-escalada-bg)] px-2.5 py-2">
           <p className="flex items-center gap-1.5 text-[11px] font-semibold text-[var(--color-danger)]">
             <AlertTriangle className="h-3.5 w-3.5" />
             Los leads de este producto no se van a reconocer.
           </p>
-          <p className="app-muted mt-1 text-[11px] leading-relaxed">
+          <p className="mt-1 text-[11px] leading-relaxed text-[var(--state-escalada-fg)]">
             Sin un anuncio registrado, el reconocimiento tiene que adivinar entre
             los nombres casi idénticos del catálogo — y ahí está el grueso del
             volumen. Registrar el ID lo resuelve para siempre.
@@ -975,21 +975,21 @@ function Anuncios({
               key={ad.adId}
               className={`flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-md border px-2 py-1.5 ${
                 ad.alsoPointsTo.length > 0
-                  ? "border-[rgba(244,193,109,0.35)] bg-[rgba(244,193,109,0.07)]"
-                  : "border-[var(--color-border)] bg-[rgba(18,35,48,0.6)]"
+                  ? "border-[color-mix(in_srgb,var(--state-espera-fg)_35%,transparent)] bg-[var(--state-espera-bg)]"
+                  : "border-[var(--color-border)] bg-[var(--color-surface)]"
               }`}
             >
               <span className="font-mono text-[12px] font-semibold text-[var(--color-text)]">
                 {ad.adId}
               </span>
               {ad.alsoPointsTo.length > 0 ? (
-                <span className="text-[11px] text-[var(--color-highlight)]">
+                <span className="text-[11px] text-[var(--color-warn)]">
                   · también apunta a{" "}
                   {ad.alsoPointsTo.map((p) => p.name).join(", ")}
                 </span>
               ) : null}
               <button
-                className="ml-auto text-[var(--color-text-soft)] hover:text-[var(--color-danger)]"
+                className="ml-auto text-[var(--color-text-dim)] hover:text-[var(--color-danger)]"
                 onClick={() => quitar(ad.adId)}
                 aria-label={`Quitar el anuncio ${ad.adId}`}
               >
@@ -1122,7 +1122,7 @@ function Archivos({
   return (
     <section className="space-y-1.5 border-t border-[var(--color-border)] pt-3">
       <div className="flex items-center gap-2">
-        <h3 className="app-eyebrow flex-1">
+        <h3 className="app-section flex-1">
           Archivos
           {row.files.length > 0 ? (
             <span className="ml-1.5 text-[var(--color-text-dim)]">
@@ -1148,14 +1148,14 @@ function Archivos({
             className={`flex items-center gap-2.5 rounded-md border px-2.5 py-2 ${
               habilitado
                 ? "border-[var(--color-border)]"
-                : "border-[rgba(248,113,113,0.35)] bg-[rgba(248,113,113,0.06)]"
+                : "border-[color-mix(in_srgb,var(--state-escalada-fg)_35%,transparent)] bg-[var(--state-escalada-bg)]"
             }`}
           >
             <span
               className={`flex h-7 w-9 flex-none items-center justify-center rounded text-[9.5px] font-bold tracking-wide ${
                 habilitado
-                  ? "bg-[rgba(18,35,48,0.9)] text-[var(--color-text-soft)]"
-                  : "bg-[rgba(248,113,113,0.14)] text-[var(--color-danger)]"
+                  ? "bg-[var(--color-hover)] text-[var(--color-text-dim)]"
+                  : "bg-[var(--state-escalada-bg)] text-[var(--color-danger)]"
               }`}
             >
               {habilitado ? (
@@ -1200,16 +1200,16 @@ function Archivos({
               onClick={() => marcar(f, !f.sendable)}
               className={`relative h-[19px] w-[34px] flex-none rounded-full border transition ${
                 !habilitado
-                  ? "cursor-not-allowed border-[var(--color-border)] bg-[rgba(8,19,27,0.8)] opacity-40"
+                  ? "cursor-not-allowed border-[var(--color-border)] bg-[var(--color-surface)] opacity-40"
                   : sale
-                    ? "border-[rgba(110,231,183,0.5)] bg-[rgba(110,231,183,0.28)]"
-                    : "border-[var(--color-border)] bg-[rgba(8,19,27,0.8)]"
+                    ? "border-[color-mix(in_srgb,var(--color-ink)_40%,transparent)] bg-[var(--color-ink-soft)]"
+                    : "border-[var(--color-border)] bg-[var(--color-surface)]"
               }`}
             >
               <span
                 className={`absolute top-[2px] h-[13px] w-[13px] rounded-full transition-all ${
                   sale
-                    ? "left-[18px] bg-[var(--color-accent)]"
+                    ? "left-[18px] bg-[var(--color-ink)]"
                     : "left-[2px] bg-[var(--color-text-soft)]"
                 }`}
               />
@@ -1219,7 +1219,7 @@ function Archivos({
               type="button"
               onClick={() => quitar(f)}
               aria-label={`Quitar ${f.filename}`}
-              className="flex-none rounded p-1 text-[var(--color-text-soft)] transition hover:text-[var(--color-danger)]"
+              className="flex-none rounded p-1 text-[var(--color-text-dim)] transition hover:text-[var(--color-danger)]"
             >
               <Trash2 className="h-3.5 w-3.5" />
             </button>
@@ -1228,7 +1228,7 @@ function Archivos({
       })}
 
       {rechazo ? (
-        <p className="rounded-md border border-[rgba(248,113,113,0.4)] bg-[rgba(248,113,113,0.08)] px-2.5 py-2 text-[11px] leading-relaxed text-[var(--color-danger)]">
+        <p className="rounded-md border border-[color-mix(in_srgb,var(--state-escalada-fg)_35%,transparent)] bg-[var(--state-escalada-bg)] px-2.5 py-2 text-[11px] leading-relaxed text-[var(--color-danger)]">
           {rechazo}
         </p>
       ) : null}
@@ -1377,8 +1377,8 @@ function ElegirAnuncio({
                 onClick={() => onElegir(a.id)}
                 className={`flex w-full items-baseline gap-2 rounded-md border px-2 py-1.5 text-left transition ${
                   ya
-                    ? "cursor-default border-[var(--color-border)] bg-[rgba(18,35,48,0.35)] opacity-60"
-                    : "border-[var(--color-border)] bg-[rgba(18,35,48,0.6)] hover:border-[var(--color-accent)]"
+                    ? "cursor-default border-[var(--color-border)] bg-[var(--color-surface)] opacity-60"
+                    : "border-[var(--color-border)] bg-[var(--color-surface)] hover:border-[var(--color-ink)]"
                 }`}
               >
                 <span className="min-w-0 flex-1">
@@ -1393,7 +1393,7 @@ function ElegirAnuncio({
                   className={`shrink-0 text-[10px] uppercase ${
                     a.status === "ACTIVE"
                       ? "text-[var(--color-success)]"
-                      : "text-[var(--color-text-soft)]"
+                      : "text-[var(--color-text-dim)]"
                   }`}
                 >
                   {ya ? "ya registrado" : a.status === "ACTIVE" ? "activo" : "pausado"}
@@ -1470,7 +1470,7 @@ function DescripcionDeLaTienda({ texto }: { texto: string }) {
             className="pointer-events-none absolute inset-x-0 bottom-0 h-8"
             style={{
               background:
-                "linear-gradient(to bottom, transparent, var(--color-panel))",
+                "linear-gradient(to bottom, transparent, var(--color-card))",
             }}
           />
         )}
@@ -1478,7 +1478,7 @@ function DescripcionDeLaTienda({ texto }: { texto: string }) {
       <button
         type="button"
         onClick={() => setAbierta((v) => !v)}
-        className="text-[11px] text-[var(--color-accent)] underline underline-offset-2 hover:text-[var(--color-accent-hover)]"
+        className="text-[11px] text-[var(--color-ink)] underline underline-offset-2 hover:text-[var(--color-ink)]"
       >
         {abierta
           ? "Ver menos"
@@ -1668,7 +1668,7 @@ function ConectarDeLaTienda({
       <h2 className="text-sm font-semibold">Conectar un producto de la tienda</h2>
 
       {estado.store !== "connected" ? (
-        <div className="rounded-md border border-[rgba(244,193,109,0.35)] bg-[rgba(244,193,109,0.08)] px-2.5 py-2 text-[11px] leading-relaxed">
+        <div className="rounded-md border border-[color-mix(in_srgb,var(--state-espera-fg)_35%,transparent)] bg-[var(--state-espera-bg)] px-2.5 py-2 text-[11px] leading-relaxed">
           {estado.store === "not_connected" ? (
             <>
               <strong className="text-[var(--color-text)]">
@@ -1695,7 +1695,7 @@ function ConectarDeLaTienda({
       ) : (
         <>
           <div className="relative">
-            <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--color-text-soft)]" />
+            <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--color-text-dim)]" />
             <input
               className="app-input pl-7"
               placeholder={`Buscar en ${estado.shopDomain}`}
@@ -1718,7 +1718,7 @@ function ConectarDeLaTienda({
                 return (
                   <div
                     key={p.id}
-                    className="flex items-center gap-2 rounded-md border border-[var(--color-border)] bg-[rgba(18,35,48,0.6)] px-2 py-1.5"
+                    className="flex items-center gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1.5"
                   >
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-xs font-medium">{p.title}</div>
@@ -1791,7 +1791,7 @@ function AsociarAVarios({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2 border-b border-[var(--color-border)] bg-[rgba(110,231,183,0.06)] px-2 py-2">
+    <div className="flex flex-wrap items-center gap-2 border-b border-[var(--color-border)] bg-[var(--color-ink-wash)] px-2 py-2">
       <strong className="text-xs">{picked.length} seleccionados</strong>
       <input
         className="app-input h-8 max-w-[220px] flex-1"
@@ -1822,11 +1822,11 @@ function AsociarAVarios({
 
 function OrigenPill({ source }: { source: CatalogRow["source"] }) {
   return source === "shopify" ? (
-    <span className="app-pill border-[rgba(110,231,183,0.35)] bg-[rgba(110,231,183,0.1)] text-[var(--color-accent)]">
+    <span className="app-pill border-[color-mix(in_srgb,var(--color-ink)_35%,transparent)] bg-[var(--color-ink-wash)] text-[var(--color-ink)]">
       Tienda
     </span>
   ) : (
-    <span className="app-pill border-[rgba(157,187,210,0.28)] bg-[rgba(26,47,62,0.78)] text-[var(--color-text-dim)]">
+    <span className="app-pill border-[var(--color-border-strong)] bg-[var(--color-surface)] text-[var(--color-text-dim)]">
       Panel
     </span>
   );
@@ -1840,11 +1840,11 @@ function Chip({
   onRemove: () => void;
 }) {
   return (
-    <span className="app-pill border-[var(--color-border-strong)] bg-[rgba(26,47,62,0.78)] text-[11px]">
+    <span className="app-pill border-[var(--color-border-strong)] bg-[var(--color-surface)] text-[11px]">
       {children}
       <button
         onClick={onRemove}
-        className="text-[var(--color-text-soft)] hover:text-[var(--color-text)]"
+        className="text-[var(--color-text-dim)] hover:text-[var(--color-text)]"
         aria-label="Quitar filtro"
       >
         <X className="h-3 w-3" />
@@ -1878,14 +1878,14 @@ function Menu({
       >
         {label}
         {count ? (
-          <span className="rounded bg-[var(--color-accent)] px-1 text-[10px] font-bold text-[#04121a]">
+          <span className="rounded bg-[var(--color-ink)] px-1 text-[10px] font-bold text-[var(--color-card)]">
             {count}
           </span>
         ) : null}
         <ChevronDown className="h-3.5 w-3.5" />
       </button>
       {open ? (
-        <div className="absolute right-0 z-20 mt-1 min-w-[190px] overflow-hidden rounded-md border border-[var(--color-border-strong)] bg-[var(--color-bg-soft)] py-1 shadow-[var(--shadow-panel)]">
+        <div className="absolute right-0 z-20 mt-1 min-w-[190px] overflow-hidden rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface)] py-1 shadow-[var(--shadow-panel)]">
           {children}
         </div>
       ) : null}
@@ -1904,7 +1904,7 @@ function MenuItem({
 }) {
   return (
     <button
-      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--color-text-dim)] hover:bg-[rgba(18,35,48,0.9)] hover:text-[var(--color-text)]"
+      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-[var(--color-text-dim)] hover:bg-[var(--color-hover)] hover:text-[var(--color-text)]"
       onClick={onClick}
     >
       <span className="w-3">{on ? <Check className="h-3 w-3" /> : null}</span>

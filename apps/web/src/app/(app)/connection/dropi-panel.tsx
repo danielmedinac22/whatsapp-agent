@@ -234,7 +234,7 @@ export function DropiPanel() {
           <h2 className="text-xl font-semibold">Conexión de Dropi</h2>
           <p className="mt-1 text-sm leading-5 text-[var(--color-text-dim)]">
             Sincroniza pedidos, marca como confirmados (PUT
-            <code className="mx-1 rounded bg-[rgba(8,21,30,0.72)] px-1">
+            <code className="mx-1 rounded bg-[var(--color-ink-wash)] px-1">
               status=PENDIENTE
             </code>
             ) y notifica al cliente cuando cambia el estado de la guía.
@@ -242,13 +242,13 @@ export function DropiPanel() {
         </div>
 
         {loaded && snap?.hasBearer && !editing && (
-          <div className="rounded-lg border border-emerald-400/25 bg-emerald-500/10 p-4">
+          <div className="rounded-lg border border-[color-mix(in_srgb,var(--state-auto-fg)_35%,transparent)] bg-[var(--state-auto-bg)] p-4">
             <div className="flex items-start gap-3">
-              <span className="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500/25 text-emerald-200">
+              <span className="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-full bg-[var(--state-auto-bg)] text-[var(--state-auto-fg)]">
                 ✓
               </span>
               <div className="min-w-0 flex-1">
-                <p className="text-xs uppercase tracking-wide text-emerald-300/80">
+                <p className="text-xs uppercase tracking-wide text-[var(--state-auto-fg)]">
                   Conectado
                 </p>
                 <p className="truncate text-sm font-semibold text-[var(--color-text)]">
@@ -279,13 +279,13 @@ export function DropiPanel() {
           </div>
         )}
         {loaded && !snap?.hasBearer && (
-          <div className="rounded-lg border border-amber-400/30 bg-amber-500/10 p-3 text-sm text-amber-100">
+          <div className="rounded-lg border border-[color-mix(in_srgb,var(--state-espera-fg)_35%,transparent)] bg-[var(--state-espera-bg)] p-3 text-sm text-[var(--state-espera-fg)]">
             Sin token activo. Guarda email + password y pulsa &laquo;Probar
             auto-login&raquo;, o pega un bearer manual.
           </div>
         )}
         {loaded && snap?.lastAutoLoginError && (
-          <div className="rounded-lg border border-red-500/25 bg-red-950/20 p-3 text-sm text-red-100">
+          <div className="rounded-lg border border-[color-mix(in_srgb,var(--state-escalada-fg)_35%,transparent)] bg-[var(--state-escalada-bg)] p-3 text-sm text-[var(--state-escalada-fg)]">
             Último auto-login falló: {snap.lastAutoLoginError}
             {snap.lastAutoLoginAt
               ? ` (${new Date(snap.lastAutoLoginAt).toLocaleString()})`
@@ -294,7 +294,7 @@ export function DropiPanel() {
         )}
 
         {loaded && snap?.has2faPending && (
-          <div className="space-y-2 rounded-lg border border-orange-400/30 bg-orange-500/10 p-3 text-sm text-orange-100">
+          <div className="space-y-2 rounded-lg border border-[color-mix(in_srgb,var(--state-espera-fg)_35%,transparent)] bg-[var(--state-espera-bg)] p-3 text-sm text-[var(--state-espera-fg)]">
             <div className="font-semibold">🔐 Dropi pidió código 2FA</div>
             <div className="text-xs">
               Te lo pedimos por WhatsApp{snap.adminPhone ? ` al ${snap.adminPhone}` : ""}
@@ -327,7 +327,7 @@ export function DropiPanel() {
         <>
         <div className="grid gap-3 md:grid-cols-2">
           <label className="space-y-1 text-sm">
-            <span className="text-[11px] uppercase text-[var(--color-text-soft)]">
+            <span className="text-[11px] uppercase text-[var(--color-text-dim)]">
               Email Dropi (para login automático)
             </span>
             <input
@@ -340,7 +340,7 @@ export function DropiPanel() {
             />
           </label>
           <label className="space-y-1 text-sm">
-            <span className="text-[11px] uppercase text-[var(--color-text-soft)]">
+            <span className="text-[11px] uppercase text-[var(--color-text-dim)]">
               Password Dropi
               {snap?.hasPassword && (
                 <span className="ml-2 text-[var(--color-text-dim)]">
@@ -360,7 +360,7 @@ export function DropiPanel() {
         </div>
 
         <label className="space-y-1 text-sm">
-          <span className="text-[11px] uppercase text-[var(--color-text-soft)]">
+          <span className="text-[11px] uppercase text-[var(--color-text-dim)]">
             Bearer manual (temporal — pegar JWT desde DevTools)
           </span>
           <input
@@ -375,7 +375,7 @@ export function DropiPanel() {
         </label>
 
         <label className="space-y-1 text-sm">
-          <span className="text-[11px] uppercase text-[var(--color-text-soft)]">
+          <span className="text-[11px] uppercase text-[var(--color-text-dim)]">
             Teléfono admin para 2FA (E.164 sin +, ej. 573167405767)
           </span>
           <input
@@ -395,7 +395,7 @@ export function DropiPanel() {
         </label>
 
         <label className="space-y-1 text-sm">
-          <span className="text-[11px] uppercase text-[var(--color-text-soft)]">
+          <span className="text-[11px] uppercase text-[var(--color-text-dim)]">
             Base URL de assets (CDN de Dropi para PDFs de guías)
           </span>
           <input
@@ -458,8 +458,8 @@ export function DropiPanel() {
           <div
             className={`rounded-lg border p-3 text-sm ${
               msg.kind === "ok"
-                ? "border-emerald-400/18 bg-emerald-500/10"
-                : "border-red-500/25 bg-red-950/20 text-red-100"
+                ? "border-[color-mix(in_srgb,var(--state-auto-fg)_35%,transparent)] bg-[var(--state-auto-bg)]"
+                : "border-[color-mix(in_srgb,var(--state-escalada-fg)_35%,transparent)] bg-[var(--state-escalada-bg)] text-[var(--state-escalada-fg)]"
             }`}
           >
             {msg.text}
@@ -487,7 +487,7 @@ export function DropiPanel() {
             <button
               onClick={disconnect}
               disabled={busy}
-              className="app-button-secondary border-red-500/25 text-red-100 hover:bg-red-950/30"
+              className="app-button-secondary border-[color-mix(in_srgb,var(--state-escalada-fg)_35%,transparent)] text-[var(--state-escalada-fg)] hover:bg-[var(--state-escalada-bg)]"
             >
               Desconectar
             </button>
@@ -501,7 +501,7 @@ export function DropiPanel() {
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-baseline gap-2">
-      <span className="text-[10px] uppercase tracking-wide text-[var(--color-text-soft)]">
+      <span className="text-[10px] uppercase tracking-wide text-[var(--color-text-dim)]">
         {label}
       </span>
       <span className="truncate text-[var(--color-text)]">{value}</span>

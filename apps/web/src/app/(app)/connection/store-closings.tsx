@@ -58,7 +58,7 @@ export function StoreClosings() {
   const reintentando = closings.filter((c) => !c.awaitingHuman);
 
   return (
-    <div className="space-y-3 border-t border-[rgba(255,255,255,0.06)] pt-4">
+    <div className="space-y-3 border-t border-[var(--color-border)] pt-4">
       <div>
         <h3 className="text-sm font-semibold text-[var(--color-text)]">
           Cierres que no llegaron a la tienda
@@ -105,8 +105,8 @@ function Grupo({
     <div
       className={`rounded-lg border p-3 ${
         tono === "err"
-          ? "border-red-500/25 bg-red-950/20"
-          : "border-amber-400/25 bg-amber-500/10"
+          ? "border-[color-mix(in_srgb,var(--state-escalada-fg)_35%,transparent)] bg-[var(--state-escalada-bg)]"
+          : "border-[color-mix(in_srgb,var(--state-espera-fg)_35%,transparent)] bg-[var(--state-espera-bg)]"
       }`}
     >
       <p className="text-sm font-semibold text-[var(--color-text)]">{titulo}</p>
@@ -117,7 +117,7 @@ function Grupo({
         {items.map((c) => (
           <li
             key={c.id}
-            className="rounded-md bg-[rgba(8,21,30,0.45)] p-2 text-xs leading-5"
+            className="rounded-md bg-[var(--color-surface)] p-2 text-xs leading-5"
           >
             <div className="flex flex-wrap items-baseline gap-x-2">
               <span className="font-medium text-[var(--color-text)]">
@@ -128,13 +128,13 @@ function Grupo({
                   {c.customerPhone}
                 </span>
               )}
-              <span className="text-[var(--color-text-soft)]">
+              <span className="text-[var(--color-text-dim)]">
                 {new Date(c.createdAt).toLocaleString()}
               </span>
             </div>
             <div className="mt-1 text-[var(--color-text-dim)]">{c.reason}</div>
             {!c.awaitingHuman && (
-              <div className="mt-0.5 text-[var(--color-text-soft)]">
+              <div className="mt-0.5 text-[var(--color-text-dim)]">
                 Intento {c.attempts} de {c.maxAttempts}
                 {c.nextAttemptAt
                   ? ` · próximo ${new Date(c.nextAttemptAt).toLocaleString()}`

@@ -3,11 +3,19 @@
 import { useEffect, useState } from "react";
 import type { WaConnectionStatus } from "@wa/shared";
 
+/**
+ * El punto de color de cada estado, con el par de estado que le corresponde.
+ *
+ * Es el texto del par (`-fg`) y no el fondo: un punto de 8px es un objeto
+ * gráfico, y el relleno claro del par no llega a los 3:1 que pide AA para
+ * distinguirse del panel. **El color no va solo**: al lado se escribe el estado
+ * con su nombre, que es lo que lo hace legible sin depender del matiz.
+ */
 const COLOR: Record<WaConnectionStatus, string> = {
-  connected: "bg-emerald-500",
-  connecting: "bg-amber-500",
-  qr: "bg-amber-500",
-  disconnected: "bg-red-500",
+  connected: "bg-[var(--state-auto-fg)]",
+  connecting: "bg-[var(--state-espera-fg)]",
+  qr: "bg-[var(--state-espera-fg)]",
+  disconnected: "bg-[var(--state-escalada-fg)]",
 };
 
 const LABEL: Record<WaConnectionStatus, string> = {

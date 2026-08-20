@@ -138,7 +138,7 @@ export function VendedorForm({
             placeholder="Sebastián"
           />
           <div className="space-y-1">
-            <label className="text-[11px] uppercase text-[var(--color-text-soft)]">
+            <label className="text-[11px] uppercase text-[var(--color-text-dim)]">
               Número que responde
             </label>
             <input
@@ -186,12 +186,12 @@ export function VendedorForm({
       </section>
 
       {/* ── El límite ─ el único campo del panel que gasta plata ──────── */}
-      <section className="app-card border-[rgba(244,193,109,0.4)] bg-[linear-gradient(180deg,rgba(244,193,109,0.08),rgba(244,193,109,0.03))] p-4">
+      <section className="app-card border-[color-mix(in_srgb,var(--state-espera-fg)_35%,transparent)] bg-[var(--state-espera-bg)] p-4">
         <div className="flex flex-wrap items-center gap-3">
-          <h2 className="text-base font-semibold text-[var(--color-highlight)]">
+          <h2 className="text-base font-semibold text-[var(--color-warn)]">
             Límite de descuento
           </h2>
-          <span className="rounded bg-[var(--color-highlight)] px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wider text-[#06121b]">
+          <span className="rounded bg-[var(--color-warn)] px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wider text-[var(--color-card)]">
             tiene consecuencia
           </span>
         </div>
@@ -216,8 +216,8 @@ export function VendedorForm({
                  puede pintarse como una alarma. */
               className={`h-11 w-24 rounded-md border px-3 text-center text-lg font-bold tabular-nums outline-none transition ${
                 prohibido
-                  ? "border-[rgba(110,231,183,0.45)] bg-[rgba(4,20,15,0.6)] text-[var(--color-accent)]"
-                  : "border-[rgba(244,193,109,0.45)] bg-[rgba(20,15,4,0.6)] text-[var(--color-highlight)]"
+                  ? "border-[color-mix(in_srgb,var(--color-ink)_40%,transparent)] bg-[var(--state-auto-bg)] text-[var(--color-ink)]"
+                  : "border-[color-mix(in_srgb,var(--state-espera-fg)_40%,transparent)] bg-[var(--state-espera-bg)] text-[var(--color-warn)]"
               }`}
             />
             <span className="text-sm text-[var(--color-text-dim)]">%</span>
@@ -225,7 +225,7 @@ export function VendedorForm({
           <p className="max-w-[46ch] flex-1 text-xs leading-relaxed text-[var(--color-text-dim)]">
             {prohibido ? (
               <>
-                <strong className="text-[var(--color-accent)]">
+                <strong className="text-[var(--color-ink)]">
                   Los descuentos están prohibidos.
                 </strong>{" "}
                 Si el cliente insiste con el precio, el vendedor defiende el
@@ -249,8 +249,8 @@ export function VendedorForm({
             definido: está numerado. La pregunta se reformula sola con el
             límite en cero, porque prohibir descuentos no evita que se los
             pidan — solo cambia qué es «pasarse». ──────────────────────── */}
-        <div className="mt-4 border-t border-[rgba(244,193,109,0.25)] pt-3">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-text-soft)]">
+        <div className="mt-4 border-t border-[color-mix(in_srgb,var(--state-espera-fg)_25%,transparent)] pt-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-text-dim)]">
             {discountEdgeQuestion(v.discountLimitPct)}
           </p>
           <div className="mt-2 space-y-1.5">
@@ -265,24 +265,24 @@ export function VendedorForm({
                   onClick={() => set("discountLimitBehavior", o.key)}
                   className={`flex w-full items-start gap-2.5 rounded-lg border p-2.5 text-left transition ${
                     active
-                      ? "border-[rgba(244,193,109,0.5)] bg-[rgba(244,193,109,0.1)]"
+                      ? "border-[color-mix(in_srgb,var(--state-espera-fg)_40%,transparent)] bg-[var(--state-espera-bg)]"
                       : "border-[var(--color-border)] hover:border-[var(--color-border-strong)]"
                   }`}
                 >
                   <span
                     className={`mt-[3px] flex h-3.5 w-3.5 flex-none items-center justify-center rounded-full border ${
                       active
-                        ? "border-[var(--color-highlight)]"
+                        ? "border-[var(--color-warn)]"
                         : "border-[var(--color-border-strong)]"
                     }`}
                   >
                     {active ? (
-                      <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-highlight)]" />
+                      <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-warn)]" />
                     ) : null}
                   </span>
                   <span className="min-w-0">
                     <span className="block text-sm font-semibold">{o.label}</span>
-                    <span className="mt-0.5 block text-[11px] leading-snug text-[var(--color-text-soft)]">
+                    <span className="mt-0.5 block text-[11px] leading-snug text-[var(--state-auto-fg)]">
                       {o.hint}
                     </span>
                   </span>
@@ -319,12 +319,12 @@ export function VendedorForm({
                 aria-pressed={active}
                 className={`rounded-lg border p-2.5 text-left transition ${
                   active
-                    ? "border-emerald-400/40 bg-emerald-500/10"
+                    ? "border-[color-mix(in_srgb,var(--state-auto-fg)_35%,transparent)] bg-[var(--state-auto-bg)]"
                     : "border-[var(--color-border)] hover:border-[var(--color-border-strong)]"
                 }`}
               >
                 <span className="block text-sm font-semibold">{p.label}</span>
-                <span className="mt-0.5 block text-[11px] leading-snug text-[var(--color-text-soft)]">
+                <span className="mt-0.5 block text-[11px] leading-snug text-[var(--color-text-dim)]">
                   {p.hint}
                 </span>
               </button>
@@ -332,7 +332,7 @@ export function VendedorForm({
           })}
         </div>
 
-        <label className="mt-3 block text-[11px] uppercase text-[var(--color-text-soft)]">
+        <label className="mt-3 block text-[11px] uppercase text-[var(--color-text-dim)]">
           Instrucciones
         </label>
         <textarea
@@ -357,7 +357,7 @@ export function VendedorForm({
         </p>
         <div className="mt-3 grid gap-3 md:grid-cols-2">
           <div className="space-y-1">
-            <label className="text-[11px] uppercase text-[var(--color-text-soft)]">
+            <label className="text-[11px] uppercase text-[var(--color-text-dim)]">
               Modelo
             </label>
             <input
@@ -379,7 +379,7 @@ export function VendedorForm({
             </p>
           </div>
           <div className="space-y-1">
-            <label className="text-[11px] uppercase text-[var(--color-text-soft)]">
+            <label className="text-[11px] uppercase text-[var(--color-text-dim)]">
               Esfuerzo de razonamiento
             </label>
             <select
@@ -412,7 +412,7 @@ export function VendedorForm({
 
       {/* ── Barra de guardado ─────────────────────────────────────────── */}
       {dirty && (
-        <div className="fixed bottom-4 left-1/2 z-30 w-[min(720px,calc(100%-2rem))] -translate-x-1/2 rounded-xl border border-emerald-400/30 bg-[rgba(8,21,30,0.96)] px-4 py-3 shadow-[0_18px_40px_rgba(3,10,16,0.6)] backdrop-blur">
+        <div className="fixed bottom-4 left-1/2 z-30 w-[min(720px,calc(100%-2rem))] -translate-x-1/2 rounded-xl border border-[color-mix(in_srgb,var(--state-auto-fg)_35%,transparent)] bg-[var(--color-card)] px-4 py-3 shadow-[var(--shadow-panel)] backdrop-blur">
           <div className="flex items-center justify-between gap-3">
             <p className="text-sm text-[var(--color-text)]">
               {error ?? "Los cambios aplican en la próxima conversación, sin desplegar."}
@@ -443,7 +443,7 @@ export function VendedorForm({
       )}
 
       {!dirty && savedAt && Date.now() - savedAt < 2500 && (
-        <div className="fixed bottom-4 left-1/2 z-30 -translate-x-1/2 rounded-md border border-emerald-400/30 bg-emerald-500/15 px-3 py-1.5 text-xs text-emerald-100 shadow-lg">
+        <div className="fixed bottom-4 left-1/2 z-30 -translate-x-1/2 rounded-md border border-[color-mix(in_srgb,var(--state-auto-fg)_35%,transparent)] bg-[var(--state-auto-bg)] px-3 py-1.5 text-xs text-[var(--state-auto-fg)] shadow-lg">
           Guardado
         </div>
       )}
@@ -466,7 +466,7 @@ function Field({
 }) {
   return (
     <div className="space-y-1">
-      <label className="text-[11px] uppercase text-[var(--color-text-soft)]">
+      <label className="text-[11px] uppercase text-[var(--color-text-dim)]">
         {label}
       </label>
       <input

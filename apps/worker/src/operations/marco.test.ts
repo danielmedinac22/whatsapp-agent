@@ -38,18 +38,19 @@ describe("el marco distingue dos operaciones aunque muestren lo mismo", () => {
 
   it("los cuatro valores del tinte salen del mismo color", () => {
     const { base, line, soft, faint } = operationTint("GT");
-    expect(base).toBe("#a78bfa");
-    expect(line).toBe("rgba(167, 139, 250, 0.45)");
-    expect(soft).toBe("rgba(167, 139, 250, 0.13)");
-    expect(faint).toBe("rgba(167, 139, 250, 0.07)");
+    expect(base).toBe("#6d28d9");
+    expect(line).toBe("rgba(109, 40, 217, 0.45)");
+    expect(soft).toBe("rgba(109, 40, 217, 0.13)");
+    expect(faint).toBe("rgba(109, 40, 217, 0.07)");
   });
 });
 
 describe("ningún país se queda con un color que ya significa algo", () => {
-  it("ni Guatemala ni Colombia toman menta, ámbar ni rojo", () => {
-    // La menta significa «confirmado», el ámbar «atención» y el rojo «falló».
-    // Un país pintado de menta le quitaría al verde su único significado, justo
-    // en la operación que factura.
+  it("ni Guatemala ni Colombia toman un color que ya significa algo", () => {
+    // La tinta significa «esto se puede tocar», el ámbar «sin responder», el
+    // rojo «escalada» y el verde «en automático». Un país pintado de uno de
+    // ellos le quitaría al color su único significado, justo en la operación
+    // que factura.
     for (const code of Object.keys(OPERATION_TINTS)) {
       expect(RESERVED_CONTENT_COLORS).not.toContain(operationTint(code).base);
     }

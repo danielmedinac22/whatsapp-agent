@@ -49,13 +49,13 @@ export function ConnectionPanel() {
         </div>
 
         {connected ? (
-          <div className="rounded-lg border border-emerald-400/25 bg-emerald-500/10 p-4">
+          <div className="rounded-lg border border-[color-mix(in_srgb,var(--state-auto-fg)_35%,transparent)] bg-[var(--state-auto-bg)] p-4">
             <div className="flex items-center gap-3">
-              <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500/25 text-emerald-200">
+              <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[var(--state-auto-bg)] text-[var(--state-auto-fg)]">
                 ✓
               </span>
               <div className="min-w-0 flex-1">
-                <p className="text-xs uppercase tracking-wide text-emerald-300/80">
+                <p className="text-xs uppercase tracking-wide text-[var(--state-auto-fg)]">
                   Conectado {snap.kind === "sandbox" ? "· sandbox" : ""}
                 </p>
                 <p className="truncate text-sm font-semibold text-[var(--color-text)]">
@@ -75,10 +75,10 @@ export function ConnectionPanel() {
             </div>
           </div>
         ) : (
-          <div className="rounded-lg border border-amber-400/30 bg-amber-500/10 p-3 text-sm text-amber-100">
+          <div className="rounded-lg border border-[color-mix(in_srgb,var(--state-espera-fg)_35%,transparent)] bg-[var(--state-espera-bg)] p-3 text-sm text-[var(--state-espera-fg)]">
             Sin número conectado. Conecta o aprovisiona un número desde el panel
             de Kapso (app.kapso.ai) y vincúlalo al worker con{" "}
-            <code className="rounded bg-black/30 px-1">
+            <code className="rounded bg-[var(--color-card)] px-1">
               POST /api/kapso/connect
             </code>
             .
