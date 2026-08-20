@@ -223,6 +223,27 @@ export const operations = pgTable(
      * edita la misma pantalla.
      */
     capiDatasetId: text("capi_dataset_id"),
+    /**
+     * La cuenta publicitaria de Meta desde la que se leen los anuncios de esta
+     * operación — `act_2042265076620189` en Guatemala. Migración `0029`.
+     *
+     * **Es solo el destino de una lectura.** El token que la lee vive en el
+     * entorno (`META_ADS_SYSTEM_USER_TOKEN`) y solo tiene `ads_read`: de acá no
+     * sale ninguna escritura sobre la pauta. Lo que habilita es elegir el
+     * anuncio **por su nombre** en el catálogo en vez de pegar el id a mano,
+     * que es la forma que cerró `ventas-pulido-ui/03`.
+     *
+     * Nullable, y el estado vacío es una pantalla y no un error: sin cuenta
+     * conectada el catálogo sigue registrando anuncios por el campo a mano, que
+     * es el respaldo permanente — el mismo camino que queda el día que el token
+     * se revoque.
+     *
+     * Es por operación y no una constante porque la segunda operación tiene su
+     * propia cuenta publicitaria: leer los anuncios de Guatemala para registrar
+     * un anuncio colombiano es exactamente el error que la migración
+     * multi-operación salió a borrar.
+     */
+    metaAdAccountId: text("meta_ad_account_id"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -1120,7 +1141,35 @@ export const shopifyConnection = pgTable(
       .notNull()
       .references(() => operations.id, { onDelete: "restrict" }),
     shopDomain: text("shop_domain"),
+    /**
+     * El token de administración **fijo**, del modelo de app privada.
+     *
+     * Sigue existiendo y sigue siendo válido: una tienda vieja con un `shpat_`
+     * estático se conecta pegándolo y no necesita nada más. Lo que ya no puede
+     * hacerse es asumir que *toda* tienda tiene uno — ver {@link clientId}.
+     */
     adminAccessToken: text("admin_access_token"),
+    /**
+     * El modelo nuevo de Shopify (Dev Dashboard), migración `0029`.
+     *
+     * La tienda de Guatemala **ya no emite tokens `shpat_` estáticos**: el
+     * Admin API token se pide con *client credentials grant* contra
+     * `/admin/oauth/access_token` y **caduca a las 24 horas**
+     * (`expires_in: 86399`, medido el 19-ago-2026 contra la tienda real).
+     *
+     * Por eso estas dos columnas y no una tercera con el token: guardar el
+     * token que devuelve el grant sería guardar algo que mañana no sirve, y su
+     * modo de fallar es el peor de este proyecto — el día uno todo anda, y el
+     * día dos una venta cerrada no aterriza en la tienda con un `401` que nadie
+     * está mirando. Lo que se guarda es **cómo pedirlo**; el token vive en
+     * memoria del proceso y se renueva solo (`shopify/token.ts`).
+     *
+     * Va en la base y no en el entorno —a diferencia del token de CAPI— porque
+     * **cada tienda tiene su propia app**: es configuración por operación, y
+     * conectar la tienda de Colombia no puede pedir un despliegue.
+     */
+    clientId: text("client_id"),
+    clientSecret: text("client_secret"),
     apiVersion: text("api_version").notNull().default("2025-01"),
     connectedAt: timestamp("connected_at", { withTimezone: true }),
     updatedAt: timestamp("updated_at", { withTimezone: true })

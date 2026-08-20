@@ -7,6 +7,14 @@ import {
 import { db } from "../db";
 import { logger } from "../lib/logger";
 import { OperationScopedCache } from "../operations";
+import {
+  adminTokenFor,
+  credentialGapText,
+  invalidateMintedTokens,
+  mintedScopesFor,
+  storeCredential,
+  type CredentialFields,
+} from "./token";
 
 interface CacheEntry<T> {
   value: T;
@@ -60,10 +68,18 @@ export async function getShopifyConnection(
   return value;
 }
 
-/** Sin argumento borra la caché entera; con una operación, solo su entrada. */
+/**
+ * Sin argumento borra la caché entera; con una operación, solo su entrada.
+ *
+ * **También tira el token acuñado**, y sin filtrar por operación a propósito:
+ * si alguien acaba de cambiar el client secret, el token viejo sigue siendo
+ * válido en la tienda —dura sus 24 horas— y quedaría usándose una credencial
+ * que el admin cree haber reemplazado. Acuñar de nuevo cuesta una llamada.
+ */
 export function invalidateShopifyConnectionCache(op?: Operation): void {
   connectionCache.invalidate(op?.id);
   productCache.clear();
+  invalidateMintedTokens();
 }
 
 export interface ShopifyVariant {
@@ -119,19 +135,26 @@ interface AdminQueryOptions {
   variables?: Record<string, unknown>;
 }
 
+/**
+ * La conexión que le hace falta a una consulta: el dominio, la versión y **de
+ * dónde sale el token**, que ya no es siempre una columna.
+ */
+type QueryableConnection = CredentialFields & Pick<ShopifyConnection, "apiVersion">;
+
 async function adminGraphQL<T>(
-  conn: ShopifyConnection,
+  conn: QueryableConnection,
   options: AdminQueryOptions,
 ): Promise<T> {
-  if (!conn.shopDomain || !conn.adminAccessToken) {
-    throw new Error("shopify connection missing domain or token");
-  }
+  // El token se **resuelve**, no se lee: con una app del Dev Dashboard hay que
+  // acuñarlo, y el acuñado vence a las 24 horas. Ver `shopify/token.ts`.
+  const resolved = await adminTokenFor(conn);
+  if (!resolved.ok) throw new Error(resolved.error);
   const url = `https://${conn.shopDomain}/admin/api/${conn.apiVersion}/graphql.json`;
   const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-Shopify-Access-Token": conn.adminAccessToken,
+      "X-Shopify-Access-Token": resolved.token,
     },
     body: JSON.stringify(options),
   });
@@ -267,7 +290,7 @@ export async function getProductsByIds(
 ): Promise<ShopifyProduct[]> {
   if (ids.length === 0) return [];
   const conn = await getShopifyConnection(op);
-  if (!conn?.shopDomain || !conn?.adminAccessToken) return [];
+  if (!conn || storeCredential(conn).kind === "none") return [];
 
   const now = Date.now();
   const gids = ids.map(productGid);
@@ -339,7 +362,8 @@ export async function searchStoreProducts(
   limit = 25,
 ): Promise<StoreRead<ShopifyProduct[]>> {
   const conn = await getShopifyConnection(op);
-  if (!conn?.shopDomain || !conn?.adminAccessToken) {
+  const cred = conn ? storeCredential(conn) : null;
+  if (!conn || !cred || cred.kind === "none") {
     return { store: "not_connected" };
   }
 
@@ -361,7 +385,7 @@ export async function searchStoreProducts(
       .filter((p): p is ShopifyProduct => Boolean(p));
     return {
       store: "connected",
-      shopDomain: conn.shopDomain,
+      shopDomain: cred.shopDomain,
       result: found,
     };
   } catch (err) {
@@ -394,24 +418,25 @@ export async function readStoreProducts(
   ids: Array<string | number>,
 ): Promise<StoreRead<ShopifyProduct[]>> {
   const conn = await getShopifyConnection(op);
-  if (!conn?.shopDomain || !conn?.adminAccessToken) {
+  const cred = conn ? storeCredential(conn) : null;
+  if (!conn || !cred || cred.kind === "none") {
     return { store: "not_connected" };
   }
   const found = await getProductsByIds(op, ids);
-  return { store: "connected", shopDomain: conn.shopDomain, result: found };
+  return { store: "connected", shopDomain: cred.shopDomain, result: found };
 }
 
 export async function pingShopify(
-  conn: Pick<ShopifyConnection, "shopDomain" | "adminAccessToken" | "apiVersion">,
+  conn: QueryableConnection,
 ): Promise<{ ok: true; shopName: string } | { ok: false; error: string }> {
-  if (!conn.shopDomain || !conn.adminAccessToken) {
-    return { ok: false, error: "missing domain or token" };
+  const cred = storeCredential(conn);
+  if (cred.kind === "none") {
+    return { ok: false, error: credentialGapText(cred.reason) };
   }
   try {
-    const data = await adminGraphQL<{ shop: { name: string } }>(
-      conn as ShopifyConnection,
-      { query: `{ shop { name } }` },
-    );
+    const data = await adminGraphQL<{ shop: { name: string } }>(conn, {
+      query: `{ shop { name } }`,
+    });
     return { ok: true, shopName: data.shop.name };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
@@ -460,17 +485,27 @@ export function adminEndpoint(
  * datos, y no cambia con la versión que tenga configurada la conexión.
  */
 export async function readGrantedScopes(
-  conn: Pick<ShopifyConnection, "shopDomain" | "adminAccessToken">,
+  conn: CredentialFields,
 ): Promise<{ ok: true; scopes: string[] } | { ok: false; error: string }> {
-  if (!conn.shopDomain || !conn.adminAccessToken) {
-    return { ok: false, error: "missing domain or token" };
+  const cred = storeCredential(conn);
+  if (cred.kind === "none") {
+    return { ok: false, error: credentialGapText(cred.reason) };
   }
+  const resolved = await adminTokenFor(conn);
+  if (!resolved.ok) return { ok: false, error: resolved.error };
+
+  // El grant de client credentials **ya dijo** qué permisos concede, así que si
+  // el endpoint no contesta todavía se puede informar. No es lo mismo que
+  // inventarlo: es la respuesta de la propia tienda a la petición del token.
+  const fromGrant = conn.shopDomain ? mintedScopesFor(conn.shopDomain) : null;
+
   try {
     const res = await fetch(
       `https://${conn.shopDomain}/admin/oauth/access_scopes.json`,
-      { headers: { "X-Shopify-Access-Token": conn.adminAccessToken } },
+      { headers: { "X-Shopify-Access-Token": resolved.token } },
     );
     if (!res.ok) {
+      if (fromGrant?.length) return { ok: true, scopes: fromGrant };
       return { ok: false, error: `access_scopes ${res.status}` };
     }
     const json = (await res.json()) as {
@@ -483,6 +518,7 @@ export async function readGrantedScopes(
         .filter(Boolean),
     };
   } catch (err) {
+    if (fromGrant?.length) return { ok: true, scopes: fromGrant };
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
@@ -517,7 +553,7 @@ export interface StoreVerification {
  * pedido desechable.
  */
 export async function verifyStoreConnection(
-  conn: Pick<ShopifyConnection, "shopDomain" | "adminAccessToken" | "apiVersion">,
+  conn: QueryableConnection,
 ): Promise<{ ok: true; verification: StoreVerification } | { ok: false; error: string }> {
   const ping = await pingShopify(conn);
   if (!ping.ok) return { ok: false, error: ping.error };
@@ -529,7 +565,7 @@ export async function verifyStoreConnection(
   try {
     const data = await adminGraphQL<{
       products: { edges: Array<{ node: ProductGqlNode }> };
-    }>(conn as ShopifyConnection, {
+    }>(conn, {
       query: PRODUCT_SEARCH_QUERY,
       variables: { query: null, first: 1 },
     });

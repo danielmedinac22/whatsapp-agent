@@ -204,6 +204,13 @@
       "when": 1787112842848,
       "tag": "0028_precio_del_producto_nativo",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1787193423193,
+      "tag": "0029_credenciales_de_vorare",
+      "breakpoints": true
     }
   ]
 }

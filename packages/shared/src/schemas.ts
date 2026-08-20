@@ -86,17 +86,40 @@ export const dropiConnectionInput = z.object({
 });
 export type DropiConnectionInput = z.infer<typeof dropiConnectionInput>;
 
-export const shopifyConnectionInput = z.object({
-  shopDomain: z
-    .string()
-    .min(3)
-    .max(120)
-    .regex(/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/i, {
-      message: "debe ser un dominio *.myshopify.com",
-    }),
-  adminAccessToken: z.string().min(20).max(200),
-  apiVersion: z.string().min(4).max(20).optional(),
-});
+/**
+ * Conectar una tienda: el dominio y **una** de las dos credenciales.
+ *
+ * Son dos porque Shopify tiene dos modelos vivos. El de app privada entrega un
+ * `shpat_` fijo; el del Dev Dashboard —el único que soporta la tienda de
+ * Guatemala— entrega client id y secret, con los que el sistema **acuña** un
+ * token que dura 24 horas. Ver `shopify/token.ts`.
+ *
+ * El `refine` es lo que impide guardar una conexión que se ve completa y no
+ * puede hablar con nadie: un formulario con dominio y nada más se guardaría sin
+ * ruido y fallaría en el primer cierre. Y exige el **par** completo por lo
+ * mismo — un client id sin secret no acuña nada.
+ */
+export const shopifyConnectionInput = z
+  .object({
+    shopDomain: z
+      .string()
+      .min(3)
+      .max(120)
+      .regex(/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/i, {
+        message: "debe ser un dominio *.myshopify.com",
+      }),
+    /** El token fijo del modelo de app privada. */
+    adminAccessToken: z.string().min(20).max(200).optional(),
+    /** El par del Dev Dashboard, que se usa para acuñar el token. */
+    clientId: z.string().min(8).max(200).optional(),
+    clientSecret: z.string().min(8).max(200).optional(),
+    apiVersion: z.string().min(4).max(20).optional(),
+  })
+  .refine((v) => Boolean(v.adminAccessToken || (v.clientId && v.clientSecret)), {
+    message:
+      "hace falta el token de administración, o el par client id + client secret",
+    path: ["adminAccessToken"],
+  });
 export type ShopifyConnectionInput = z.infer<typeof shopifyConnectionInput>;
 
 export const shopifyOrderWebhook = z.object({

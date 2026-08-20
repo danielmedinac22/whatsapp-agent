@@ -33,6 +33,7 @@ import type { Operation } from "@wa/db";
 import { logger } from "../lib/logger";
 import type { SalesOrderDraft } from "../sales/order";
 import { adminEndpoint, getShopifyConnection } from "./admin";
+import { adminTokenFor, storeCredential } from "./token";
 import {
   buildOrderCreateVariables,
   idempotencyTagQuery,
@@ -69,7 +70,7 @@ export type StoreOrderOutcome =
   | { kind: "not_connected" }
   /** La conexión viva ya no es la de la operación del pedido. */
   | { kind: "store_mismatch"; expected: string; found: string }
-  | { kind: "failed"; failure: StoreFailure; stage: "lookup" | "create" };
+  | { kind: "failed"; failure: StoreFailure; stage: "token" | "lookup" | "create" };
 
 const ORDER_LOOKUP_QUERY = /* GraphQL */ `
   query BuscarPedidoDeCierre($query: String!) {
@@ -213,24 +214,47 @@ export async function createStoreOrder(
   mode: StoreWriteMode = storeWriteMode(),
 ): Promise<StoreOrderOutcome> {
   const connection = await getShopifyConnection(op);
-  if (!connection?.shopDomain || !connection.adminAccessToken) {
+  const credential = connection ? storeCredential(connection) : null;
+  if (!connection || !credential || credential.kind === "none") {
     return { kind: "not_connected" };
   }
 
   // La tienda del pedido se decidió al construirlo; entre aquel momento y éste
   // pudo pasar un reintento de veinticuatro horas y un cambio en el panel.
-  if (connection.shopDomain !== draft.store.shopDomain) {
+  if (credential.shopDomain !== draft.store.shopDomain) {
     return {
       kind: "store_mismatch",
       expected: draft.store.shopDomain,
-      found: connection.shopDomain,
+      found: credential.shopDomain,
+    };
+  }
+
+  // **El token se resuelve una vez para las dos llamadas** —la comprobación
+  // previa y la creación— y no una por llamada. Con la credencial del Dev
+  // Dashboard resolver puede significar acuñar, y acuñar dos veces en el mismo
+  // cierre gasta una llamada de más y abre la puerta a que la comprobación se
+  // haga con un token y la escritura con otro.
+  //
+  // Que un fallo acá sea `failed` y no `not_connected` no es cosmético: la
+  // tienda **está** conectada y el fallo puede ser una caída pasajera, así que
+  // la cola tiene que poder reintentarlo. `not_connected` es un estado estable
+  // que nadie reintenta.
+  const resolved = await adminTokenFor(connection);
+  if (!resolved.ok) {
+    return {
+      kind: "failed",
+      stage: "token",
+      failure: {
+        disposition: "retry",
+        reason: `no se pudo conseguir el token de la tienda: ${resolved.error}`,
+      },
     };
   }
 
   const conn: LiveConnection = {
-    shopDomain: connection.shopDomain,
+    shopDomain: credential.shopDomain,
     apiVersion: connection.apiVersion,
-    token: connection.adminAccessToken,
+    token: resolved.token,
   };
   const variables = buildOrderCreateVariables(draft);
 
