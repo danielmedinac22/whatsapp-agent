@@ -185,14 +185,14 @@ export function OperationColumn({
           <span className="block truncate text-sm font-semibold text-[var(--color-text)]">
             {op.name}
           </span>
-          <span className="mt-0.5 block text-[10px] uppercase tracking-wider text-[var(--color-text-soft)]">
+          <span className="mt-0.5 block text-[10px] uppercase tracking-wider text-[var(--color-text-dim)]">
             {dormant ? "Sin operar" : "Operando"} · {op.currency}
           </span>
           <span
             className={`mt-1 block text-[11.5px] font-semibold tabular-nums ${
               entry.phone
                 ? "text-[var(--op)]"
-                : "text-[var(--color-highlight)]"
+                : "text-[var(--color-warn)]"
             }`}
           >
             {entry.phone ?? "sin número conectado"}
@@ -205,7 +205,7 @@ export function OperationColumn({
 
       <div className="mt-auto space-y-2 border-t border-[var(--color-border)] pt-3">
         <ConnectionIndicator />
-        <p className="truncate px-1 text-[11px] text-[var(--color-text-soft)]">
+        <p className="truncate px-1 text-[11px] text-[var(--color-text-dim)]">
           {email ?? "sesión sin correo"}
         </p>
       </div>

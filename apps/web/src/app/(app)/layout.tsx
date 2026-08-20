@@ -24,9 +24,9 @@ import {
  *
  * **El tinte muere aquí.** Las variables `--op*` se declaran en este elemento y
  * las usan el riel y la columna; el contenido conserva siempre la paleta
- * neutra. Si `--color-accent-strong` siguiera al país, cada botón primario
- * cambiaría de color y el verde dejaría de significar «confirmado» — justo en
- * Guatemala, que es lo que factura. Es la decisión 1 del nivel 1 y la razón por
+ * neutra. Si `--color-ink` siguiera al país, cada botón primario cambiaría de
+ * color y el verde dejaría de significar «confirmado» — justo en Guatemala,
+ * que es lo que factura. Es la decisión 1 del nivel 1 y la razón por
  * la que los tres referentes del patrón (Slack, la consola de AWS, el modo
  * prueba de Stripe) confinan el color al cromo.
  *
@@ -126,10 +126,13 @@ export default async function AppLayout({
   const tint = active
     ? operationTint(active.countryCode)
     : {
-        base: "var(--color-text-soft)",
+        // `--op` también pinta texto (el código del país en la baldosa, el
+        // módulo activo), así que el neutro de reserva tiene que ser un color
+        // de texto: «tenue» da 4,54:1 sobre el riel y «suave» 2,85:1.
+        base: "var(--color-text-dim)",
         line: "var(--color-border-strong)",
-        soft: "rgba(157, 187, 210, 0.08)",
-        faint: "rgba(157, 187, 210, 0.04)",
+        soft: "color-mix(in srgb, var(--color-text-soft) 14%, transparent)",
+        faint: "color-mix(in srgb, var(--color-text-soft) 7%, transparent)",
       };
   const collapsed = bars === "collapsed";
 

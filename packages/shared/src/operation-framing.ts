@@ -16,14 +16,22 @@
  *    dejaría de significar «confirmado» — justo en Guatemala, que es lo que
  *    factura. Es el patrón de Slack (el tema tiñe la barra, no los mensajes),
  *    de la consola de AWS y del modo prueba de Stripe.
- * 2. **Violeta Guatemala, cian Colombia.** El criterio no fue cuál se ve mejor
+ * 2. **Violeta Guatemala, azul Colombia.** El criterio no fue cuál se ve mejor
  *    sino cuál es más difícil de confundir de reojo, y eso lo compra la
  *    distancia cromática. El par violeta/rosa se ve más armónico y es el peor
  *    para este trabajo.
- * 3. **Ningún país toma menta, ámbar ni rojo.** Se descartó la escala
- *    verde/amarillo/rojo que AWS recomienda: esa codifica **severidad** (dev <
- *    test < prod) y los países no están ordenados por peligro, son pares. La
- *    menta queda liberada para seguir significando solo «correcto».
+ * 3. **Ningún país toma un color que ya significa algo en el contenido.** Se
+ *    descartó la escala verde/amarillo/rojo que AWS recomienda: esa codifica
+ *    **severidad** (dev < test < prod) y los países no están ordenados por
+ *    peligro, son pares.
+ *
+ * **Los dos tonos se oscurecieron el 20-ago-2026** (decisión 2 de esa tarde) al
+ * pasar el panel a fondo claro. Medidos contra el riel `#e8edeb`, que es la
+ * superficie más oscura de la paleta y por eso la que manda, el violeta
+ * `#a78bfa` daba 2,30:1 y el cian `#38bdf8` 1,81:1: fallaban tanto el listón de
+ * texto (4,5:1) como el de componente (3:1). Los valores de ahora dan 6,00:1 y
+ * 5,01:1 y conservan violeta y azul, que es lo que hace que las dos operaciones
+ * se distingan de un vistazo.
  *
  * El hallazgo que hace que esto tenga que ser verificable: «el cambio Guatemala
  * ↔ Colombia se percibe sin explicarlo» hoy lo pasa cualquier cosa, **porque
@@ -49,24 +57,27 @@ export interface OperationTint {
  * `operations.country_code`.
  */
 const TINTS: Readonly<Record<string, string>> = {
-  GT: "#a78bfa",
-  CO: "#38bdf8",
+  GT: "#6d28d9",
+  CO: "#0369a1",
 };
 
 /**
  * La rueda de la que sale el tono de un país que todavía no tiene uno elegido.
  *
- * **Ninguno toca menta (`#6ee7b7`), ámbar (`#f4c16d`) ni rojo (`#f87171`)**, que
- * son los tres colores con significado en el contenido. Un país nuevo entra con
- * un tono distinguible en vez de con el de otro país o con el acento del
- * producto, que es lo que rompería el mecanismo entero el día que alguien dé de
- * alta el tercero sin pasar por aquí.
+ * **Ninguno toca un color de {@link RESERVED_CONTENT_COLORS}**, que son los que
+ * ya significan algo en el contenido. Un país nuevo entra con un tono
+ * distinguible en vez de con el de otro país o con el acento del producto, que
+ * es lo que rompería el mecanismo entero el día que alguien dé de alta el
+ * tercero sin pasar por aquí.
+ *
+ * Los cuatro llegan a AA sobre el riel, la superficie más oscura de la paleta:
+ * 5,10:1, 5,99:1, 6,02:1 y 8,75:1.
  */
 const SPARE_TINTS: readonly string[] = [
-  "#f472b6",
-  "#c084fc",
-  "#818cf8",
-  "#22d3ee",
+  "#be185d",
+  "#92400e",
+  "#166534",
+  "#334155",
 ];
 
 /** Suma estable de un texto. No es criptográfica: solo tiene que ser determinista. */
@@ -107,13 +118,21 @@ export function operationTint(countryCode: string): OperationTint {
 export const OPERATION_TINTS = TINTS;
 
 /**
- * Los colores del contenido que ningún tinte de operación puede tomar. Menta es
- * «confirmado», ámbar «atención» y rojo «falló»: si un país se pintara de menta,
- * el color dejaría de querer decir una cosa sola.
+ * Los colores del contenido que ningún tinte de operación puede tomar: la tinta
+ * del producto y los cinco textos de estado. La tinta es «esto se puede tocar»,
+ * el ámbar «sin responder», el rojo «escalada», el verde «en automático», el
+ * violeta «novedad» y el gris azulado «sin producto». Si un país se pintara de
+ * uno de ellos, el color dejaría de querer decir una cosa sola.
+ *
+ * **Se rederivó con la paleta clara del 20-ago-2026.** Los cuatro valores de
+ * antes eran del tema oscuro —menta `#6ee7b7`, `#34d399`, ámbar `#f4c16d` y
+ * rojo `#f87171`— y ya no los usa nadie, así que reservarlos no protegía nada.
  */
 export const RESERVED_CONTENT_COLORS: readonly string[] = [
-  "#6ee7b7",
-  "#34d399",
-  "#f4c16d",
-  "#f87171",
+  "#0f766e",
+  "#8a5a08",
+  "#a52020",
+  "#0b5f52",
+  "#5a41a8",
+  "#41586a",
 ];

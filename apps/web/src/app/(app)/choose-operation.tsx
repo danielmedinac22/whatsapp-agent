@@ -20,7 +20,7 @@ export function ChooseOperation({ state }: { state: PanelOperationState }) {
   return (
     <div className="app-page flex max-w-2xl flex-col gap-3 pt-10">
       <div className="app-card flex flex-col gap-3 p-6">
-        <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--color-border-strong)] text-[var(--color-highlight)]">
+        <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--color-border-strong)] text-[var(--color-warn)]">
           <AlertTriangle className="h-4 w-4" />
         </span>
 
@@ -45,7 +45,7 @@ export function ChooseOperation({ state }: { state: PanelOperationState }) {
               configuración— es de esa operación y solo de esa.
             </p>
             {state.reason === "eleccion_desconocida" ? (
-              <p className="app-subtitle text-[var(--color-highlight)]">
+              <p className="app-subtitle text-[var(--color-warn)]">
                 La operación que tenías elegida ya no existe, así que hay que
                 elegir de nuevo.
               </p>

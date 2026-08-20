@@ -126,7 +126,7 @@ export function MetaPanel() {
 
         <div className="grid gap-3 md:grid-cols-2">
           <label className="space-y-1 text-sm">
-            <span className="text-[11px] uppercase text-[var(--color-text-soft)]">
+            <span className="text-[11px] uppercase text-[var(--color-text-dim)]">
               Cuenta publicitaria
             </span>
             <input
@@ -144,7 +144,7 @@ export function MetaPanel() {
             </span>
           </label>
           <label className="space-y-1 text-sm">
-            <span className="text-[11px] uppercase text-[var(--color-text-soft)]">
+            <span className="text-[11px] uppercase text-[var(--color-text-dim)]">
               Dataset de conversiones
             </span>
             <input
@@ -167,7 +167,7 @@ export function MetaPanel() {
         {msg && (
           <p
             className={`text-sm ${
-              msg.kind === "ok" ? "text-emerald-300" : "text-red-300"
+              msg.kind === "ok" ? "text-[var(--state-auto-fg)]" : "text-[var(--state-escalada-fg)]"
             }`}
           >
             {msg.text}
@@ -246,10 +246,10 @@ function Aviso({
   children: React.ReactNode;
 }) {
   const tone = {
-    ok: "border-emerald-400/25 bg-emerald-500/10 text-emerald-100",
-    info: "border-white/10 bg-white/5 text-[var(--color-text-dim)]",
-    warn: "border-amber-400/25 bg-amber-500/10 text-amber-100",
-    err: "border-red-500/25 bg-red-950/25 text-red-100",
+    ok: "border-[color-mix(in_srgb,var(--state-auto-fg)_35%,transparent)] bg-[var(--state-auto-bg)] text-[var(--state-auto-fg)]",
+    info: "border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-dim)]",
+    warn: "border-[color-mix(in_srgb,var(--state-espera-fg)_35%,transparent)] bg-[var(--state-espera-bg)] text-[var(--state-espera-fg)]",
+    err: "border-[color-mix(in_srgb,var(--state-escalada-fg)_35%,transparent)] bg-[var(--state-escalada-bg)] text-[var(--state-escalada-fg)]",
   }[kind];
   return (
     <p className={`rounded-lg border p-3 text-sm leading-6 ${tone}`}>{children}</p>

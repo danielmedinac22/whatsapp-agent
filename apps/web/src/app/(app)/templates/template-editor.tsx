@@ -149,7 +149,7 @@ export function TemplateEditor({
             <button
               type="button"
               onClick={reset}
-              className="rounded-md border border-[var(--color-border)] px-2 py-1 text-xs text-[var(--color-text-dim)] transition hover:bg-[rgba(255,255,255,0.04)]"
+              className="rounded-md border border-[var(--color-border)] px-2 py-1 text-xs text-[var(--color-text-dim)] transition hover:bg-[var(--color-hover)]"
             >
               Cancelar
             </button>
@@ -158,7 +158,7 @@ export function TemplateEditor({
 
         <div className="grid gap-3 md:grid-cols-2">
           <div>
-            <label className="text-xs uppercase text-[var(--color-text-soft)]">
+            <label className="text-xs uppercase text-[var(--color-text-dim)]">
               Nombre
             </label>
             <input
@@ -170,7 +170,7 @@ export function TemplateEditor({
             />
           </div>
           <div>
-            <label className="text-xs uppercase text-[var(--color-text-soft)]">
+            <label className="text-xs uppercase text-[var(--color-text-dim)]">
               Tipo
             </label>
             <select
@@ -188,7 +188,7 @@ export function TemplateEditor({
         </div>
 
         <div>
-          <label className="text-xs uppercase text-[var(--color-text-soft)]">
+          <label className="text-xs uppercase text-[var(--color-text-dim)]">
             Variables disponibles
           </label>
           <div className="mt-2 flex flex-wrap gap-2">
@@ -198,23 +198,23 @@ export function TemplateEditor({
                 type="button"
                 onClick={() => insertVariable(v.key)}
                 title={`${v.description} · ej: ${v.example}`}
-                className="group inline-flex min-h-9 items-center gap-1 rounded-full border border-[var(--color-border)] bg-[rgba(110,231,183,0.06)] px-2.5 py-1 text-xs text-[var(--color-text)] transition hover:border-[var(--color-accent)] hover:bg-[rgba(110,231,183,0.14)] lg:min-h-0"
+                className="group inline-flex min-h-9 items-center gap-1 rounded-full border border-[var(--color-border)] bg-[var(--color-ink-wash)] px-2.5 py-1 text-xs text-[var(--color-text)] transition hover:border-[var(--color-ink)] hover:bg-[var(--color-ink-soft)] lg:min-h-0"
               >
-                <span className="text-[var(--color-accent)]">+</span>
+                <span className="text-[var(--color-ink)]">+</span>
                 <span className="font-medium">{v.label}</span>
-                <span className="text-[var(--color-text-soft)]">
+                <span className="text-[var(--color-text-dim)]">
                   {`{{${v.key}}}`}
                 </span>
               </button>
             ))}
           </div>
-          <p className="mt-2 text-xs text-[var(--color-text-soft)]">
+          <p className="mt-2 text-xs text-[var(--color-text-dim)]">
             Haz click en una variable para insertarla en la posición del cursor.
           </p>
         </div>
 
         <div>
-          <label className="text-xs uppercase text-[var(--color-text-soft)]">
+          <label className="text-xs uppercase text-[var(--color-text-dim)]">
             Cuerpo
           </label>
           <textarea
@@ -230,7 +230,7 @@ export function TemplateEditor({
 
         <div>
           <div className="flex items-center justify-between">
-            <span className="text-xs uppercase text-[var(--color-text-soft)]">
+            <span className="text-xs uppercase text-[var(--color-text-dim)]">
               Vista previa
             </span>
             {unknownVars.length > 0 && (
@@ -244,7 +244,7 @@ export function TemplateEditor({
             style={{ background: "var(--color-bubble-out)" }}
           >
             {body.length === 0 ? (
-              <span className="text-[var(--color-text-soft)]">
+              <span className="text-[var(--color-text)]">
                 Escribe el cuerpo para ver la vista previa…
               </span>
             ) : (
@@ -255,8 +255,8 @@ export function TemplateEditor({
                     <span
                       key={i}
                       title={`{{${tok.key}}}`}
-                      className="rounded px-1 text-[var(--color-accent)]"
-                      style={{ background: "rgba(110,231,183,0.12)" }}
+                      className="rounded px-1 text-[var(--color-ink)]"
+                      style={{ background: "var(--color-ink-soft)" }}
                     >
                       {tok.example}
                     </span>
@@ -267,7 +267,7 @@ export function TemplateEditor({
                     key={i}
                     title="Variable no reconocida"
                     className="rounded px-1 text-[var(--color-danger)]"
-                    style={{ background: "rgba(248,113,113,0.12)" }}
+                    style={{ background: "var(--state-escalada-bg)" }}
                   >
                     {`{{${tok.key}}}`}
                   </span>
@@ -304,7 +304,7 @@ export function TemplateEditor({
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="min-w-0 break-words font-medium">{t.name}</p>
-                  <span className="rounded-full border border-[var(--color-border)] px-2 py-0.5 text-[10px] uppercase tracking-wide text-[var(--color-text-soft)]">
+                  <span className="rounded-full border border-[var(--color-border)] px-2 py-0.5 text-[10px] uppercase tracking-wide text-[var(--color-text-dim)]">
                     {TYPE_LABELS[t.type]}
                   </span>
                 </div>
@@ -318,7 +318,7 @@ export function TemplateEditor({
                 <button
                   type="button"
                   onClick={() => startEditing(t)}
-                  className="min-h-9 rounded-md border border-[var(--color-border)] px-2 py-1 text-xs text-[var(--color-text-dim)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-text)] lg:min-h-0"
+                  className="min-h-9 rounded-md border border-[var(--color-border)] px-2 py-1 text-xs text-[var(--color-text-dim)] transition hover:border-[var(--color-ink)] hover:text-[var(--color-text)] lg:min-h-0"
                 >
                   Editar
                 </button>
@@ -326,14 +326,14 @@ export function TemplateEditor({
                   <input type="hidden" name="id" value={t.id} />
                   <button
                     type="submit"
-                    className="min-h-9 rounded-md border border-red-500/20 px-2 py-1 text-xs text-red-200 transition hover:bg-red-950/30 lg:min-h-0"
+                    className="min-h-9 rounded-md border border-[color-mix(in_srgb,var(--state-escalada-fg)_35%,transparent)] px-2 py-1 text-xs text-[var(--state-escalada-fg)] transition hover:bg-[var(--state-escalada-bg)] lg:min-h-0"
                   >
                     Eliminar
                   </button>
                 </form>
               </div>
             </div>
-            <pre className="whitespace-pre-wrap rounded-lg border border-[var(--color-border)] bg-[rgba(8,21,30,0.82)] p-3 text-sm">
+            <pre className="whitespace-pre-wrap rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm">
               {t.body}
             </pre>
           </div>

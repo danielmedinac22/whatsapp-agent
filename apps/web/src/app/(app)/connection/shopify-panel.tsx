@@ -209,13 +209,13 @@ export function ShopifyPanel() {
 
         {loaded && connected && !editing && (
           <div className="space-y-3">
-            <div className="rounded-lg border border-emerald-400/25 bg-emerald-500/10 p-4">
+            <div className="rounded-lg border border-[color-mix(in_srgb,var(--state-auto-fg)_35%,transparent)] bg-[var(--state-auto-bg)] p-4">
               <div className="flex items-start gap-3">
-                <span className="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500/25 text-emerald-200">
+                <span className="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-full bg-[var(--state-auto-bg)] text-[var(--state-auto-fg)]">
                   ✓
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs uppercase tracking-wide text-emerald-300/80">
+                  <p className="text-xs uppercase tracking-wide text-[var(--state-auto-fg)]">
                     Conectado
                   </p>
                   <p className="truncate text-sm font-semibold text-[var(--color-text)]">
@@ -286,7 +286,7 @@ export function ShopifyPanel() {
               <button
                 onClick={disconnect}
                 disabled={busy}
-                className="app-button-secondary border-red-500/25 text-red-100 hover:bg-red-950/30"
+                className="app-button-secondary border-[color-mix(in_srgb,var(--state-escalada-fg)_35%,transparent)] text-[var(--state-escalada-fg)] hover:bg-[var(--state-escalada-bg)]"
               >
                 Desconectar
               </button>
@@ -298,7 +298,7 @@ export function ShopifyPanel() {
           <>
             <div className="grid gap-3 md:grid-cols-2">
               <label className="space-y-1 text-sm">
-                <span className="text-[11px] uppercase text-[var(--color-text-soft)]">
+                <span className="text-[11px] uppercase text-[var(--color-text-dim)]">
                   Dominio de la tienda
                 </span>
                 <input
@@ -315,7 +315,7 @@ export function ShopifyPanel() {
               </label>
               {credKind === "static" ? (
                 <label className="space-y-1 text-sm">
-                  <span className="text-[11px] uppercase text-[var(--color-text-soft)]">
+                  <span className="text-[11px] uppercase text-[var(--color-text-dim)]">
                     Admin API access token
                   </span>
                   <input
@@ -334,7 +334,7 @@ export function ShopifyPanel() {
               ) : (
                 <>
                   <label className="space-y-1 text-sm">
-                    <span className="text-[11px] uppercase text-[var(--color-text-soft)]">
+                    <span className="text-[11px] uppercase text-[var(--color-text-dim)]">
                       Client ID
                     </span>
                     <input
@@ -350,7 +350,7 @@ export function ShopifyPanel() {
                     />
                   </label>
                   <label className="space-y-1 text-sm">
-                    <span className="text-[11px] uppercase text-[var(--color-text-soft)]">
+                    <span className="text-[11px] uppercase text-[var(--color-text-dim)]">
                       Client secret
                     </span>
                     <input
@@ -420,13 +420,13 @@ export function ShopifyPanel() {
  */
 function NotConnected() {
   return (
-    <div className="rounded-lg border border-amber-400/25 bg-amber-500/10 p-4">
+    <div className="rounded-lg border border-[color-mix(in_srgb,var(--state-espera-fg)_35%,transparent)] bg-[var(--state-espera-bg)] p-4">
       <div className="flex items-start gap-3">
-        <span className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-500/20 text-amber-200">
+        <span className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--state-espera-bg)] text-[var(--state-espera-fg)]">
           !
         </span>
         <div className="min-w-0 flex-1 space-y-2">
-          <p className="text-xs uppercase tracking-wide text-amber-300/80">
+          <p className="text-xs uppercase tracking-wide text-[var(--state-espera-fg)]">
             La tienda no está conectada
           </p>
           <p className="text-sm leading-6 text-[var(--color-text)]">
@@ -473,14 +473,14 @@ function WriteModeBadge({ mode }: { mode: WriteMode }) {
     <div
       className={`rounded-lg border p-3 text-sm leading-6 ${
         seco
-          ? "border-amber-400/25 bg-amber-500/10"
-          : "border-emerald-400/25 bg-emerald-500/10"
+          ? "border-[color-mix(in_srgb,var(--state-espera-fg)_35%,transparent)] bg-[var(--state-espera-bg)]"
+          : "border-[color-mix(in_srgb,var(--state-auto-fg)_35%,transparent)] bg-[var(--state-auto-bg)]"
       }`}
     >
       <span className="font-semibold">
         {seco ? "Modo seco: no se crean pedidos" : "Creación de pedidos activa"}
       </span>
-      <span className="ml-2 text-[var(--color-text-dim)]">
+      <span className="ml-2 text-[var(--state-auto-fg)]">
         {seco
           ? "El vendedor arma el pedido y lo registra en el log, pero no escribe nada en tu tienda. Es el valor por defecto."
           : "Un cierre crea el pedido de verdad en tu tienda."}
@@ -556,13 +556,13 @@ function Capabilities({
   }
   return (
     <div className="space-y-2">
-      <p className="text-[11px] uppercase tracking-wide text-[var(--color-text-soft)]">
+      <p className="text-[11px] uppercase tracking-wide text-[var(--color-text-dim)]">
         Qué permite este token
       </p>
       <ul className="space-y-1 text-sm leading-6">
         {report.capabilities.map((c) => (
           <li key={c.capability} className="flex items-start gap-2">
-            <span className={c.granted ? "text-emerald-300" : "text-red-300"}>
+            <span className={c.granted ? "text-[var(--state-auto-fg)]" : "text-[var(--state-escalada-fg)]"}>
               {c.granted ? "✓" : "✗"}
             </span>
             <span className="min-w-0">
@@ -571,7 +571,7 @@ function Capabilities({
                 <span className="text-[var(--color-text-dim)]">
                   {" "}
                   — falta{" "}
-                  <code className="rounded bg-[rgba(8,21,30,0.72)] px-1">
+                  <code className="rounded bg-[var(--color-ink-wash)] px-1">
                     {c.missing.join(", ")}
                   </code>
                   . {c.missingConsequence}
@@ -584,7 +584,7 @@ function Capabilities({
       {report.excess.length > 0 && (
         <p className="text-xs leading-5 text-[var(--color-text-dim)]">
           El token concede además{" "}
-          <code className="rounded bg-[rgba(8,21,30,0.72)] px-1">
+          <code className="rounded bg-[var(--color-ink-wash)] px-1">
             {report.excess.join(", ")}
           </code>
           , que este sistema no necesita. No molesta, pero es capacidad de más
@@ -606,15 +606,15 @@ function ScopesHelp() {
       </p>
       <ul className="space-y-1">
         <li>
-          <code className="rounded bg-[rgba(8,21,30,0.72)] px-1">read_products</code>{" "}
+          <code className="rounded bg-[var(--color-ink-wash)] px-1">read_products</code>{" "}
           — para que el vendedor conteste con la ficha real de tus productos.
         </li>
         <li>
-          <code className="rounded bg-[rgba(8,21,30,0.72)] px-1">read_orders</code>{" "}
+          <code className="rounded bg-[var(--color-ink-wash)] px-1">read_orders</code>{" "}
           — para comprobar que un cierre no cree dos veces el mismo pedido.
         </li>
         <li>
-          <code className="rounded bg-[rgba(8,21,30,0.72)] px-1">write_orders</code>{" "}
+          <code className="rounded bg-[var(--color-ink-wash)] px-1">write_orders</code>{" "}
           — para crear el pedido de una venta cerrada en el chat.
         </li>
       </ul>
@@ -637,8 +637,8 @@ function Aviso({
     <div
       className={`rounded-lg border p-3 text-sm ${
         kind === "ok"
-          ? "border-emerald-400/18 bg-emerald-500/10"
-          : "border-red-500/25 bg-red-950/20 text-red-100"
+          ? "border-[color-mix(in_srgb,var(--state-auto-fg)_35%,transparent)] bg-[var(--state-auto-bg)]"
+          : "border-[color-mix(in_srgb,var(--state-escalada-fg)_35%,transparent)] bg-[var(--state-escalada-bg)] text-[var(--state-escalada-fg)]"
       }`}
     >
       {children}
@@ -649,7 +649,7 @@ function Aviso({
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-baseline gap-2">
-      <span className="text-[10px] uppercase tracking-wide text-[var(--color-text-soft)]">
+      <span className="text-[10px] uppercase tracking-wide text-[var(--color-text-dim)]">
         {label}
       </span>
       <span className="truncate text-[var(--color-text)]">{value}</span>

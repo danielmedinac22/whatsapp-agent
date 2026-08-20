@@ -160,8 +160,8 @@ export function AgentForm({
                 onClick={() => setV({ ...v, model: m.slug })}
                 className={`min-h-9 rounded-md border px-2.5 py-1 text-xs transition lg:min-h-0 ${
                   active
-                    ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-200"
-                    : "border-[var(--color-border)] text-[var(--color-text-dim)] hover:border-emerald-400/30"
+                    ? "border-[color-mix(in_srgb,var(--state-auto-fg)_35%,transparent)] bg-[var(--state-auto-bg)] text-[var(--state-auto-fg)]"
+                    : "border-[var(--color-border)] text-[var(--color-text-dim)] hover:border-[color-mix(in_srgb,var(--state-auto-fg)_35%,transparent)]"
                 }`}
               >
                 {m.label}
@@ -301,7 +301,7 @@ export function AgentForm({
           </div>
         </div>
 
-        <div className="border-t border-[var(--color-border)] px-4 py-2 text-[11px] uppercase text-[var(--color-text-soft)]">
+        <div className="border-t border-[var(--color-border)] px-4 py-2 text-[11px] uppercase text-[var(--color-text-dim)]">
           Plantillas por estado
         </div>
         <TemplateRow
@@ -345,7 +345,7 @@ export function AgentForm({
 
       {/* Sticky save bar */}
       {dirty && (
-        <div className="fixed bottom-4 left-1/2 z-30 w-[min(720px,calc(100%-2rem))] -translate-x-1/2 rounded-xl border border-emerald-400/30 bg-[rgba(8,21,30,0.96)] px-4 py-3 shadow-[0_18px_40px_rgba(3,10,16,0.6)] backdrop-blur">
+        <div className="fixed bottom-4 left-1/2 z-30 w-[min(720px,calc(100%-2rem))] -translate-x-1/2 rounded-xl border border-[color-mix(in_srgb,var(--state-auto-fg)_35%,transparent)] bg-[var(--color-card)] px-4 py-3 shadow-[var(--shadow-panel)] backdrop-blur">
           <div className="flex items-center justify-between gap-3">
             <p className="text-sm text-[var(--color-text)]">
               Tienes cambios sin guardar
@@ -373,7 +373,7 @@ export function AgentForm({
       )}
 
       {!dirty && savedAt && Date.now() - savedAt < 2500 && (
-        <div className="fixed bottom-4 left-1/2 z-30 -translate-x-1/2 rounded-md border border-emerald-400/30 bg-emerald-500/15 px-3 py-1.5 text-xs text-emerald-100 shadow-lg">
+        <div className="fixed bottom-4 left-1/2 z-30 -translate-x-1/2 rounded-md border border-[color-mix(in_srgb,var(--state-auto-fg)_35%,transparent)] bg-[var(--state-auto-bg)] px-3 py-1.5 text-xs text-[var(--state-auto-fg)] shadow-lg">
           Guardado
         </div>
       )}
@@ -402,7 +402,7 @@ function NumberField({
 }) {
   return (
     <div className="space-y-1">
-      <label className="text-[11px] uppercase text-[var(--color-text-soft)]">
+      <label className="text-[11px] uppercase text-[var(--color-text-dim)]">
         {label}
       </label>
       <div className="flex items-center gap-2">
@@ -444,7 +444,7 @@ function ToggleRow({
 }) {
   return (
     <label
-      className={`flex cursor-pointer items-start justify-between gap-4 rounded-lg border border-[var(--color-border)] bg-[rgba(8,21,30,0.55)] px-3 py-2.5 ${className ?? ""}`}
+      className={`flex cursor-pointer items-start justify-between gap-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 ${className ?? ""}`}
     >
       <div>
         <p className="text-sm text-[var(--color-text)]">{label}</p>
@@ -476,12 +476,12 @@ function Switch({
          52x36 en móvil sin cambiar un pixel de cómo se ve el interruptor. */
       className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition before:absolute before:-inset-2 before:content-[''] lg:before:hidden ${
         checked
-          ? "bg-emerald-500/70"
-          : "bg-[rgba(255,255,255,0.12)]"
+          ? "bg-[var(--color-ink)]"
+          : "bg-[var(--color-text-soft)]"
       }`}
     >
       <span
-        className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition ${
+        className={`inline-block h-4 w-4 transform rounded-full bg-[var(--color-card)] shadow transition ${
           checked ? "translate-x-4" : "translate-x-0.5"
         }`}
       />

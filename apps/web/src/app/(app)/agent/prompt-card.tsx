@@ -113,29 +113,33 @@ export function PromptCard({
         </div>
       </div>
 
+      {/* Superficie de trabajo, no de aviso. En oscuro este panel era un tinte
+          cálido apenas visible; traducirlo al ámbar de «sin responder» lo
+          convertía en una advertencia permanente sobre algo que no la tiene. El
+          ámbar queda para lo que sí es estado: «sin guardar». */}
       {tab === "editor" && (
-        <div className="bg-[rgba(40,28,8,0.35)] p-4">
+        <div className="bg-[var(--color-surface)] p-4">
           <textarea
             value={value}
             onChange={(e) => onChange(e.target.value)}
             rows={20}
             spellCheck={false}
             placeholder="Eres un asistente de servicio al cliente…"
-            className="block w-full resize-y rounded-md border border-amber-400/20 bg-[rgba(20,14,4,0.55)] p-3 font-mono text-sm leading-relaxed text-amber-50 outline-none transition focus:border-amber-300/40"
+            className="block w-full resize-y rounded-md border border-[var(--color-border)] bg-[var(--color-card)] p-3 font-mono text-sm leading-relaxed text-[var(--color-text)] outline-none transition focus:border-[var(--color-ink)]"
           />
           <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px]">
             <span
               className={
-                tooLong ? "text-red-300" : "text-[var(--color-text-dim)]"
+                tooLong ? "text-[var(--state-escalada-fg)]" : "text-[var(--color-text-dim)]"
               }
             >
               {value.length.toLocaleString()} / {MAX_PROMPT_CHARS.toLocaleString()}{" "}
               caracteres
             </span>
-            {dirty && <span className="text-amber-200">sin guardar</span>}
+            {dirty && <span className="text-[var(--state-espera-fg)]">sin guardar</span>}
           </div>
 
-          <div className="mt-3 flex flex-wrap items-center justify-end gap-2 border-t border-amber-400/10 pt-3">
+          <div className="mt-3 flex flex-wrap items-center justify-end gap-2 border-t border-[var(--color-border)] pt-3">
             <input
               value={note}
               onChange={(e) => setNote(e.target.value)}
@@ -152,7 +156,7 @@ export function PromptCard({
               {saving ? "Guardando…" : "Guardar prompt"}
             </button>
           </div>
-          {error && <p className="mt-2 text-xs text-red-300">{error}</p>}
+          {error && <p className="mt-2 text-xs text-[var(--state-escalada-fg)]">{error}</p>}
           <p className="mt-3 text-[11px] leading-relaxed text-[var(--color-text-dim)]">
             Cada guardado queda en el historial y se puede restaurar. Al prompt
             se le añaden automáticamente los datos del pedido del cliente
@@ -205,7 +209,7 @@ function TabButton({
       onClick={onClick}
       className={`flex min-h-9 items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition lg:min-h-0 ${
         active
-          ? "bg-emerald-500/15 text-emerald-200"
+          ? "bg-[var(--state-auto-bg)] text-[var(--state-auto-fg)]"
           : "text-[var(--color-text-dim)] hover:text-[var(--color-text)]"
       }`}
     >
@@ -282,7 +286,7 @@ function PlaygroundPanel({
 
       <div className="grid gap-3 md:grid-cols-[1fr_260px]">
         <div className="space-y-1">
-          <label className="text-[11px] uppercase text-[var(--color-text-soft)]">
+          <label className="text-[11px] uppercase text-[var(--color-text-dim)]">
             Mensaje del cliente
           </label>
           <textarea
@@ -294,7 +298,7 @@ function PlaygroundPanel({
           />
         </div>
         <div className="space-y-1">
-          <label className="text-[11px] uppercase text-[var(--color-text-soft)]">
+          <label className="text-[11px] uppercase text-[var(--color-text-dim)]">
             Contexto de una conversación
           </label>
           <select
@@ -335,18 +339,18 @@ function PlaygroundPanel({
       </div>
 
       {error && (
-        <p className="rounded-md border border-red-400/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+        <p className="rounded-md border border-[color-mix(in_srgb,var(--state-escalada-fg)_35%,transparent)] bg-[var(--state-escalada-bg)] px-3 py-2 text-xs text-[var(--state-escalada-fg)]">
           {error}
         </p>
       )}
 
       {result && (
         <div className="space-y-3">
-          <div className="rounded-lg border border-[var(--color-border)] bg-[rgba(8,21,30,0.55)] p-3">
-            <p className="mb-2 text-[11px] uppercase text-[var(--color-text-soft)]">
+          <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+            <p className="mb-2 text-[11px] uppercase text-[var(--color-text-dim)]">
               Respuesta del agente
             </p>
-            <div className="ml-auto w-fit max-w-[85%] rounded-xl rounded-br-sm bg-emerald-600/25 px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap text-[var(--color-text)]">
+            <div className="ml-auto w-fit max-w-[85%] rounded-xl rounded-br-sm bg-[var(--state-auto-bg)] px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap text-[var(--color-text)]">
               {result.reply || "(respuesta vacía)"}
             </div>
             {result.usedConversation && (
@@ -365,7 +369,7 @@ function PlaygroundPanel({
             {showEffective ? "Ocultar" : "Ver"} prompt efectivo
           </button>
           {showEffective && (
-            <pre className="max-h-72 overflow-auto rounded-md border border-[var(--color-border)] bg-[rgba(8,21,30,0.7)] p-3 text-[11px] leading-relaxed whitespace-pre-wrap text-[var(--color-text-dim)]">
+            <pre className="max-h-72 overflow-auto rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-[11px] leading-relaxed whitespace-pre-wrap text-[var(--color-text-dim)]">
               {result.effectiveSystemPrompt}
             </pre>
           )}
@@ -454,7 +458,7 @@ function HistoryPanel({
   };
 
   if (error) {
-    return <p className="p-4 text-xs text-red-300">{error}</p>;
+    return <p className="p-4 text-xs text-[var(--state-escalada-fg)]">{error}</p>;
   }
 
   if (!versions) {
@@ -483,7 +487,7 @@ function HistoryPanel({
                 <p className="flex items-center gap-2 text-sm text-[var(--color-text)]">
                   {formatDate(v.createdAt)}
                   {isCurrent && (
-                    <span className="rounded-full border border-emerald-400/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] text-emerald-200">
+                    <span className="rounded-full border border-[color-mix(in_srgb,var(--state-auto-fg)_35%,transparent)] bg-[var(--state-auto-bg)] px-2 py-0.5 text-[10px] text-[var(--state-auto-fg)]">
                       en uso
                     </span>
                   )}
@@ -520,7 +524,7 @@ function HistoryPanel({
 
             {openId === v.id ? (
               <>
-                <pre className="mt-2 max-h-72 overflow-auto rounded-md border border-[var(--color-border)] bg-[rgba(8,21,30,0.7)] p-3 text-[11px] leading-relaxed whitespace-pre-wrap text-[var(--color-text-dim)]">
+                <pre className="mt-2 max-h-72 overflow-auto rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-[11px] leading-relaxed whitespace-pre-wrap text-[var(--color-text-dim)]">
                   {openText}
                 </pre>
                 <button
@@ -532,7 +536,7 @@ function HistoryPanel({
                 </button>
               </>
             ) : (
-              <p className="mt-1 truncate text-[11px] text-[var(--color-text-soft)]">
+              <p className="mt-1 truncate text-[11px] text-[var(--color-text-dim)]">
                 {v.preview}
               </p>
             )}

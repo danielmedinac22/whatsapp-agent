@@ -112,7 +112,7 @@ export function ModuleNav({
           <div className="flex items-baseline gap-2 px-2.5 pb-1.5">
             <span className="op-group-label">{g.label}</span>
             {agentName(g, sales) ? (
-              <span className="text-[11px] text-[var(--color-text-soft)]">
+              <span className="text-[11px] text-[var(--color-text-dim)]">
                 {agentName(g, sales)}
               </span>
             ) : null}
@@ -149,7 +149,7 @@ export function ModuleNav({
                               lleva el ven…»; ahora la vista se llama por su
                               regla, que no depende de quién la atienda. */}
                           <span className="flex-1 truncate">{view.label}</span>
-                          <span className="tabular-nums text-[10.5px] text-[var(--color-text-soft)]">
+                          <span className="tabular-nums text-[10.5px] text-[var(--color-text-dim)]">
                             {sales.counts[view.count]}
                           </span>
                         </Link>
