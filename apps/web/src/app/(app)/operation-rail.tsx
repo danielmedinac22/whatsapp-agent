@@ -1,9 +1,9 @@
-import { ChevronLeft, ChevronRight, LogOut } from "lucide-react";
-import { signOut } from "@/auth";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { Operation } from "@wa/db";
 import { ConnectionIndicator } from "./connection-indicator";
 import { ModuleNav, ModuleNavIcons, type SalesNav } from "./module-nav";
 import { selectOperation, toggleBars } from "./frame-actions";
+import { SignOutButton } from "./sign-out-button";
 import type { PanelBars } from "@/lib/operation";
 
 /**
@@ -109,23 +109,10 @@ function FoldButton({ next }: { next: PanelBars }) {
 /**
  * Cerrar sesión vive en el riel y no en la columna a propósito: el riel
  * sobrevive al plegado, así que la salida no depende de tener las barras
- * abiertas.
+ * abiertas. Lo que sí cambió es la vecindad. El botón está en
+ * `sign-out-button.tsx`, separado del de plegar por una línea y preguntando
+ * antes de salir.
  */
-function SignOutButton() {
-  return (
-    <form
-      action={async () => {
-        "use server";
-        await signOut({ redirectTo: "/login" });
-      }}
-    >
-      <button type="submit" className="op-rail-icon" title="Cerrar sesión">
-        <LogOut className="h-4 w-4" />
-        <span className="sr-only">Cerrar sesión</span>
-      </button>
-    </form>
-  );
-}
 
 export function OperationRail({
   entries,
@@ -153,8 +140,14 @@ export function OperationRail({
         />
       ))}
       {tight ? <ModuleNavIcons allowed={allowed} sales={sales} /> : null}
-      <div className="mt-auto flex flex-col items-center gap-1.5 pt-2">
+      {/* Salir y plegar no son el mismo grupo, y hasta hoy se veían como uno:
+          6px de separación entre un clic que se hace todos los días y otro que
+          tira la sesión. La línea los separa y el chevrón se queda donde
+          estaba, abajo del todo, para no mover la mano que ya lo tiene
+          aprendido. */}
+      <div className="mt-auto flex flex-col items-center pt-2">
         <SignOutButton />
+        <span aria-hidden className="op-rail-sep" />
         <FoldButton next={tight ? "open" : "collapsed"} />
       </div>
     </aside>

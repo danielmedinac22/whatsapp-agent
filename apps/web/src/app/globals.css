@@ -145,6 +145,43 @@
     @apply flex h-6 w-6 flex-none items-center justify-center rounded-[7px] border text-[var(--color-text-soft)] transition hover:border-[var(--op-line)] hover:text-[var(--color-text)];
   }
 
+  /* La raya entre salir y plegar. Los 6px que había antes no alcanzaban: el
+     chevrón se falla hacia arriba, y arriba estaba la salida. */
+  .op-rail-sep {
+    background: var(--color-border);
+    @apply my-2 block h-px w-5 flex-none;
+  }
+
+  /* Rojo solo al pasar por encima. Un icono rojo permanente al fondo del riel
+     se lee como alarma de la operación, que es justo lo que no es. */
+  .op-rail-icon.is-exit:hover {
+    border-color: rgba(248, 113, 113, 0.42);
+    color: var(--color-danger);
+  }
+
+  .op-dialog {
+    background: linear-gradient(180deg, rgba(20, 38, 51, 0.96), rgba(10, 24, 34, 0.98));
+    border-color: var(--color-border-strong);
+    box-shadow: 0 24px 60px rgba(3, 10, 16, 0.55);
+    color: var(--color-text);
+    width: min(340px, calc(100vw - 2rem));
+    /* `m-auto` no es decoración: el preflight de Tailwind pone `margin: 0` en
+       todo, y el modal se centra con el `margin: auto` que ahí se pierde. */
+    @apply m-auto rounded-xl border p-4;
+  }
+
+  .op-dialog::backdrop {
+    background: rgba(4, 11, 17, 0.62);
+    backdrop-filter: blur(2px);
+  }
+
+  .op-exit-confirm {
+    background: rgba(248, 113, 113, 0.14);
+    border-color: rgba(248, 113, 113, 0.45);
+    color: var(--color-danger);
+    @apply inline-flex h-9 items-center justify-center rounded-md border px-3 text-sm font-semibold transition hover:bg-[rgba(248,113,113,0.22)] disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
   .op-column {
     background:
       linear-gradient(180deg, var(--op-soft), var(--op-faint) 38%, transparent 72%),

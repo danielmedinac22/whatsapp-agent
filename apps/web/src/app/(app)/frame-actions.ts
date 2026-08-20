@@ -14,7 +14,7 @@
 
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
-import { auth } from "@/auth";
+import { auth, signOut } from "@/auth";
 import { listOperations } from "@wa/db";
 import {
   PANEL_BARS_COOKIE,
@@ -78,4 +78,15 @@ export async function toggleBars(formData: FormData): Promise<void> {
     secure: process.env.NODE_ENV === "production",
   });
   revalidatePath("/", "layout");
+}
+
+/**
+ * Cerrar sesión.
+ *
+ * Está acá abajo, junto a las otras dos, porque ahora quien la dispara es un
+ * componente de cliente: el botón del riel abre una pregunta antes de salir, y
+ * un componente de cliente no puede declarar la acción en su propio archivo.
+ */
+export async function endSession(): Promise<void> {
+  await signOut({ redirectTo: "/login" });
 }
