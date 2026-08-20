@@ -4,6 +4,7 @@ import { listTemplates } from "@/lib/queries";
 import { resolvePanelOperation } from "@/lib/operation";
 import { auth } from "@/auth";
 import { templateTypeValues, type TemplateType } from "@wa/shared";
+import { ContextLine } from "../context-line";
 import { TemplateEditor } from "./template-editor";
 
 export const dynamic = "force-dynamic";
@@ -87,11 +88,17 @@ async function deleteTemplate(formData: FormData) {
 }
 
 export default async function TemplatesPage() {
-  const list = await listTemplates(await resolvePanelOperation());
+  // La operación se nombra antes de usarla porque ahora la piden dos cosas: la
+  // consulta y la línea de contexto. `resolvePanelOperation()` lee la cookie y
+  // la lista de operaciones, que viene de la caché de 30 s que el marco acaba
+  // de llenar en esta misma request: nombrarla no agrega un viaje a la base.
+  const op = await resolvePanelOperation();
+  const list = await listTemplates(op);
 
   return (
     <div className="app-page max-w-5xl space-y-3">
       <header className="max-w-3xl">
+        <ContextLine op={op} pantalla="Confirmación" />
         <h1 className="app-title">Plantillas</h1>
         <p className="app-subtitle app-muted mt-1">
           Usa los chips para insertar variables en el cuerpo. La vista previa muestra cómo verá el mensaje el cliente.

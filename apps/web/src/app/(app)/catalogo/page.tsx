@@ -1,5 +1,6 @@
 import { resolvePanelOperation } from "@/lib/operation";
 import { loadCatalogView } from "@/lib/catalogo";
+import { ContextLine } from "../context-line";
 import { CatalogoClient } from "./catalogo-client";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +17,7 @@ export default async function CatalogoPage() {
   return (
     <div className="app-page space-y-3">
       <header className="max-w-3xl">
-        <p className="app-eyebrow">{view.operation.name} · catálogo</p>
+        <ContextLine op={view.operation} pantalla="Ventas" />
         <h1 className="app-title">Productos</h1>
         <p className="app-subtitle app-muted mt-1">
           Los productos que el vendedor puede ofrecer y los anuncios con los que

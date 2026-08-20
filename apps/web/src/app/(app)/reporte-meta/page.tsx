@@ -1,5 +1,6 @@
 import { resolvePanelOperation } from "@/lib/operation";
 import { loadCapiEstado } from "@/lib/capi";
+import { ContextLine } from "../context-line";
 import { ReporteMetaClient } from "./reporte-client";
 
 export const dynamic = "force-dynamic";
@@ -33,7 +34,7 @@ export default async function ReporteMetaPage() {
   return (
     <div className="app-page max-w-4xl space-y-3">
       <header className="max-w-3xl">
-        <p className="app-eyebrow">{op.name} · ventas</p>
+        <ContextLine op={op} pantalla="Ventas" />
         <h1 className="app-title">Reporte de conversiones</h1>
         <p className="app-subtitle app-muted mt-1">
           Si las ventas que vienen de un anuncio le están volviendo a Meta, y

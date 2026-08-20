@@ -1,5 +1,6 @@
 import { listCarriers, listShopifyOrdersWithDropi } from "@/lib/queries";
 import { resolvePanelOperation } from "@/lib/operation";
+import { ContextLine } from "../context-line";
 import { OrdersTable, type OrderRow } from "./orders-table";
 
 export const dynamic = "force-dynamic";
@@ -74,6 +75,7 @@ export default async function OrdersPage({
   return (
     <div className="app-page space-y-3">
       <header className="max-w-3xl">
+        <ContextLine op={op} pantalla="Confirmación" />
         <h1 className="app-title">Pedidos</h1>
         <p className="app-subtitle app-muted mt-1">
           Filtra por situación logística y salta a la conversación del cliente.

@@ -1,5 +1,6 @@
 import { parseSalesDiscountBehavior, SALES_AGENT_DEFAULTS } from "@wa/shared";
 import { loadVendedorScreen } from "@/lib/vendedor";
+import { ContextLine } from "../context-line";
 import { VendedorForm } from "./vendedor-form";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +23,7 @@ export default async function VendedorPage() {
   return (
     <div className="app-page max-w-5xl space-y-3">
       <header className="max-w-3xl">
+        <ContextLine op={operation} pantalla="Ventas" />
         <h1 className="app-title">Vendedor</h1>
         <p className="app-subtitle app-muted mt-1">
           Quién es y cómo se comporta en {operation.name}. Lo que guardes aplica
