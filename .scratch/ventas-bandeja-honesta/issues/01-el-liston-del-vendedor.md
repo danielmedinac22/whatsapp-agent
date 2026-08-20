@@ -6,7 +6,7 @@ Katherine.
 
 **Blocked by:** nada. **Es el primero y sale solo.**
 
-**Status:** done — worktree `liston-del-vendedor`, tanda del 19-ago-2026.
+**Status:** resolved — desplegado y verificado contra producción, 20-ago-2026
 Rama verde, migración `0030` generada y **sin aplicar**. Ver `## Lo que salió`.
 
 Es el único ticket del lote que se despliega por su cuenta y que **ya apaga todo
@@ -254,3 +254,57 @@ desplegar es seguro en cualquier orden.
 Lo que **no** puede pasar: que alguna conversación que hoy ve Katherine deje de
 verla. Verificalo con una consulta antes y después — el total de la bandeja sin
 parámetro tiene que subir de 1.649 a 1.759, no bajar de ningún lado.
+
+## Answer
+
+**La bandeja de ventas dejó de existir, y las 110 conversaciones volvieron con
+Katherine.** Desplegado y verificado contra producción el 20-ago-2026.
+
+| | Antes | Después |
+| -- | --: | --: |
+| Bandeja de ventas | 110 | **0** |
+| Inbox de Katherine | 1.650 | **1.760** |
+
+Ni una conversación se perdió: las 110 son exactamente la diferencia.
+
+### Lo que encontró de más, y era lo importante
+
+**No había dos definiciones de «hay vendedor». Había tres**, y una cuarta puerta
+con la compuerta mal puesta:
+
+1. `apps/worker/src/sales/persona.ts::isSalesAgentConfigured`
+2. `apps/worker/src/sales/settings.ts::salesAgentIsConfigured`
+3. El panel, que preguntaba **si la fila existía**. Esa es la que encendió el
+   módulo de Guatemala: el `upsert` de `/vendedor` crea la fila con todo en `''`,
+   así que **abrir la pantalla de configuración encendía el módulo**.
+4. `apps/web/src/app/api/conversations/[id]/messages/route.ts`, que no estaba en
+   el ticket: el hilo narraba «El vendedor reconoció…» sobre un vendedor que no
+   contesta.
+
+Ahora el listón vive en un solo sitio, `@wa/db`, junto a la tabla que describe.
+
+### La línea de corte
+
+Migración `0030`: `sales_agent_settings.activated_at`, nullable, additiva, sin
+backfill. En producción está en `null` con `display_name` vacío, y **ese `null` es
+el dato correcto**: nadie encendió a nadie, así que la bandeja de ventas está
+vacía. Poner `now()` habría mandado a ventas todo lo nacido después de aplicar la
+migración sin que nadie lo pidiera.
+
+Se estampa al pasar `display_name` de vacío a no vacío, **más un respaldo
+perezoso** en la lectura para el caso de llenarlo por SQL o por un seed. Sin ese
+respaldo, encender por fuera del panel dejaría la fecha en `null` para siempre,
+con el vendedor prendido y la bandeja vacía, y sin ningún error que lo delate.
+
+Se escribe una sola vez. Apagar y volver a encender **no** la mueve: hacerlo le
+devolvería a Katherine lo que el vendedor ya estaba trabajando.
+
+### Cómo se ensayó
+
+Contra una base desechable en Docker, no contra producción. El script
+(`scripts/ensayo-liston-del-vendedor.ts`) trae una lista de hosts prohibidos
+—`rlwy.net`, `railway.app`— y se niega a correr contra ellos. Ejercita el camino
+entero: leer con el nombre vacío no estampa nada; encender por SQL estampa en la
+primera lectura y no re-estampa en la segunda; borrar el nombre no borra la fecha.
+
+**Status:** resolved — desplegado y verificado contra producción, 20-ago-2026

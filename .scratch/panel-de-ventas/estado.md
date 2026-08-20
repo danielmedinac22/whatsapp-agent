@@ -2,7 +2,7 @@
 
 **Si acabas de llegar a este proyecto con contexto fresco, lee este archivo primero.** Está al día al **19-ago-2026**.
 
-## Lote nuevo del 19-ago-2026 — `ventas-bandeja-honesta`, SIN EMPEZAR
+## Lote `ventas-bandeja-honesta` — 01 y 02 EN PRODUCCIÓN (20-ago-2026), falta el 03
 
 **Vuelve a haber trabajo construible, y no salió de un ticket: salió de mirar el
 panel.** Pablo abrió la bandeja y preguntó de qué eran las 55 conversaciones que
@@ -29,6 +29,38 @@ decisiones ya cerradas con el usuario:
 depende de los otros. El `02` y el `03` van en paralelo —uno es worker, el otro
 `apps/web`—, pero el `03` no se **verifica** hasta que el `02` esté desplegado:
 sus números salen de las columnas que el `02` arregla.
+
+### Lo que ya está en producción, medido
+
+Desplegados el 20-ago-2026, worker y web, con la migración `0030` aplicada a mano
+antes. Verificado contra la base, solo lectura:
+
+| | Antes | Después |
+| -- | --: | --: |
+| Bandeja de ventas | 110 | **0** |
+| Inbox de Katherine | 1.650 | **1.760** |
+
+Ni una conversación se perdió: las 110 son la diferencia exacta. `activated_at`
+está en `null` con `display_name` vacío, que es el dato correcto: nadie encendió
+al vendedor.
+
+Los logs de Railway con `worker listening`, `outbound worker started` y `kapso
+template poll worker started`, sin un error. Vercel en `Ready`, no `BLOCKED`.
+
+**El efecto del 02 todavía no se vio**: desde el deploy no salió ni un mensaje
+—eran las 00:15— así que la confirmación espera tráfico. La consulta que lo dice
+está en el `## Answer` del ticket 02.
+
+### Los dos hallazgos que no estaban en ningún ticket
+
+1. **Había TRES definiciones de «hay vendedor»**, no dos, y una cuarta puerta con
+   la compuerta mal: el hilo de mensajes narraba «El vendedor reconoció…» sobre un
+   vendedor que no contesta.
+2. **`last_outbound_at` no estaba rota.** Los 855 desfases eran todos anteriores
+   al 28-jul; agosto va con 569 conversaciones y 0 nulos. Al fechar la deriva se
+   cayó media especificación del ticket 02, y de paso destapó que el 03 contaba
+   una notificación automática como «ya contestamos». El número corregido es 39,
+   no 20, y los 19 que entran son clientes a los que nadie contestó.
 
 **La restricción del usuario, textual:** *«todavía no están llegando anuncios a
 estas bandejas entonces Sebastián no debería estar encendido. Todo debería seguir

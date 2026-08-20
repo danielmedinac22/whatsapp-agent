@@ -6,7 +6,7 @@ y quede registrado, sin importar desde dónde se conteste.
 **Blocked by:** nada. Va en paralelo con el 01 y con el 03 — es el único de los
 tres que vive en `apps/worker`.
 
-**Status:** claimed — worktree `saliente-conversacional`, tanda del 19-ago-2026
+**Status:** resolved — desplegado 20-ago-2026; la confirmación en producción espera tráfico
 
 ## Qué está mal hoy, medido
 
@@ -151,3 +151,82 @@ La segunda: que ninguna conversación quede marcada como respondida sin haberlo
 sido. Contra producción, después del deploy, no debería existir ninguna fila con
 `unread_count = 0` cuyo último mensaje sea entrante y posterior a
 `last_outbound_at`.
+
+## Answer
+
+**Contestar apaga el contador, y avisar no.** Desplegado el 20-ago-2026.
+
+Hasta hoy el rojo solo se apagaba abriendo la conversación en el panel, así que
+contestar desde el celular lo dejaba puesto para siempre. El agujero medido era
+más grande que el del ticket: **540 conversaciones** cuya última respuesta real
+seguía con el contador encendido, no las 30 de la rodaja que el panel marcaba.
+
+La decisión vive en un solo sitio,
+`apps/worker/src/inbox/saliente-conversacional.ts`, con `switch` exhaustivo: si el
+esquema gana un `source` nuevo, deja de compilar. Se comprobó agregando un noveno
+valor al enum y viendo fallar tanto `tsc` como la prueba que compara la lista de
+casos contra `outboundSource.enumValues`.
+
+`escalation` quedó del lado de las notificaciones, y es la que más se parece a una
+respuesta: es el aviso de que hace falta una persona, no la respuesta de esa
+persona. Apagar el contador con ella escondería justo la conversación que el
+agente pidió mirar.
+
+### La corrección al ticket, con el número en la mano
+
+El ticket daba `last_outbound_at` por rota (855 desfases sobre 1.759) y mandaba
+recortarla a lo conversacional. **Las dos cosas eran incorrectas**, y salieron al
+agrupar los desfases por fecha:
+
+| Mes del último saliente | Conversaciones | Sin estampa | Desfasada >5s |
+| -- | --: | --: | --: |
+| may-2026 | 222 | 112 | 62 |
+| jun-2026 | 334 | 159 | 94 |
+| jul-2026 | 592 | 260 | 161 |
+| **ago-2026** | **569** | **0** | **1** |
+
+El corte es limpio entre el 27 y el 29 de julio: la columna ya estaba arreglada.
+Y recortarla habría sido una regresión, porque `lastActivityAt` la usa para
+ordenar la bandeja de Katherine, y en 1.204 de 1.760 conversaciones el último
+saliente es una notificación.
+
+`last_outbound_at` sigue queriendo decir «lo último que salió, del tipo que sea».
+**Quién contestó de verdad se lee de `outbound_messages` filtrado por `source`.**
+
+Esa distinción destapó un error en el ticket 03, que comparaba el último entrante
+contra *cualquier* saliente y por lo tanto contaba una notificación automática
+como «ya contestamos». Corregido antes de que el 03 arrancara: el número sube de
+20 a 39, y los 19 que entran son clientes a los que nadie contestó.
+
+### `sentByUserId`
+
+Las tres rutas de envío manual lo aceptan y lo persisten. Se comprueba en el
+borde y degrada a `null` ante cualquier duda: es clave foránea a `users`, y un
+identificador inventado reventaría el insert **en medio de un envío**. La
+atribución es un dato de más; el mensaje es el trabajo. La mitad del panel es del
+ticket 03.
+
+### Lo que falta para darlo por confirmado en producción
+
+**El código está desplegado; el efecto todavía no se vio.** Desde el deploy
+(05:08 UTC) no salió ni un mensaje, que a esa hora es lo esperado. Con tráfico,
+esta consulta tiene que mostrar `pero_en_rojo` dejando de crecer sobre los 540:
+
+```sql
+with ult as (
+  select c.id, c.unread_count, c.last_inbound_at,
+         (select max(o.created_at) from outbound_messages o
+           where o.conversation_id = c.id and o.source in ('agent','manual')) as resp
+  from conversations c
+)
+select count(*) filter (where resp is not null and (last_inbound_at is null or resp > last_inbound_at)) as contestadas,
+       count(*) filter (where resp is not null and (last_inbound_at is null or resp > last_inbound_at) and unread_count > 0) as pero_en_rojo
+from ult;
+```
+
+Y el perfil por `source` tiene que quedar igual en `por_dia` y `pct_salio`, que es
+la prueba de que no cambió *qué* se envía. Línea de base del 20-ago: `agent` 88,9
+por día al 100%, `dropi_status` 101,6 al 98,6%, `manual` 10,4 al 97,4%.
+
+**Status:** resolved en código y desplegado — la confirmación en producción espera
+tráfico, con la consulta de arriba
