@@ -218,6 +218,13 @@
       "when": 1787200310694,
       "tag": "0030_liston_del_vendedor",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1787250191486,
+      "tag": "0031_indices_de_la_bandeja",
+      "breakpoints": true
     }
   ]
 }

@@ -1,0 +1,108 @@
+-- ────────────────────────────────────────────────────────────────────────────
+-- 0031 · Los dos índices que la consulta de la bandeja ya pedía
+--
+-- `conversations` no tenía índice sobre `operation_id`, así que todo filtro por
+-- operación era un escaneo completo. Y la lista del Inbox ordena por
+-- `GREATEST(last_inbound_at, last_outbound_at, created_at)` — una **expresión**,
+-- no una columna—, así que `conversations_last_msg_idx` no la sirve por más que
+-- tenga las dos columnas del medio: un índice sobre las columnas no ordena la
+-- expresión. La tabla se ordenaba entera en cada render.
+--
+-- Es el patrón de `shopify_orders_operation_idx` (`0024`) y
+-- `capi_conversions_operation_idx` (`0027`), aplicado a la tabla más caliente
+-- del sistema.
+--
+-- ## Por qué son dos, medido y no supuesto
+--
+-- Sobre la base de ensayo a 17.620 conversaciones (10× la escala de hoy),
+-- sembrada con `scripts/seed-bandejas-ensayo.ts` y leída con
+-- `scripts/planes-de-la-bandeja.ts`:
+--
+-- · **`conversations_operation_activity_idx`** es el que cambia lo que corre
+--   **hoy**. La lista del Inbox con su corte de 200 pasa de `Seq Scan` de las
+--   17.620 filas más un `Sort` de todas ellas, a `Index Scan Backward` de 200
+--   entradas: el nodo de `conversations` va de **329 bloques a 34**, y la
+--   consulta entera de **11,3–12,6 ms a 0,5–0,8 ms** (tres corridas de cada
+--   lado). El `Sort` desaparece. Y el rango de «sin responder»
+--   (`GREATEST(...) >= hace 30 días`, `puedeEstarEnSQL`) pasa de `Seq Scan` de
+--   329 bloques —17.620 filas leídas para quedarse con 1.724— a `Bitmap Heap
+--   Scan` de **47 bloques**.
+--
+-- · **`conversations_operation_idx`** no cambia **ningún** plan de hoy —se
+--   midió con los dos juegos de índices y los planes salen idénticos—, y aun
+--   así va. Lo que sirve es lo que viene: `born_after_activation`
+--   (`src/inbox.ts`) es una de las dos reglas que mandan una conversación a la
+--   bandeja de ventas, y dicha en SQL es `created_at > activated_at`. El día
+--   que se encienda al vendedor ese corte es *ahora*, así que casi ninguna
+--   fila lo pasa — y una condición muy selectiva sin índice es el peor caso:
+--   Postgres escanea la tabla entera para devolver cero filas. Medido:
+--   **332 bloques con `Seq Scan`, 5 con este índice**. El contador de ventas de
+--   la barra lateral, con el mismo corte, baja a 2 bloques con `Index Only
+--   Scan`.
+--
+-- ## Lo que NO arreglan, y hay que decirlo
+--
+-- La consulta del ticket —el `SELECT` **sin `LIMIT`** de
+-- `conversationIdsOfInbox`— **sigue con `Seq Scan` y sigue ordenando la tabla
+-- entera**, y está bien que siga. Lee el 100 % de las filas de la operación:
+-- con una sola operación no hay índice que gane, y forzarlo empeora las cosas
+-- —medido con `enable_seqscan=off`: **35.792 bloques contra 619**, 16,2 ms
+-- contra 7,0—. El planificador tiene razón. Eso no se arregla con un índice sino
+-- leyendo menos filas, que es PRO-18: acotar antes de derivar. Este índice es
+-- contra lo que PRO-18 se apoya, no su reemplazo.
+--
+-- Y por lo mismo, **el techo de las ~36.000 conversaciones sigue en pie**: a
+-- 17.620 filas ese `Sort` usa 2.007 kB y el `work_mem` de la base es 4 MB.
+-- Bajarlo a 1 MB lo tira a `external merge` con el índice puesto igual que sin
+-- él. El índice no mueve ese borde.
+--
+-- ## Lo que cuestan en la escritura
+--
+-- La escritura más caliente que hay es la del webhook de entrada: un
+-- `last_inbound_at` por cada mensaje de WhatsApp. Medido en bytes de WAL —el
+-- reloj de un portátil da ±4 ms sobre 24 a esta escala, que es ruido—, sobre un
+-- `UPDATE` de 1.725 filas:
+--
+--   hoy (4 índices)                2.275.616 bytes
+--   + conversations_operation_idx  2.518.000 bytes   (+10,7 %)
+--   + los dos (6 índices)          2.670.624 bytes   (+17,4 %)
+--
+-- **+17,4 % de WAL, o 229 bytes por fila actualizada.** Es el precio, está
+-- pagado a sabiendas, y es lo que el ticket pedía medir antes de agregar. Por
+-- eso tampoco llevan `INCLUDE`: un covering index con las columnas del preview
+-- infla más de lo que ahorra, y ninguna de las consultas medidas lo pedía.
+--
+-- Al margen, y sin tocarlo acá: **`conversations_last_msg_idx` no lo usa
+-- ninguna consulta del repo** —nadie filtra ni ordena por esas dos columnas
+-- sueltas; todo lector va por `id`, por `contact_id` o por la expresión— y
+-- cuesta 172.152 bytes de WAL en ese mismo `UPDATE`, un 8,2 %. Borrarlo pagaría
+-- casi la mitad de lo que cuestan estos dos. No se hace en esta migración
+-- porque borrar un índice es otra decisión: hay que confirmarlo contra el
+-- `idx_scan` de producción, y esta rama no tuvo acceso a leerlo.
+--
+-- ## Guatemala no cambia
+--
+-- Dos índices y nada más: ni una columna agregada, renombrada ni borrada, ni un
+-- `check` nuevo, ni una fila tocada. Ninguna consulta devuelve otro conjunto ni
+-- otro orden —un índice cambia por dónde se llega a las filas, no cuáles son—,
+-- y las 915 pruebas del worker y las 16 del panel siguen dando lo mismo.
+--
+-- **Sin backfill, y se verificó en vez de asumirlo.** Drizzle no escribe
+-- backfill; acá no hacía falta porque son índices y no columnas, pero la
+-- migración generada se leyó antes de darla por buena.
+--
+-- **Compatible en las dos direcciones**: un worker viejo no sabe que existen y
+-- funciona igual, y el de esta rama tampoco los nombra. Se puede aplicar antes
+-- o después de desplegar.
+--
+-- **Sin `CONCURRENTLY`, a propósito.** `CREATE INDEX` toma un lock que bloquea
+-- las escrituras de la tabla mientras dura, y `CONCURRENTLY` no puede correr
+-- dentro de una transacción, que es como el migrador de drizzle aplica todo.
+-- A la escala de hoy no hace falta: los dos juntos tardaron **27 ms sobre
+-- 17.620 filas** (13,7 + 13,6), diez veces la tabla de producción, y ocupan
+-- 712 kB cada uno. Si algún día esta tabla llega a los millones, esa cuenta se
+-- vuelve a hacer.
+-- ────────────────────────────────────────────────────────────────────────────
+
+CREATE INDEX IF NOT EXISTS "conversations_operation_idx" ON "conversations" USING btree ("operation_id","created_at");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "conversations_operation_activity_idx" ON "conversations" USING btree ("operation_id",GREATEST("last_inbound_at", "last_outbound_at", "created_at"));
