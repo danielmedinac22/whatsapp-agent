@@ -6,7 +6,8 @@ Katherine.
 
 **Blocked by:** nada. **Es el primero y sale solo.**
 
-**Status:** claimed — worktree `liston-del-vendedor`, tanda del 19-ago-2026
+**Status:** done — worktree `liston-del-vendedor`, tanda del 19-ago-2026.
+Rama verde, migración `0030` generada y **sin aplicar**. Ver `## Lo que salió`.
 
 Es el único ticket del lote que se despliega por su cuenta y que **ya apaga todo
 el ruido de hoy**. Los otros dos son mejoras; este es la corrección.
@@ -143,22 +144,105 @@ No comparten un solo archivo.
 
 ## Criterios
 
-- [ ] Existe **un solo** predicado de «hay vendedor» en el monorepo, y tanto el
+- [x] Existe **un solo** predicado de «hay vendedor» en el monorepo, y tanto el
       worker como el panel lo usan.
-- [ ] Con `display_name` vacío: el enlace de **Conversaciones no aparece** en la
+      `salesAgentIsConfigured` en `packages/db/src/sales-agent-settings.ts`.
+      Eran **tres** y no dos: `sales/settings.ts`, `sales/persona.ts` y el
+      `seller !== null` del panel. Las dos copias del worker se borraron.
+- [x] Con `display_name` vacío: el enlace de **Conversaciones no aparece** en la
       barra, y `/inbox?b=ventas` a mano se comporta como `/inbox` — no como una
-      bandeja vacía.
-- [ ] Con `display_name` vacío, la barra **no dice «Sebastián»**.
-- [ ] Catálogo, Reporte a Meta y Vendedor **siguen accesibles** con el vendedor
-      apagado: si no, no habría forma de configurarlo.
-- [ ] Migración `0030` aplicada, additiva, con `activated_at` nullable.
-- [ ] El respaldo perezoso estampa `activated_at` cuando encuentra `display_name`
+      bandeja vacía. Verificado sobre el panel corriendo (ver `## Lo que salió`).
+- [x] Con `display_name` vacío, la barra **no dice «Sebastián»**.
+- [x] Catálogo, Reporte a Meta y Vendedor **siguen accesibles** con el vendedor
+      apagado.
+- [x] Migración `0030` additiva, con `activated_at` nullable. **Generada y
+      leída, NO aplicada a producción**: la aplica un humano al mergear.
+      Ensayada de cero contra una base desechable — las 31 migraciones en orden.
+- [x] El respaldo perezoso estampa `activated_at` cuando encuentra `display_name`
       lleno y la fecha nula, y **no la re-escribe** en lecturas posteriores.
-- [ ] `resolveInbox` con `activated_at` en `null` no manda **nada** a ventas por
+- [x] `resolveInbox` con `activated_at` en `null` no manda **nada** a ventas por
       `no_order`. Con fecha, manda solo lo nacido después.
-- [ ] Contra producción (solo lectura): la bandeja de ventas da **0** donde hoy
+- [x] Contra producción (solo lectura): la bandeja de ventas da **0** donde hoy
       da 110.
-- [ ] `pnpm -r typecheck` limpio y `pnpm --filter @wa/worker test` en verde.
+- [x] `pnpm -r typecheck` limpio y `pnpm --filter @wa/worker test` en verde
+      (838 tests, 53 archivos).
+
+## Lo que salió
+
+Medido contra producción el **20-ago-2026** (solo `SELECT`). Producción se movió
+un poco desde el spec: **1.760** conversaciones (era 1.759) y `products` tiene
+**1 fila** (era 0) — alguien conectó un producto de Shopify el 20-ago 03:55 UTC.
+`display_name` sigue vacío: **el vendedor sigue apagado**, que es lo que importa.
+
+| | antes | después |
+| -- | --: | --: |
+| Bandeja de ventas (`no_order`) | 110 | **0** |
+| Inbox sin parámetro | 1.650 | **1.760** |
+| «Necesitan atención» de ventas | 54 | *la vista no existe* |
+
+Ni una conversación desaparece: las 110 vuelven al Inbox de Katherine y el total
+sube, no baja. Y simulando `activated_at = now()` sobre las 1.760 de hoy, la
+bandeja de ventas **sigue dando 0**: el día que se encienda arranca vacía.
+
+### El agujero que este ticket no había visto
+
+La regla del recomprador (`ad_click_after_last_order`) compara el clic contra el
+**último pedido**. A quien no tiene ninguno no lo alcanza: `resolveInbox` sale
+por la regla del lead antes de llegar ahí. Con la regla acotada solo por
+nacimiento, el día que lleguen anuncios **un clic de cualquiera de las 110
+conversaciones sin pedido caería en la bandeja de Katherine** — la misma mentira
+al revés.
+
+Se agregó la regla `ad_click_after_activation`: sin pedido, más vieja que el
+corte, pero con un clic **posterior al corte** → ventas. Respeta la línea de
+corte igual que el nacimiento —un clic anterior es historia—, y con
+`activated_at` en `null` no se dispara nunca, así que no cambia nada de hoy.
+
+### Lo que le queda al ticket 03, y no es opcional
+
+`resolveInbox` recibe la línea de corte como **segundo parámetro opcional**, y
+el default es «no hay vendedor». Tuvo que ser opcional porque hacerlo obligatorio
+rompe `pnpm -r typecheck` en `apps/web/src/lib/queries.ts`, que este ticket tiene
+prohibido tocar.
+
+Consecuencia **medida sobre el panel corriendo**: con el vendedor encendido, la
+bandeja de ventas del panel queda **permanentemente vacía** —un lead nacido
+después del corte aparece en el Inbox de Katherine— porque `queries.ts` llama a
+`resolveInbox` sin corte. El worker sí lo pasa (`inbound/pipeline.ts`), así que
+el **ruteo** es correcto; lo que falta es la **pintura**.
+
+Los cuatro call sites, con lo que le falta a cada uno:
+
+| Línea | Función | Qué hay que agregarle |
+| -- | -- | -- |
+| `queries.ts:345` | `conversationIdsOfInbox` | `conversations.created_at` al `select`, y el corte |
+| `queries.ts:349` | `inboxChangedSince` | el mismo corte |
+| `queries.ts:549` | `listConversations` | ya tiene `r.conversation.createdAt`; falta el corte |
+| `queries.ts:598` | `countSalesInboxViews` | `conversations.created_at` al `select`, y el corte |
+
+El corte sale de `getSalesAgentSettings(op)?.activatedAt ?? null`.
+
+### Dos desvíos del encargo, dichos
+
+1. **Se tocó `apps/web/src/app/(app)/inbox/page.tsx` en dos líneas y no en una.**
+   La otra es `sellerName`, que preguntaba `seller ? ... : null` — la fila, no el
+   listón—. Con la fila a medio llenar el hilo decía «el vendedor reconoció...» y
+   encendía el botón «TRABAJARLA YO» (`inbox-client.tsx:634` deriva
+   `sellerConfigured` de ahí). Dejarla habría dejado el criterio 1 a medias.
+2. **Se tocó `apps/web/src/app/api/conversations/[id]/messages/route.ts`**, que
+   no estaba en la lista de superficie: era el cuarto sitio con `!seller`, y su
+   propio comentario ya decía que quería apagar el hilo «cuando la operación no
+   tenga vendedor configurado». Solo se le cambió el listón.
+
+Ninguno de los dos toca `queries.ts` ni `inbox-client.tsx`.
+
+### Un hallazgo de paso, sin ticket
+
+Hay **una** fila de `dropi_orders` (`a413d794-…`) cuyo `contact_id` no es el del
+`shopify_orders` al que está enganchada. `loadOrderFacts` no la carga para
+ninguno de los dos contactos, así que ese pedido no cuenta para el ruteo de nadie.
+Es la diferencia entre contar «conversaciones sin pedido» de las dos formas
+(110 con la forma del cargador, 109 con una unión ingenua de `contact_id`).
 
 ## No-regresión
 

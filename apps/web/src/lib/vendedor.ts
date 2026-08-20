@@ -2,7 +2,9 @@ import {
   eq,
   getSalesAgentSettings,
   kapsoConnection,
+  salesAgentIsConfigured,
   salesAgentSettings,
+  sql,
   type Operation,
   type SalesAgentSettings,
 } from "@wa/db";
@@ -73,17 +75,45 @@ async function connectionPhone(operation: Operation): Promise<string | null> {
  * **No toca `display_name` de otra forma que la que le mandaron.** Guardar la
  * pantalla a medio llenar deja el nombre vacío y el vendedor apagado; encenderlo
  * es escribir un nombre, y es la única forma.
+ *
+ * **Y ese acto es el que estampa la línea de corte.** `activated_at` se escribe
+ * al pasar el nombre de vacío a no vacío, en la misma sentencia que lo escribe:
+ * son el mismo hecho —«acá se encendió el vendedor»— y partirlos en dos
+ * sentencias abriría el hueco de un guardado exitoso con la fecha sin poner. De
+ * ahí en adelante **no se vuelve a mover**, ni siquiera si el vendedor se apaga
+ * borrando el nombre y se enciende otra vez: re-estamparla arrastraría a la
+ * bandeja de Katherine conversaciones que el vendedor ya estaba trabajando.
  */
 export async function saveVendedorSettings(
   input: SalesAgentSettingsInput,
 ): Promise<void> {
   const operation = await resolvePanelOperation();
   const fields = normalizeSalesAgentSettings(input);
+  const encendido = salesAgentIsConfigured(fields);
   await db
     .insert(salesAgentSettings)
-    .values({ operationId: operation.id, ...fields })
+    .values({
+      operationId: operation.id,
+      ...fields,
+      // La fila nace con línea de corte solo si nace con nombre. `now()` de
+      // Postgres y no el reloj del panel: la fecha contra la que se comparan
+      // los nacimientos sale del mismo reloj que los escribió.
+      activatedAt: encendido ? sql`now()` : null,
+    })
     .onConflictDoUpdate({
       target: salesAgentSettings.operationId,
-      set: { ...fields, updatedAt: new Date() },
+      set: {
+        ...fields,
+        updatedAt: new Date(),
+        // Solo se escribe al encender, y el `coalesce` es el «una sola vez»:
+        // con fecha puesta se queda la de entonces. Guardar con el nombre
+        // vacío ni siquiera toca la columna, así que apagar al vendedor no le
+        // devuelve a Katherine las conversaciones que él ya trabajaba.
+        ...(encendido
+          ? {
+              activatedAt: sql`coalesce(${salesAgentSettings.activatedAt}, now())`,
+            }
+          : {}),
+      },
     });
 }

@@ -1,4 +1,4 @@
-import { asc } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import { getDb } from "./client";
 import type { Operation } from "./schema";
 import { salesAgentSettings, type SalesAgentSettings } from "./schema";
@@ -23,6 +23,44 @@ import { salesAgentSettings, type SalesAgentSettings } from "./schema";
 /** Lo mínimo que la resolución necesita de una fila para decidir. */
 export interface ScopedSalesAgentSettingsRow {
   operationId: string;
+}
+
+/** Lo mínimo que hace falta para saber si hay vendedor. Forma estructural. */
+export interface SalesAgentConfigRef {
+  displayName: string;
+}
+
+/**
+ * **El único listón de «hay vendedor» del monorepo.**
+ *
+ * Vive acá, junto a la tabla que describe, porque hasta hoy había tres
+ * respuestas a la misma pregunta y una era distinta: el worker preguntaba por
+ * `display_name` no vacío en dos sitios, y el panel preguntaba si la fila
+ * existía. Las tres se leen igual de razonables por separado; juntas, abrir la
+ * pantalla de configuración encendía el módulo, porque el `upsert` crea la fila
+ * con todos los textos en `''`. Eso es exactamente lo que pasó en Guatemala.
+ *
+ * **La fila sola no basta.** Los textos son `NOT NULL default ''`, así que
+ * existir no es estar configurada: tomar la existencia como «hay vendedor»
+ * convierte un `INSERT` a medio llenar en el momento en que Guatemala deja de
+ * ser atendida por Katherine, sin que nadie lo haya pedido.
+ *
+ * El listón es el nombre visible porque es lo mínimo que un vendedor necesita
+ * para presentarse y el único campo que el cliente ve, y es deliberadamente
+ * conservador: mientras la respuesta sea «no», el comportamiento observable de
+ * Guatemala es exactamente el de siempre —el riesgo R8 de la no-regresión—. Si
+ * mañana hace falta un listón más alto (que tenga saludo, o modelo), **este es
+ * el único sitio donde se cambia**, y esa frase ahora es verdad.
+ *
+ * Es un guardia de tipo y no un `boolean` suelto para que preguntar por el
+ * vendedor y quedarse con su fila sean el mismo acto: quien pasó el listón ya
+ * tiene la fila en la mano, sin un `!` que vuelva a afirmar lo que la condición
+ * acaba de comprobar.
+ */
+export function salesAgentIsConfigured<T extends SalesAgentConfigRef>(
+  settings: T | null,
+): settings is T {
+  return settings !== null && settings.displayName.trim().length > 0;
 }
 
 /**
@@ -66,5 +104,76 @@ export async function getSalesAgentSettings(
     .select()
     .from(salesAgentSettings)
     .orderBy(asc(salesAgentSettings.createdAt));
-  return resolveSalesAgentSettings(rows, op);
+  const row = resolveSalesAgentSettings(rows, op);
+  return row === null ? null : stampSalesAgentActivation(row);
+}
+
+/** Lo mínimo que hace falta para decidir si a una fila le falta la fecha. */
+export interface ActivationStampRef extends SalesAgentConfigRef {
+  activatedAt: Date | null;
+}
+
+/**
+ * Si a esta fila le falta la línea de corte: **la decisión** del respaldo
+ * perezoso, sin la escritura.
+ *
+ * Está aparte y exportada porque es la mitad que se puede probar con fixtures
+ * de dos campos —la escritura es el borde, y el borde no se prueba, como en el
+ * resto del repo—. Y es la mitad donde está el «una sola vez»: `activatedAt`
+ * no nulo devuelve `false`, así que **una fecha ya puesta no se vuelve a
+ * escribir nunca**, ni siquiera si el vendedor se apagó y se volvió a encender.
+ *
+ * Los dos requisitos son necesarios y ninguno alcanza solo: sin nombre no hay
+ * vendedor que encender —estampar ahí pondría la fecha de una activación que
+ * nunca ocurrió, y mandaría a la bandeja de ventas todo lo nacido después—, y
+ * con fecha puesta no hay nada que hacer.
+ */
+export function needsActivationStamp(row: ActivationStampRef | null): boolean {
+  return salesAgentIsConfigured(row) && row.activatedAt === null;
+}
+
+/**
+ * **El respaldo perezoso de la línea de corte**: si la fila ya tiene vendedor y
+ * `activated_at` sigue en `null`, se estampa en esta lectura.
+ *
+ * El camino normal es el otro —el guardado del panel estampa la fecha al pasar
+ * `display_name` de vacío a no vacío—, y este es el que cubre todo lo demás:
+ * llenar la columna por SQL, por un seed, o por una restauración. Sin él, esos
+ * caminos dejan `activated_at` en `null` para siempre, la bandeja de ventas
+ * queda vacía con el vendedor encendido, y **nadie entiende por qué**: no hay
+ * error, no hay log, solo un contador en cero que parece correcto.
+ *
+ * **Escribir desde una lectura es deliberado y tiene precedente en este repo**
+ * —`releaseStaleAssignments` suelta asignaciones viejas desde la carga del
+ * Inbox, y su comentario dice que aprovecha el viaje—. El costo aquí es menor
+ * que allá: la escritura ocurre **una vez en la vida de la operación** y no en
+ * cada lectura, porque después de la primera `activated_at` deja de ser `null`.
+ * Con el vendedor apagado —producción hoy— no ocurre nunca: la condición pide
+ * nombre visible.
+ *
+ * El `where activated_at is null` no es defensivo por gusto: es lo que hace
+ * cumplir el «una sola vez» cuando dos lecturas entran a la vez —el panel y el
+ * worker, por ejemplo—, sin transacción ni bloqueo. La segunda no encuentra
+ * fila que actualizar y se queda con la fecha de la primera.
+ *
+ * **No atrapa el error a propósito.** Un `UPDATE` por clave primaria que falla
+ * es la base caída, y devolver la fila sin estampar dejaría exactamente el
+ * estado que esta función existe para impedir: un vendedor encendido con la
+ * bandeja vacía y nada que lo explique.
+ */
+export async function stampSalesAgentActivation(
+  row: SalesAgentSettings,
+): Promise<SalesAgentSettings> {
+  if (!needsActivationStamp(row)) return row;
+  const [stamped] = await getDb()
+    .update(salesAgentSettings)
+    .set({ activatedAt: new Date() })
+    .where(
+      and(
+        eq(salesAgentSettings.id, row.id),
+        isNull(salesAgentSettings.activatedAt),
+      ),
+    )
+    .returning();
+  return stamped ?? row;
 }

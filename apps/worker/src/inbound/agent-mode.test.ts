@@ -26,6 +26,17 @@ const PEDIDO_EN_CURSO: OrderFacts = {
 
 const SIN_PEDIDOS: readonly OrderFacts[] = [];
 
+/**
+ * La línea de corte que el pipeline le pasa al ruteo: el vendedor se encendió
+ * antes de que llegara este mensaje, así que la conversación que nace ahora es
+ * suya. Sin corte —producción hoy— nada cae en la bandeja de ventas, y eso es
+ * justo lo que prueba el primer bloque.
+ */
+const ENCENDIDO = new Date("2026-06-01T10:00:00.000Z");
+
+/** Una conversación de las de siempre: más vieja que el vendedor. */
+const ANTES_DEL_VENDEDOR = new Date("2026-04-30T10:00:00.000Z");
+
 /** La fila de `contacts` en lo único que este ticket mira. */
 interface Contacto {
   agentMode: boolean;
@@ -47,6 +58,8 @@ function mensajeEntrante(input: {
   vendedor: boolean;
   clicDeAnuncio?: Date | null;
   pedidos?: readonly OrderFacts[];
+  /** Cuándo nació la conversación. Por defecto, con este mensaje. */
+  nacidaEl?: Date;
 }) {
   const nacimiento = input.contacto
     ? null
@@ -59,10 +72,16 @@ function mensajeEntrante(input: {
   };
 
   const pedidos = input.pedidos ?? SIN_PEDIDOS;
-  const inbox = resolveInbox({
-    lastAdClickAt: input.clicDeAnuncio ?? null,
-    orders: pedidos,
-  });
+  const inbox = resolveInbox(
+    { lastAdClickAt: input.clicDeAnuncio ?? null, orders: pedidos },
+    {
+      activatedAt: input.vendedor ? ENCENDIDO : null,
+      // La conversación de un número desconocido nace con este mensaje; la de
+      // un contacto que ya existía es anterior, y por eso su caso se escribe
+      // con el nacimiento puesto a mano.
+      bornAt: input.nacidaEl ?? AHORA,
+    },
+  );
   const owner = input.vendedor
     ? resolveConversationOwner({
         salesAgentConfigured: true,
@@ -82,11 +101,11 @@ function mensajeEntrante(input: {
 // ────────────────────────────────────────────────────────────────────────────
 
 describe("sin vendedor configurado · Guatemala no cambia en nada", () => {
-  // El criterio que manda sobre todos los demás. Encendido sin este guardia, un
-  // contacto nuevo sin vendedor sería Katherine contestándole a un desconocido:
-  // `resolveInbox` manda a ventas toda conversación sin pedido y el dueño cae a
-  // `confirmacion` por no haber vendedor. Hoy esos contactos no reciben nada, y
-  // con el guardia puesto siguen sin recibir nada.
+  // El criterio que manda sobre todos los demás. Hoy hay **dos** guardias sobre
+  // el mismo hecho —que no hay vendedor—: el del nacimiento, que deja el
+  // `agent_mode` apagado, y la línea de corte, que sin `activated_at` deja la
+  // bandeja de ventas vacía. Cualquiera de los dos basta para que un contacto
+  // nuevo no reciba nada, y los dos están puestos.
   const combinaciones = [
     { nombre: "escribe por primera vez", clic: null, pedidos: SIN_PEDIDOS },
     { nombre: "llega desde un anuncio", clic: AHORA, pedidos: SIN_PEDIDOS },
@@ -144,7 +163,7 @@ describe("con vendedor configurado · el lead nuevo llega al agente", () => {
       contacto: null,
       vendedor: true,
     });
-    expect(inbox).toEqual({ inbox: "ventas", rule: "no_order" });
+    expect(inbox).toEqual({ inbox: "ventas", rule: "born_after_activation" });
     expect(contesta).toBe("ventas");
   });
 
@@ -196,10 +215,19 @@ describe("un contacto que ya existe no cambia de estado nunca por esta regla", (
   });
 
   it("y uno que ya lo tenía encendido sigue atendido", () => {
-    const { contesta } = mensajeEntrante({
+    // Su conversación es más vieja que el corte —el contacto ya existía—, así
+    // que lo que la trae a la bandeja de ventas es el clic de anuncio nuevo, no
+    // el nacimiento. Es el caso que la regla 5 cubre y que la del recomprador
+    // no alcanza: este contacto nunca compró.
+    const { contesta, inbox } = mensajeEntrante({
       contacto: { agentMode: true },
       vendedor: true,
       clicDeAnuncio: AHORA,
+      nacidaEl: ANTES_DEL_VENDEDOR,
+    });
+    expect(inbox).toEqual({
+      inbox: "ventas",
+      rule: "ad_click_after_activation",
     });
     expect(contesta).toBe("ventas");
   });

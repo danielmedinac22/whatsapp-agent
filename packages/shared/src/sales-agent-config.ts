@@ -11,13 +11,13 @@ import { z } from "zod";
  * desincronizan en cuanto una se toque.
  *
  * **Lo que este archivo no hace, a propósito: decidir si hay vendedor.** Ese
- * listón —`display_name` no vacío— ya vive en el worker
- * (`sales/persona.ts::isSalesAgentConfigured`) y es lo que sostiene la
- * no-regresión de Guatemala. Escribir aquí una tercera copia sería agregarle un
- * lugar más donde el listón puede quedar distinto, que es justo el error que
- * convierte un `INSERT` a medio llenar en el momento en que Katherine deja de
- * atender. El panel **no decide si hay vendedor**: guarda lo que le
- * escribieron, y el worker decide con su listón de siempre.
+ * listón —`display_name` no vacío— vive en `@wa/db`
+ * (`sales-agent-settings.ts::salesAgentIsConfigured`), junto a la tabla que
+ * describe, y es lo que sostiene la no-regresión de Guatemala. Escribir aquí
+ * otra copia sería agregarle un lugar más donde el listón puede quedar
+ * distinto, que es justo el error que convirtió un `INSERT` a medio llenar en
+ * el encendido del módulo de ventas de Guatemala. El panel **no decide si hay
+ * vendedor**: guarda lo que le escribieron, y pregunta con el listón único.
  */
 
 /** Nombre visible: lo único que el cliente ve, y el listón del worker. */

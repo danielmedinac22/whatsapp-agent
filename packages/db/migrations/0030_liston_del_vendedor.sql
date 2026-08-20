@@ -1,0 +1,66 @@
+-- ────────────────────────────────────────────────────────────────────────────
+-- 0030 · La línea de corte del vendedor
+--
+-- La única migración de esta ola, como siempre: drizzle-kit reescribe
+-- `meta/_journal.json` en cada generación, así que dos ramas que generen en
+-- paralelo chocan y el conflicto no lo ve ningún check local. De los tres
+-- tickets del lote «la bandeja honesta», este es el único que toca el esquema.
+--
+-- **El problema.** El panel le decía a un vendedor que no existe que tenía 55
+-- conversaciones esperándolo. Ninguna era suya: la bandeja de ventas estaba
+-- definida **por resta** —`resolveInbox` mandaba a ventas todo contacto sin
+-- ninguna fila de pedido, la regla `no_order`— y en Guatemala eso son 110
+-- contactos que escribieron y nunca compraron, todos de Katherine. Medido
+-- contra producción el 19-ago-2026: 1.760 conversaciones, `ad_referral_at` en
+-- `null` en las 1.760 —nunca llegó un anuncio, así que la regla del recomprador
+-- jamás se disparó— y `sales_agent_settings` con una sola fila, con
+-- `display_name` vacío. La bandeja de ventas no contenía **ni una** conversación
+-- del vendedor.
+--
+-- **Qué hace esta columna.** Es el instante en que la operación encendió al
+-- vendedor por primera vez. Con ella, la regla `no_order` se acota: una
+-- conversación sin pedido va a ventas **solo si nació después** de esa fecha.
+-- Sin fecha —producción hoy— no va nada, y la bandeja de ventas queda vacía,
+-- que es la verdad. La bandeja se define en positivo: una conversación es del
+-- vendedor si hay un motivo para creerlo (llegó por un anuncio, o nació después
+-- del encendido), nunca por *no* tener pedido.
+--
+-- **Mira el nacimiento y no la última actividad**, y se escribe **una sola
+-- vez**. Mirar la actividad movería conversaciones vivas de bandeja sin que
+-- nadie lo pida, y re-estampar la fecha al apagar y volver a encender al
+-- vendedor le devolvería a Katherine lo que él ya estaba trabajando: las dos
+-- cosas son exactamente lo que `no-regresion.md` prohíbe. El «una sola vez» lo
+-- hace cumplir el código (`stampSalesAgentActivation`, con su
+-- `where activated_at is null`), no un `check`: la columna tiene que poder
+-- pasar de `null` a fecha una vez, y eso no se expresa con una restricción de
+-- fila.
+--
+-- **Quién la escribe.** El guardado del panel, al pasar `display_name` de vacío
+-- a no vacío y en la misma sentencia. Y un respaldo perezoso en la lectura
+-- (`getSalesAgentSettings`) para el caso de llenar la columna por SQL, por un
+-- seed o por una restauración: sin él esos caminos dejarían `activated_at` en
+-- `null` para siempre, con el vendedor encendido y la bandeja vacía, y nadie
+-- entendería por qué —no hay error, solo un contador en cero que parece
+-- correcto—.
+--
+-- **Sin backfill, y no es un olvido.** Es la decisión explícita del lote: el
+-- histórico no se reconstruye. La única fila de `sales_agent_settings` tiene
+-- `display_name` vacío —el vendedor está apagado—, así que no hay ninguna fecha
+-- de encendido que rellenar: la fila nace en `null` y ese `null` es el dato
+-- correcto. Poner `now()` acá sería peor que no poner nada: mandaría a la
+-- bandeja de ventas todo lo que naciera después de aplicar la migración, sin
+-- que nadie hubiera encendido a nadie.
+--
+-- **Guatemala no cambia.** Una columna nullable sobre una tabla de una fila. El
+-- vendedor sigue apagado (`display_name` vacío → `salesAgentIsConfigured` →
+-- `false`), así que no rutea a ningún agente y el cambio de bandeja es de
+-- pintura: el efecto observable es que el Inbox de Katherine vuelve a traer las
+-- 1.760 conversaciones en vez de 1.650, y que la bandeja de ventas —que hoy
+-- muestra 110 que no son de nadie— deja de existir.
+--
+-- **Compatibilidad con lo desplegado**: additiva y nullable, el worker y el
+-- panel viejos la ignoran. Se puede aplicar **antes o después** de desplegar,
+-- en cualquier orden.
+-- ────────────────────────────────────────────────────────────────────────────
+
+ALTER TABLE "sales_agent_settings" ADD COLUMN "activated_at" timestamp with time zone;

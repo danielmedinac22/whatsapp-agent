@@ -1,7 +1,11 @@
 import { auth } from "@/auth";
 import { getSalesContext, listMessages, markRead } from "@/lib/queries";
 import { resolvePanelOperation } from "@/lib/operation";
-import { getSalesAgentSettings, salesThreadEvents } from "@wa/db";
+import {
+  getSalesAgentSettings,
+  salesAgentIsConfigured,
+  salesThreadEvents,
+} from "@wa/db";
 
 export async function GET(
   _req: Request,
@@ -27,12 +31,17 @@ export async function GET(
    * Katherine tiene que quedar exactamente como estaba.
    */
   const seller = await getSalesAgentSettings(op);
-  if (!seller) return Response.json({ messages: msgs, events: [] });
+  // El listón es el único del monorepo —nombre visible no vacío—, no la
+  // existencia de la fila: con la configuración a medio llenar este hilo
+  // narraba «El vendedor reconoció...» sobre un vendedor que no contesta.
+  if (!salesAgentIsConfigured(seller)) {
+    return Response.json({ messages: msgs, events: [] });
+  }
 
   const facts = await getSalesContext(op, id);
   return Response.json({
     messages: msgs,
     events: facts ? salesThreadEvents(facts) : [],
-    sellerName: seller.displayName.trim() || "El vendedor",
+    sellerName: seller.displayName.trim(),
   });
 }

@@ -11,37 +11,37 @@
  * de otra operación**.
  */
 
-import { eq } from "@wa/db";
+import { eq, stampSalesAgentActivation } from "@wa/db";
 import { salesAgentSettings, type OperationId, type SalesAgentSettings } from "@wa/db";
 import { db } from "../db";
 import { OperationScopedCache } from "../operations";
 
 const cache = new OperationScopedCache<SalesAgentSettings | null>();
 
-/** Lo mínimo que hace falta para saber si hay vendedor. Forma estructural. */
-export interface SalesAgentConfigRef {
-  displayName: string;
-}
+/**
+ * El listón de «hay vendedor» **no vive acá**: vive en `@wa/db`, junto a la
+ * tabla que describe, y esto es solo el puente para que los sitios del worker
+ * que ya lo importaban de este archivo lo sigan importando de este archivo.
+ *
+ * Se mudó porque había tres respuestas a la misma pregunta —dos en el worker,
+ * una en el panel— y la del panel era distinta: preguntaba si la fila existía.
+ * Con el `upsert` de `/vendedor` creando la fila con todos los textos en `''`,
+ * abrir la pantalla de configuración encendía el módulo.
+ */
+export {
+  salesAgentIsConfigured,
+  type SalesAgentConfigRef,
+} from "@wa/db";
 
 /**
- * Si la operación tiene un vendedor **configurado**, que es lo que activa toda
- * la lógica nueva de dueño de conversación (riesgo R8 de la no-regresión).
+ * La configuración del vendedor de una operación, o `null` si no tiene.
  *
- * La fila sola no basta: la `0022` la crea con todos los textos en `''` para
- * que el panel la vaya llenando, así que existir no significa estar
- * configurada. El listón es el nombre visible —lo mínimo que un vendedor
- * necesita para presentarse— y es deliberadamente conservador: mientras la
- * respuesta sea «no», el comportamiento observable de Guatemala es
- * exactamente el de siempre. Si mañana hace falta un listón más alto (que
- * tenga saludo, o modelo), este es el único sitio donde se cambia.
+ * De paso estampa la línea de corte si la fila ya tiene vendedor y
+ * `activated_at` sigue en `null` —el respaldo perezoso, ver
+ * `stampSalesAgentActivation`—. Va **antes** de la caché a propósito: cachear la
+ * fila sin estampar dejaría al proceso entero mirando un `null` que ya no está
+ * en la base, y la bandeja de ventas vacía hasta el próximo reinicio.
  */
-export function salesAgentIsConfigured(
-  settings: SalesAgentConfigRef | null,
-): boolean {
-  return settings !== null && settings.displayName.trim().length > 0;
-}
-
-/** La configuración del vendedor de una operación, o `null` si no tiene. */
 export async function getSalesAgentSettings(
   operationId: OperationId,
 ): Promise<SalesAgentSettings | null> {
@@ -52,7 +52,7 @@ export async function getSalesAgentSettings(
     .from(salesAgentSettings)
     .where(eq(salesAgentSettings.operationId, operationId))
     .limit(1);
-  const value = row ?? null;
+  const value = row ? await stampSalesAgentActivation(row) : null;
   cache.set(operationId, value);
   return value;
 }
