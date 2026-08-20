@@ -376,9 +376,25 @@ export async function idaYVuelta(
  */
 export async function tiempoEnPostgres(
   traza: TrazaSql,
-): Promise<{ porConsulta: Array<{ n: number; ms: number }>; total: number }> {
+): Promise<{
+  porConsulta: Array<{ n: number; ms: number; bloques: number }>;
+  total: number;
+  /**
+   * **Bloques tocados por el render entero**, sumando todas sus consultas y no
+   * solo las que atacan una tabla concreta.
+   *
+   * Es el número que faltaba para poder comparar un cambio que **mueve trabajo
+   * de una consulta a otra**. `scripts/planes-de-la-bandeja.ts` cuenta bloques,
+   * pero solo de las consultas que tocan `conversations`: eso servía para
+   * juzgar un índice sobre esa tabla (PRO-17) y engaña para juzgar PRO-18, que
+   * baja las filas de la derivación y con ellas las de la carga de pedidos —
+   * consultas que aquel conteo no mira. Comparar por un total parcial es elegir
+   * el marcador después del partido.
+   */
+  bloques: number;
+}> {
   const cliente = getRawClient();
-  const porConsulta: Array<{ n: number; ms: number }> = [];
+  const porConsulta: Array<{ n: number; ms: number; bloques: number }> = [];
   for (const v of traza.viajes) {
     if (v.origen === "driver") continue;
     // El `(` opcional es el de un `union`: sin él, la consulta fusionada de
@@ -386,17 +402,33 @@ export async function tiempoEnPostgres(
     // pasaba a medir el render **menos** su consulta más grande.
     if (!/^\s*\(*\s*select/i.test(v.sql)) continue;
     const filas = (await cliente.unsafe(
-      `explain (analyze, timing, format json) ${v.sql}`,
+      `explain (analyze, timing, buffers, format json) ${v.sql}`,
       v.valores as never[],
     )) as unknown as Array<Record<string, unknown>>;
     const plan = Object.values(filas[0] ?? {})[0] as
-      | Array<{ "Execution Time"?: number }>
+      | Array<{ "Execution Time"?: number; Plan?: Record<string, unknown> }>
       | undefined;
     const ms = plan?.[0]?.["Execution Time"] ?? 0;
-    porConsulta.push({ n: v.n, ms });
+    porConsulta.push({ n: v.n, ms, bloques: bloquesDe(plan?.[0]?.Plan) });
   }
   return {
     porConsulta,
     total: porConsulta.reduce((a, x) => a + x.ms, 0),
+    bloques: porConsulta.reduce((a, x) => a + x.bloques, 0),
   };
+}
+
+/**
+ * Los bloques que tocó un plan: los del nodo raíz, que ya vienen acumulados.
+ *
+ * `Shared Hit Blocks` son los que estaban en caché y `Shared Read Blocks` los
+ * que hubo que ir a buscar al disco. Se suman los dos: lo que se quiere contar
+ * es **cuánta tabla hubo que mirar**, y que hoy quepa en memoria es una
+ * propiedad del tamaño de hoy, no del plan.
+ */
+function bloquesDe(nodo: Record<string, unknown> | undefined): number {
+  if (!nodo) return 0;
+  const hit = Number(nodo["Shared Hit Blocks"] ?? 0);
+  const read = Number(nodo["Shared Read Blocks"] ?? 0);
+  return hit + read;
 }

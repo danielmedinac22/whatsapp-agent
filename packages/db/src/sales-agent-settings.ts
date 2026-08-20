@@ -182,13 +182,15 @@ export function needsActivationStamp(row: ActivationStampRef | null): boolean {
  * queda vacía con el vendedor encendido, y **nadie entiende por qué**: no hay
  * error, no hay log, solo un contador en cero que parece correcto.
  *
- * **Escribir desde una lectura es deliberado y tiene precedente en este repo**
- * —`releaseStaleAssignments` suelta asignaciones viejas desde la carga del
- * Inbox, y su comentario dice que aprovecha el viaje—. El costo aquí es menor
- * que allá: la escritura ocurre **una vez en la vida de la operación** y no en
- * cada lectura, porque después de la primera `activated_at` deja de ser `null`.
- * Con el vendedor apagado —producción hoy— no ocurre nunca: la condición pide
- * nombre visible.
+ * **Escribir desde una lectura es deliberado, y ahora es la única que queda.**
+ * Tenía precedente —`releaseStaleAssignments` soltaba asignaciones viejas
+ * desde la carga del Inbox, aprovechando el viaje—, y PRO-20 se llevó ese
+ * precedente al worker justamente por lo que lo distingue de éste: aquella
+ * escritura la disparaba **cada render**, o sea una vez por mensaje de
+ * WhatsApp que entra. Ésta ocurre **una vez en la vida de la operación**,
+ * porque después de la primera `activated_at` deja de ser `null`. Con el
+ * vendedor apagado —producción hoy— no ocurre nunca: la condición pide nombre
+ * visible.
  *
  * El `where activated_at is null` no es defensivo por gusto: es lo que hace
  * cumplir el «una sola vez» cuando dos lecturas entran a la vez —el panel y el

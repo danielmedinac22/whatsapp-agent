@@ -15,6 +15,8 @@ export const DROPI_NOVEDAD_NOTIFY_QUEUE = "dropi-novedad-notify";
 export const DROPI_NOVEDAD_REMINDER_QUEUE = "dropi-novedad-reminder";
 export const DROPI_NOVEDAD_HANDOFF_QUEUE = "dropi-novedad-handoff";
 export const KAPSO_TEMPLATE_POLL_QUEUE = "kapso-template-poll";
+/** El barrido que suelta asignaciones que cambiaron de bandeja. Ver `jobs/liberar-asignaciones.ts`. */
+export const LIBERAR_ASIGNACIONES_QUEUE = "liberar-asignaciones";
 
 export async function getBoss(): Promise<PgBoss> {
   if (boss) return boss;
@@ -38,6 +40,7 @@ export async function getBoss(): Promise<PgBoss> {
     await b.createQueue(DROPI_NOVEDAD_REMINDER_QUEUE);
     await b.createQueue(DROPI_NOVEDAD_HANDOFF_QUEUE);
     await b.createQueue(KAPSO_TEMPLATE_POLL_QUEUE);
+    await b.createQueue(LIBERAR_ASIGNACIONES_QUEUE);
     boss = b;
     starting = null;
     return b;

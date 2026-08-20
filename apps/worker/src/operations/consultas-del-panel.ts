@@ -147,7 +147,7 @@ const DECLARACION =
  * confundirse con el de una URL (`https://`) ni con el de una expresión regular
  * (`/^\//`), que si se recortaran se llevarían por delante código real.
  */
-function sinComentarios(source: string): string {
+export function sinComentarios(source: string): string {
   return source
     .replace(/\/\*[\s\S]*?\*\//g, " ")
     .replace(/(^|\s)\/\/[^\n]*/g, "$1 ");
@@ -174,8 +174,24 @@ function firmaDeParametros(chunk: string): string {
   return chunk.slice(inicio);
 }
 
-/** El texto de cada función de nivel superior, con su nombre. */
-function funciones(limpio: string): Array<{ nombre: string; texto: string }> {
+/** Una función de nivel superior del archivo, con su cuerpo. */
+export interface FuncionDelPanel {
+  nombre: string;
+  texto: string;
+}
+
+/**
+ * El texto de cada función de nivel superior, con su nombre, sobre el código
+ * **ya sin comentarios**.
+ *
+ * Está exportada —junto con {@link sinComentarios}— porque hay una segunda red
+ * que necesita la misma partición sobre el mismo archivo:
+ * `apps/worker/src/inbox/lectura-sin-escritura.ts`, que vigila que la carga de
+ * la bandeja no escriba. Dos redes con dos parsers distintos sobre el mismo
+ * texto es la forma de que una empiece a leer otra cosa que la otra sin que
+ * nada falle.
+ */
+export function funciones(limpio: string): FuncionDelPanel[] {
   const inicios: Array<{ nombre: string; desde: number }> = [];
   DECLARACION.lastIndex = 0;
   let m: RegExpExecArray | null;

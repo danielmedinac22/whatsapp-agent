@@ -51,9 +51,25 @@ describe("la red sobre las consultas del panel", () => {
       // vigilada. Nombrarla acá es lo que impide que la próxima fusión vuelva a
       // salirse de la red sin que nadie se entere.
       "loadSalientesDelInbox",
-      "releaseStaleAssignments",
-      "conversationIdsOfInbox",
-      "countSalesInboxViews",
+      // La criba de la bandeja, que PRO-18 puso en lugar del `SELECT` sin
+      // `LIMIT` de `conversationIdsOfInbox`. Son **dos** consultas —un motivo
+      // cada una— y la red tiene que ver las dos; `sinPedidosEnSQL` es la que
+      // las vuelve pequeñas y pregunta por los pedidos del contacto en dos
+      // tablas con dueño, o sea exactamente la clase de consulta que esta red
+      // existe para no dejar pasar sin filtro de operación.
+      "traerCandidatas",
+      "traerCandidatasConModoAgente",
+      "sinPedidosEnSQL",
+      // `releaseStaleAssignments` ya no está en este archivo y su ausencia es
+      // el ticket PRO-20: era el `UPDATE` que la carga del Inbox disparaba en
+      // cada evento SSE. Vive en `apps/worker/src/inbox/asignacion.ts`, del
+      // lado del worker, y lo que vigila que no vuelva es
+      // `apps/worker/src/inbox/lectura-sin-escritura.test.ts`.
+      //
+      // `countSalesInboxViews` tampoco está: desde PRO-18 no tiene consulta
+      // propia — cuenta sobre la criba compartida, que es la que se vigila
+      // acá. Una función sin consulta no es una fuga, es una función que no
+      // lee filas.
       // La URL base de los archivos de logística. Vivía suelta dentro de
       // `inbox/page.tsx`, o sea fuera de esta red, y PRO-15 la trajo a
       // `queries.ts` al cachearla: una consulta que la red no lee es una
