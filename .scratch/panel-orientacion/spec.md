@@ -227,8 +227,20 @@ Cada uno con sufijo `-bg` y `-fg`, por ejemplo `--state-espera-bg`.
 `--color-highlight`, `--color-bg-soft`, `--color-panel`, `--color-panel-2` y
 `--color-panel-3`. Ninguno debe quedar en el árbol.
 
-`--font-body` y `--font-display` se quedan con el mismo valor y no se toca la
-familia. El veredicto del nivel 1 fue que faltaba escala, no una segunda familia.
+**La familia sí se toca: es Figtree, y hay que cargarla.** `--font-body` y
+`--font-display` valen lo mismo entre sí, que es lo que el nivel 1 quiso decir con
+que faltaba escala y no una segunda familia. **Valer lo mismo entre sí no es valer
+lo de hoy**, y esta línea decía lo contrario hasta el 20-ago-2026 por la noche: se
+entregó el panel con la escala nueva sobre `"Avenir Next", "Segoe UI",
+"Helvetica Neue"`, o sea sobre lo que cada sistema tuviera instalado.
+
+Se notó en las negritas. La escala pide pesos 500, 600, 700 y **800**, y Avenir
+Next no tiene 800, así que el navegador lo engordaba a mano desde el 700. Se veía
+sucio justo donde más se repite, en los chips de estado de la fila. Figtree es
+variable y cubre 300-900 continuo, así que ningún peso se sintetiza.
+
+La carga `layout.tsx` con `next/font`, que la descarga en el build y la sirve
+desde nuestro dominio.
 
 ### Los tintes de operación
 

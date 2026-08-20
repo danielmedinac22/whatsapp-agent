@@ -60,8 +60,12 @@
 
   /* La familia no se toca: el veredicto del nivel 1 fue que faltaba **escala**,
      no una segunda familia. Los dos nombres siguen con el mismo valor. */
-  --font-body: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
-  --font-display: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+  /* Figtree la carga `layout.tsx` con `next/font`, que declara `--font-figtree`
+     sobre el `<html>`. Las dos valen lo mismo a propósito: el veredicto del
+     nivel 1 fue que faltaba escala, no una segunda familia. La lista de atrás
+     es solo para el instante previo a que la fuente llegue. */
+  --font-body: var(--font-figtree), "Segoe UI", system-ui, sans-serif;
+  --font-display: var(--font-figtree), "Segoe UI", system-ui, sans-serif;
 
   /* Los cinco pares de estado. Son tokens propios porque los usan dos tickets
      —la fila del Inbox y la tabla de Pedidos— y un par que se copia a mano en
