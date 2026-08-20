@@ -2,6 +2,38 @@
 
 **Si acabas de llegar a este proyecto con contexto fresco, lee este archivo primero.** Está al día al **19-ago-2026**.
 
+## Lote nuevo del 19-ago-2026 — `ventas-bandeja-honesta`, SIN EMPEZAR
+
+**Vuelve a haber trabajo construible, y no salió de un ticket: salió de mirar el
+panel.** Pablo abrió la bandeja y preguntó de qué eran las 55 conversaciones que
+decían necesitar atención. Ninguna era de Sebastián, ninguna era urgente, y 30 ya
+habían sido contestadas.
+
+Medido contra producción ese mismo día: las 110 conversaciones de la bandeja de
+ventas están ahí por la regla `no_order` —la bandeja está **definida por resta**—,
+**ninguna llegó por un anuncio** (`ad_referral_at` es `null` en las 1.759), y el
+módulo se encendió solo porque alguien abrió `/vendedor` y el `upsert` creó la
+fila. El panel pregunta «¿existe la fila?» y el worker pregunta «¿`display_name`
+no está vacío?».
+
+Tres tickets en `.scratch/ventas-bandeja-honesta/`, con su spec y sus 16
+decisiones ya cerradas con el usuario:
+
+| | Qué | Dónde vive |
+| -- | -- | -- |
+| `01` | El listón del vendedor y la línea de corte (`activated_at`, migración `0030`) | `@wa/db` + `apps/web` |
+| `02` | Que responder deje huella (`unread_count` y `last_outbound_at`) | `apps/worker` |
+| `03` | «Sin responder»: que cada vista diga su regla | `apps/web` |
+
+**El `01` sale primero y solo**: apaga todo el ruido de hoy por su cuenta y no
+depende de los otros. El `02` y el `03` van en paralelo —uno es worker, el otro
+`apps/web`—, pero el `03` no se **verifica** hasta que el `02` esté desplegado:
+sus números salen de las columnas que el `02` arregla.
+
+**La restricción del usuario, textual:** *«todavía no están llegando anuncios a
+estas bandejas entonces Sebastián no debería estar encendido. Todo debería seguir
+operando como operaba Katherine.»*
+
 ## Ola de credenciales del 19-ago-2026 — cerrada y en producción
 
 **Llegaron las dos llaves de Vorare** (`~/Downloads/Accesos-Sebastian-WaiChat.md`)
@@ -144,7 +176,7 @@ contesta **«el reporte a Meta está apagado (META_CAPI_MODE sin poner)»**. El
 interruptor se comprueba antes que la credencial a propósito. Faltan las dos, y
 también el dataset.
 
-## Ola final del 19-ago-2026 — cerrada. NO QUEDA NADA CONSTRUIBLE.
+## Ola final del 19-ago-2026 — cerrada (y ya no es la final: ver el lote de arriba)
 
 **37 de 44 tickets resueltos. Los 7 que quedan esperan algo que no es código.**
 Migración `0028` aplicada. Suite: **787 tests en 49 archivos.**
