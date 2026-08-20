@@ -2,17 +2,78 @@
  * El andamio con el que se prueba la bandeja.
  *
  * No es una prueba: es lo que hace falta para montar la pantalla fuera del
- * navegador. Tres cosas que jsdom no trae y la bandeja sí usa —el router de
- * Next, `EventSource` y `fetch`— y una conversación de mentira con la que
- * escribir los casos.
+ * navegador. Cuatro cosas que jsdom no trae completas y la bandeja sí usa —el
+ * router de Next, la dirección que `useSearchParams` lee, `EventSource` y
+ * `fetch`— y una conversación de mentira con la que escribir los casos.
  *
- * La regla de qué se finge: **el transporte, y nada más**. El stream de eventos
- * y la red se fingen porque son cables; lo que decide qué se ve —el filtro, la
- * selección, el parche de la fila, el scroll del hilo— es el componente de
- * verdad, sin tocar.
+ * La regla de qué se finge: **el transporte, y nada más**. El stream de eventos,
+ * la red y la dirección se fingen porque son cables; lo que decide qué se ve
+ * —el filtro, la conversación abierta, el parche de la fila, el orden de la
+ * lista, el scroll del hilo— es el componente de verdad, sin tocar.
  */
+import { useSyncExternalStore } from "react";
+import { act } from "@testing-library/react";
 import { vi } from "vitest";
+import type { ConversationSnapshot, WaEvent } from "@wa/shared";
 import type { ChatItem } from "./inbox-client";
+
+/**
+ * **La dirección de la pestaña**, que en el navegador la lleva la History API y
+ * Next sincroniza con `useSearchParams`.
+ *
+ * Se finge por lo mismo que el stream y la red: es transporte. Lo que decide
+ * qué se ve —qué conversación está abierta, qué filtra la lista— es el
+ * componente de verdad, leyendo esta dirección igual que leería la del
+ * navegador.
+ */
+let direccionActual = "/inbox";
+let pila: string[] = ["/inbox"];
+const oyentesDeLaDireccion = new Set<() => void>();
+
+function avisarDeLaDireccion() {
+  for (const fn of [...oyentesDeLaDireccion]) fn();
+}
+
+function suscribirALaDireccion(fn: () => void) {
+  oyentesDeLaDireccion.add(fn);
+  return () => {
+    oyentesDeLaDireccion.delete(fn);
+  };
+}
+
+const leerLaDireccion = () => direccionActual;
+
+/** `useSearchParams` de Next, sobre la dirección de mentira. */
+export function useSearchParamsFingido(): URLSearchParams {
+  const url = useSyncExternalStore(
+    suscribirALaDireccion,
+    leerLaDireccion,
+    leerLaDireccion,
+  );
+  return new URLSearchParams(url.split("?")[1] ?? "");
+}
+
+/** Aterrizar en una dirección: es lo que hace recargar, o abrir un enlace. */
+export function irA(url: string) {
+  direccionActual = url;
+  pila = [url];
+  avisarDeLaDireccion();
+}
+
+/** La dirección en la que quedó la pestaña. */
+export function direccion(): string {
+  return direccionActual;
+}
+
+/** El botón Atrás del navegador. */
+export function atras() {
+  if (pila.length < 2) return;
+  pila.pop();
+  direccionActual = pila[pila.length - 1]!;
+  act(() => {
+    avisarDeLaDireccion();
+  });
+}
 
 /** Lo que el hilo le pide al navegador para bajar la vista. */
 export const scrollTo = vi.fn();
@@ -30,9 +91,10 @@ export const router = {
 /**
  * `EventSource` de mentira, con la manija para soltarle un evento a mano.
  *
- * La bandeja abre dos —una la lista y otra el hilo— y las dos escuchan el mismo
- * `wa`. `emitirWa` se lo entrega a todas las abiertas, que es exactamente lo
- * que hace el servidor.
+ * `abiertas` es lo que hace verificable que la pestaña abra **una sola**
+ * conexión: hasta PRO-12 eran dos contra el mismo stream, y la del hilo se
+ * cerraba y reabría con cada cambio de conversación. `emitirWa` se lo entrega a
+ * todas las abiertas, que es exactamente lo que hace el servidor.
  */
 export class FakeEventSource {
   static abiertas: FakeEventSource[] = [];
@@ -63,6 +125,39 @@ export function emitirWa(dato: unknown) {
   for (const s of [...FakeEventSource.abiertas]) s.recibir(dato);
 }
 
+/** La operación que mira la pestaña en las pruebas. */
+export const OPERACION = "op-guatemala";
+
+/**
+ * Un `message.created` **como el que emite el worker**: con la operación y con
+ * el resumen de la fila pegado.
+ *
+ * Que el resumen viaje es lo que le permite al panel repintar la fila en vez de
+ * pedir la pantalla entera (PRO-6, en producción). Un fixture sin él describiría
+ * un evento que el worker no emite.
+ */
+export function entrante(
+  conversationId: string,
+  over: Partial<ConversationSnapshot> & {
+    messageId?: string;
+    operationId?: string | null;
+  } = {},
+): WaEvent {
+  const { messageId, operationId, ...instantanea } = over;
+  return {
+    type: "message.created",
+    operationId: operationId === undefined ? OPERACION : operationId,
+    conversationId,
+    messageId: messageId ?? "m-nuevo",
+    conversation: {
+      lastMessagePreview: "un mensaje nuevo",
+      unreadCount: 1,
+      lastActivityAt: new Date().toISOString(),
+      ...instantanea,
+    },
+  };
+}
+
 /** Lo que el hilo va a encontrar cuando pida los mensajes de la conversación. */
 export type HiloServido = {
   messages: Array<Record<string, unknown>>;
@@ -89,6 +184,26 @@ export function montarRed(): RedFingida {
   FakeEventSource.abiertas = [];
   router.refresh.mockClear();
   router.replace.mockClear();
+
+  // La pestaña arranca en el Inbox sin parámetros. `pushState` y `replaceState`
+  // son las dos únicas puertas por las que la bandeja escribe la dirección, y
+  // acá hacen lo mismo que en el navegador: mover la dirección y avisar.
+  direccionActual = "/inbox";
+  pila = ["/inbox"];
+  window.history.pushState = ((_estado: unknown, _titulo: string, url: string) => {
+    direccionActual = String(url);
+    pila.push(direccionActual);
+    avisarDeLaDireccion();
+  }) as typeof window.history.pushState;
+  window.history.replaceState = ((
+    _estado: unknown,
+    _titulo: string,
+    url: string,
+  ) => {
+    direccionActual = String(url);
+    pila[pila.length - 1] = direccionActual;
+    avisarDeLaDireccion();
+  }) as typeof window.history.replaceState;
 
   // jsdom no implementa scroll de ningún tipo. Sin esto no hay dónde poner el
   // espía, y sin el espía «la vista no se movió» no se puede afirmar.

@@ -11,6 +11,7 @@
  */
 
 import { actividadDe, type OperationId } from "@wa/db";
+import { esDeLaOperacion } from "@wa/db/bandeja-viva";
 import type {
   ConversationSnapshot,
   MessageStatus,
@@ -50,10 +51,10 @@ export function instantaneaDe(facts: HechosDeLaFila): ConversationSnapshot {
  *
  * **Es el filtro que hoy no existe.** El stream le manda todo a todos, así que
  * con dos operaciones abiertas el inbox de Guatemala se refrescaría con tráfico
- * de Colombia. Se decide acá y no en el cliente porque el worker ya sabe qué
- * operación pidió la pestaña —viaja en `x-operation-id` y la ruta del stream ya
- * la resolvía para el snapshot inicial—, y porque un evento que no sale no hay
- * que confiar en que nadie lo mire.
+ * de Colombia. Se decide acá y no solo en el cliente porque el worker ya sabe
+ * qué operación pidió la pestaña —viaja en `x-operation-id` y la ruta del
+ * stream ya la resolvía para el snapshot inicial—, y porque un evento que no
+ * sale no hay que confiar en que nadie lo mire.
  *
  * Los dos `null` pasan, y en los dos casos es lo mismo: **no se puede probar
  * que el evento sea ajeno.**
@@ -67,14 +68,18 @@ export function instantaneaDe(facts: HechosDeLaFila): ConversationSnapshot {
  *
  * `qr` y `status` no son de nadie: hablan de la conexión, no de una
  * conversación, y llegan siempre.
+ *
+ * **La regla vive en `@wa/db` y acá solo se la llama.** La bandeja del panel
+ * tiene que aplicar la misma —una pestaña puede quedar abierta mientras el riel
+ * cambia de operación sin que el `EventSource` se vuelva a abrir—, y dos copias
+ * de «a quién le toca este evento» es cómo una empieza a dejar pasar lo que la
+ * otra descarta.
  */
 export function esParaElPanel(
   ev: WaEvent,
   operacionDelPanel: OperationId | null,
 ): boolean {
-  if (!("operationId" in ev)) return true;
-  if (operacionDelPanel === null || ev.operationId === null) return true;
-  return ev.operationId === operacionDelPanel;
+  return esDeLaOperacion(ev, operacionDelPanel);
 }
 
 const ESTADOS: readonly MessageStatus[] = [
