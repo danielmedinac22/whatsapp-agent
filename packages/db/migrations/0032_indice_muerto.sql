@@ -1,0 +1,118 @@
+-- ────────────────────────────────────────────────────────────────────────────
+-- 0032 · El índice que nadie usaba
+--
+-- Borra `conversations_last_msg_idx (last_inbound_at, last_outbound_at)`, que
+-- existía desde la `0000` y **no lo elegía ninguna consulta del producto**. Es
+-- lo que la `0031` dejó anotado al margen y no hizo, porque borrar un índice
+-- necesita el `idx_scan` de producción y aquella rama no tuvo acceso a leerlo.
+-- Esta sí.
+--
+-- ## Lo que dijo producción, releído antes de decidir
+--
+--   índice                                 idx_scan   último uso        peso
+--   conversations_last_msg_idx                    0   (nunca)         232 kB
+--   conversations_operation_idx                   0   (nunca)          88 kB
+--   conversations_operation_activity_idx          3   hoy 21:00        88 kB
+--   conversations_confirmation_idx                5   17-ago 14:50     48 kB
+--   conversations_pkey                       13.136   hoy 21:00       128 kB
+--   conversations_contact_idx               143.467   hoy 21:00       120 kB
+--
+-- Cero barridos y **`last_idx_scan` nulo**: no es que se use poco, es que la
+-- base no lo vio usarse nunca. `stats_reset` es nulo —los contadores no se
+-- reiniciaron jamás— y cubren como mínimo los 7 días de encendido del servidor,
+-- en los que `conversations_contact_idx` acumuló 143.467 barridos sobre la
+-- misma tabla. El otro cero, el de `conversations_operation_idx`, es de otra
+-- clase: ese nació hoy con la `0031` y su cero significa «recién puesto».
+--
+-- El de aquí era además **el más pesado de los seis**, con 232 kB sobre una
+-- tabla de 752 kB.
+--
+-- ## Por qué no lo usaba nadie, que no es casualidad
+--
+-- Los lectores de `conversations` llegan por `id`, por `contact_id` o por la
+-- expresión `GREATEST(last_inbound_at, last_outbound_at, created_at)` — y un
+-- índice sobre las columnas **no sirve** una expresión sobre ellas. Ése fue
+-- exactamente el motivo por el que la `0031` tuvo que crear
+-- `conversations_operation_activity_idx`. Este índice tenía dos de las tres
+-- columnas del `GREATEST` y no servía para nada.
+--
+-- Se verificó leyendo el repo, no suponiéndolo: los 86 sitios que nombran esas
+-- dos columnas son proyecciones de un `select`, un `returning`, escrituras o
+-- tipos. Ninguna consulta del producto las pone en un `where` ni en un
+-- `order by`. Los siete planes del Inbox (`scripts/planes-de-la-bandeja.ts`)
+-- eligen los mismos índices con él y sin él.
+--
+-- **Con una excepción, que hay que decir:** `scripts/debug-agent.ts:56` ordena
+-- por `desc(conversations.lastInboundAt)` con `limit 5`, y ese índice **sí** la
+-- servía. Es un script de diagnóstico que se corre a mano y escupe cinco filas
+-- por consola; no es una consulta del producto. Medido a la escala de
+-- producción, perderlo le cuesta pasar de `Index Scan Backward` (5 bloques,
+-- 0,115 ms) a `Seq Scan` más `top-N heapsort` (35 bloques, 0,223 ms).
+-- **0,1 ms, una vez, cuando alguien lo corre a mano.** Ése es el precio
+-- completo del lado de la lectura.
+--
+-- ## Lo que se ahorra, medido
+--
+-- La escritura más caliente del sistema es un `last_inbound_at` por cada
+-- mensaje de WhatsApp que entra. Sobre un `UPDATE` de las 1.725 filas de la
+-- base de ensayo, en bytes de WAL —no con el reloj: a esta escala el ruido de
+-- un portátil es mayor que la señal, y la `0031` ya se topó con eso—:
+--
+--   régimen (entre checkpoints)   con: 1.274.744    sin: 1.118.064   -12,3 %
+--   en frío (primer toque)        con: 1.897.288    sin: 1.737.808    -8,4 %
+--
+-- Medianas de cinco pasadas cada una, con dos controles que ponen y quitan el
+-- índice alternándolo. **~157.400 bytes, o 91 bytes por fila actualizada.**
+--
+-- El -8,4 % en frío reproduce el 8,2 % que midió la `0031`. El -12,3 % es el
+-- mismo ahorro contra un denominador más chico: en frío cada página tocada
+-- paga su imagen entera en el WAL, y eso infla el total sin tener nada que ver
+-- con este índice. Entre checkpoints —que es donde la base vive casi todo el
+-- tiempo— el índice pesaba más de lo que la `0031` estimó, no menos.
+--
+-- ## Qué mirar si algo se pone lento después
+--
+-- Borrar un índice deja sin apoyo a una consulta futura y nadie se entera hasta
+-- meses después. Éste es el rastro para quien investigue eso.
+--
+-- **Sospechá de este cambio solo si el plan lento ordena o filtra por
+-- `last_inbound_at` o `last_outbound_at` a secas.** Si ordena por
+-- `GREATEST(last_inbound_at, last_outbound_at, created_at)`, este índice nunca
+-- la habría ayudado: la que sirve esa forma es
+-- `conversations_operation_activity_idx` y el problema está en otro lado.
+--
+-- La consulta que lo dice, de solo lectura:
+--
+--     explain (analyze, buffers) <la consulta lenta>;
+--
+-- y si en el plan aparece `Sort Key: last_inbound_at` o
+-- `Filter: (last_inbound_at ...)` sobre un `Seq Scan` de `conversations`,
+-- entonces sí: el índice que falta es éste, y volverlo a poner es
+--
+--     create index concurrently "conversations_last_msg_idx"
+--       on conversations using btree (last_inbound_at, last_outbound_at);
+--
+-- Antes de ponerlo, mirá si lo que hace falta no es acotar por operación: casi
+-- siempre el índice correcto en esta tabla lleva `operation_id` adelante, que
+-- es el patrón de la `0031`.
+--
+-- ## Guatemala no cambia
+--
+-- Un `DROP INDEX` y nada más: ni una columna, ni un `check`, ni una fila
+-- tocada. **Un índice cambia por dónde se llega a las filas, no cuáles son**,
+-- así que ninguna consulta devuelve otro conjunto ni otro orden.
+--
+-- **Sin backfill, y se verificó en vez de asumirlo.** Drizzle no escribe
+-- backfill; la migración generada se leyó antes de darla por buena y es la
+-- única línea de abajo.
+--
+-- **Compatible en las dos direcciones**: ningún worker nombra este índice, ni
+-- el viejo ni el de esta rama. Se puede aplicar antes o después de desplegar.
+--
+-- **Sin `CONCURRENTLY`, como la `0031` y por lo mismo:** el migrador de drizzle
+-- aplica dentro de una transacción y `CONCURRENTLY` no puede correr ahí. Un
+-- `DROP INDEX` toma un lock exclusivo sobre la tabla, pero solo el tiempo de
+-- borrar el archivo: sobre estas 232 kB es instantáneo.
+-- ────────────────────────────────────────────────────────────────────────────
+
+DROP INDEX IF EXISTS "conversations_last_msg_idx";
