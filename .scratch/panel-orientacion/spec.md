@@ -6,6 +6,109 @@ Método: **`grill-design`** — cinco prototipos radicalmente distintos por preg
 
 Origen: diagnóstico de rendimiento del 20-ago-2026 · retoma lo que [Pulido de interfaz](../ventas-pulido-ui/spec.md) declaró fuera de alcance
 
+## Estado · 20-ago-2026 — **el árbol de diseño está cerrado**
+
+Las tres rondas corrieron con el dueño del producto delante y cada nivel tiene
+veredicto. **Lo que sigue es implementación.** Estas decisiones están acá y no
+solo en Linear a propósito: una sesión hija abre en un worktree sin el MCP de
+Linear, así que lo que no viaje en el diff no lo hereda.
+
+### Nivel 1 · El sistema — veredicto: **Claro**
+
+El panel **cambia de fondo oscuro a fondo claro**, incluidos el riel y el menú.
+No es una variante de contenido sobre el marco de hoy.
+
+| token | valor |
+| -- | -- |
+| fondo de la aplicación | `#f4f6f5` |
+| riel | `#e8edeb` · menú `#eef1f0` |
+| superficie de pantalla | `#f9fbfa` · tarjeta `#ffffff` |
+| texto | `#12201b` · fuerte `#08120e` · tenue `#5b6f66` · suave `#84978d` |
+| líneas | `#d8e0dc` · suave `#e5ebe8` · hover `#e9efec` |
+| **tinta** | `#0f766e` · suave `#dbe8e4` · lavado `#eef5f3` |
+
+**El acento menta `#6ee7b7` se retira.** Sobre fondo claro no llega al contraste
+que hace falta para marcar nada. Los estados se rederivan igual:
+
+| estado | fondo | texto |
+| -- | -- | -- |
+| sin responder | `#fdf0d8` | `#8a5a08` |
+| en automático | `#d8f0e8` | `#0b5f52` |
+| escalada | `#fde0e0` | `#a52020` |
+| novedad | `#eae4fd` | `#5a41a8` |
+| sin producto | `#e6ecf0` | `#41586a` |
+
+**Tipografía: Figtree para todo.** Y esto contradice lo que el ticket suponía:
+el problema no era que faltara una segunda familia, era que no había escala.
+`--font-display` y `--font-body` pueden seguir siendo el mismo valor.
+
+**Tres niveles de encabezado, con significado propio:**
+
+1. **Línea de contexto** — 10,5 px, 700, `letter-spacing: .11em`, versalitas,
+   color tinta. Dice de qué operación y de qué pantalla se trata. Va **sobre**
+   el `h1`, siempre.
+2. **Título de pantalla** — 34 px, 700, `letter-spacing: -.03em`.
+3. **Encabezado de sección** — 16 px, 600. Divide una pantalla por dentro. Es lo
+   que hoy no existe ni en el Inbox ni en Pedidos.
+
+**`app-eyebrow` se parte en dos estilos.** Hoy hace de línea de contexto de
+página y de encabezado de sección dentro del Catálogo. Son dos cosas.
+
+**Las superficies se separan por aire y una sombra suave**, no por opacidad de
+casi el mismo color: `0 1px 2px rgba(18,32,27,.05), 0 6px 18px -12px rgba(18,32,27,.22)`.
+
+### Nivel 2 · Las pantallas — veredicto: **Tres columnas**
+
+**La planta no cambia.** Riel, menú, y debajo del encabezado global la lista y
+el hilo lado a lado. La lista mide **336 px**.
+
+El contexto vive **una sola vez por pantalla**, en la línea sobre el `h1`:
+`🇬🇹 Vorare Store Guatemala · confirmación`. No se repite por zona.
+
+Lo que separa la lista del hilo es **la superficie**: la lista comparte el fondo
+de la pantalla, el hilo va sobre blanco. No un borde grueso ni un espacio.
+
+**Pedidos hereda la planta.** No necesita una propia.
+
+Descartadas y por qué: la franja de operación de ancho completo (resolvía el país
+sin lugar a dudas y costaba una tira en las ocho pantallas), el contexto repetido
+por zona (duplicaba), la lista a pantalla completa con el hilo encima (**el
+veredicto dice que el Inbox es un chat, no una bandeja que se despacha**), y el
+menú plegado.
+
+### Nivel 3 · La fila — veredicto: **Etiquetas**
+
+**Cada estado es una etiqueta con su nombre escrito**, debajo del preview:
+`SIN RESPONDER`, `EN AUTOMÁTICO`, `ESCALADA`, `NOVEDAD`, `SIN PRODUCTO`.
+9,5 px, 800, `letter-spacing: .06em`, versalitas, `border-radius: 5px`.
+
+**Ningún estado se codifica solo con color.** La etiqueta lleva el nombre; el
+color acompaña. Era criterio de aceptación y esta variante lo cumple sin
+esfuerzo.
+
+**El tiempo se dice en relativo**: hora si es de hoy (`14:32`), día si es de esta
+semana (`ayer`, `mar`), fecha si es más viejo (`12 ago`). Hoy la lista mezcla a
+propósito las 200 recientes con **todas** las sin responder, que son mucho más
+viejas, y las pinta todas igual.
+
+**Las secciones llevan nombre y cuenta**: «Esperando respuesta · 6»,
+«El resto · 3».
+
+**Lo que cuesta, aceptado a sabiendas:** es la fila más alta de las cinco. Con
+dos estados ocupa tres líneas. Se eligió legibilidad sobre densidad, coherente
+con los otros dos veredictos.
+
+### La decisión que queda abierta
+
+**Si el panel conserva modo oscuro o se compromete con el claro.** No la resolvió
+ninguna ronda y **hay que resolverla antes de escribir CSS**, porque cambia el
+tamaño del trabajo: con modo oscuro cada token necesita su pareja y cada decisión
+de contraste se toma dos veces.
+
+### Los prototipos, como referencia visual
+
+No se integran. Están archivados en los comentarios de PRO-19, PRO-21 y PRO-22.
+
 ## Problem Statement
 
 El dueño del producto lo dijo así: **«es más colores, formas, títulos. Es difícil navegarlo en general.»**
