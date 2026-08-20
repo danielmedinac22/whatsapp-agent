@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { buildReopenOptions, type ReopenOption } from "@/lib/reopen";
 // Del subcamino y no del barril: `@wa/db` arrastra el cliente de la base y
@@ -417,16 +417,61 @@ export function InboxClient({
     }
   }, [selectedId, initial]);
 
-  // resync local list when server sends new initial
+  /**
+   * La lista se resincroniza cuando **el servidor** manda un `initial` nuevo, y
+   * solo entonces.
+   *
+   * Antes esto también dependía de `selected`, y esa dependencia es la que
+   * impedía cualquier cambio en memoria: tocar la fila abierta volvía a
+   * disparar el efecto, que reponía `items` e `initial.find(...)` sobre la fila
+   * recién parcheada y la dejaba como estaba. Con la selección leída dentro del
+   * `set` funcional no hace falta que sea dependencia, y el parche sobrevive
+   * hasta que llega el render del servidor, que es quien manda.
+   */
   useEffect(() => {
     setItems(initial);
-    if (selected) {
-      const fresh = initial.find((i) => i.id === selected.id);
-      if (fresh) setSelected(fresh);
-    } else if (initial[0]) {
-      setSelected(initial[0]);
-    }
-  }, [initial, selected]);
+    setSelected((prev) => {
+      if (!prev) return initial[0] ?? null;
+      // Si la conversación abierta no viene en el render nuevo, se queda: pudo
+      // salirse del corte por actividad, y sacarla de la pantalla sería
+      // moverle el sitio al asesor, que es justo lo que estos tickets sacan.
+      return initial.find((i) => i.id === prev.id) ?? prev;
+    });
+  }, [initial]);
+
+  /**
+   * Lo que un botón acaba de escribir en el servidor, aplicado donde ocurrió.
+   *
+   * Es el patrón de la tabla de Pedidos (`orders-table.tsx`), y reemplaza a los
+   * tres `location.reload()` que tenían los botones de esta pantalla. El
+   * `reload` no refrescaba datos: rehacía el documento entero, y como la
+   * conversación abierta no vive en la URL, el panel volvía en el primer chat
+   * de la lista, con el filtro en blanco y el borrador perdido.
+   *
+   * `coincide` es un predicado y no un id porque **el modo agente es del
+   * contacto, no de la conversación**: un contacto con dos conversaciones en la
+   * lista cambia las dos, y con un id se quedaría una mintiendo.
+   *
+   * El `router.refresh()` del final no es el `reload` con otro nombre. Solo
+   * vuelve a pedir el render del servidor —no reinicia el cliente— y está
+   * medido que no borra el borrador ni mueve el scroll de la lista: las `key`
+   * son estables y React reutiliza los `<li>`. Hace falta porque hay campos
+   * derivados que el cliente no puede recalcular (`sinResponder` mira la
+   * escalada y la actividad, que la fila no trae). El parche da la respuesta
+   * inmediata; el refresh trae la verdad un momento después.
+   */
+  const aplicarCambio = useCallback(
+    (coincide: (it: ChatItem) => boolean, patch: Partial<ChatItem>) => {
+      setItems((prev) =>
+        prev.map((it) => (coincide(it) ? { ...it, ...patch } : it)),
+      );
+      setSelected((prev) =>
+        prev && coincide(prev) ? { ...prev, ...patch } : prev,
+      );
+      router.refresh();
+    },
+    [router],
+  );
 
   return (
     <div className="app-page flex min-h-[calc(100vh-46px)] flex-col gap-3 xl:h-[calc(100vh-46px)] xl:min-h-0">
@@ -674,6 +719,7 @@ export function InboxClient({
             approvedTemplates={approvedTemplates}
             currentUserId={currentUserId}
             sellerConfigured={sellerName !== null}
+            onAplicado={aplicarCambio}
           />
         ) : (
           <div className="app-card flex flex-1 items-center justify-center text-[var(--color-text-dim)]">
@@ -734,6 +780,16 @@ const STATUS_TITLE: Record<MessageStatus, string> = {
 
 const SERVICE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * A cuántos píxeles del fondo se sigue considerando que el asesor «va al pie»
+ * del hilo.
+ *
+ * No es cero: un hilo se lee cómodo con el último mensaje entero a la vista, y
+ * exigir el píxel exacto apagaría el seguimiento en vivo con un arrastre de dos
+ * píxeles.
+ */
+const MARGEN_AL_PIE_PX = 80;
+
 type WindowState = "open" | "closed" | "unknown";
 
 /** Estado de la ventana de 24h de Meta. `unknown` (sin inbound registrado) no
@@ -783,16 +839,27 @@ function threadEntries(msgs: Msg[], events: WireEvent[]): ThreadEntry[] {
   return entries.sort((a, b) => a.at - b.at);
 }
 
+/**
+ * Aplicar en la lista lo que el servidor ya escribió. Ver `aplicarCambio` en
+ * {@link InboxClient}: el predicado dice qué filas cambiaron, el parche qué.
+ */
+type Aplicar = (
+  coincide: (it: ChatItem) => boolean,
+  patch: Partial<ChatItem>,
+) => void;
+
 function ConversationPane({
   chat,
   approvedTemplates,
   currentUserId,
   sellerConfigured,
+  onAplicado,
 }: {
   chat: ChatItem;
   approvedTemplates: string[];
   currentUserId: string | null;
   sellerConfigured: boolean;
+  onAplicado: Aplicar;
 }) {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [events, setEvents] = useState<WireEvent[]>([]);
@@ -800,8 +867,16 @@ function ConversationPane({
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [assigning, setAssigning] = useState(false);
+  // Sin el `location.reload()` que antes lo hacía imposible, el botón del
+  // agente se puede pulsar dos veces seguidas. Un POST a la vez.
+  const [agentBusy, setAgentBusy] = useState(false);
   const [reopenSending, setReopenSending] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  /**
+   * Si el asesor va al pie del hilo o se subió a leer. Arranca en `true`:
+   * un hilo recién abierto se lee desde el final, como en WhatsApp.
+   */
+  const alPieRef = useRef(true);
 
   // La ventana se calcula con el inbound más reciente que conozcamos: el de la
   // lista del servidor o uno recién llegado por SSE a este hilo.
@@ -840,6 +915,7 @@ function ConversationPane({
         }),
       });
       if (r.ok) {
+        volverAlPie();
         setTimeout(reload, 400);
       } else {
         const j = (await r.json().catch(() => null)) as { error?: unknown } | null;
@@ -852,12 +928,40 @@ function ConversationPane({
     }
   };
 
+  /**
+   * Bajar al fondo solo si el asesor ya estaba al fondo.
+   *
+   * Antes bajaba siempre, y con eso leer la parte de arriba de un hilo activo
+   * era imposible: cualquier cosa que llegara arrastraba la vista. Estar al pie
+   * es la señal de «voy siguiendo esto en vivo»; haberse subido es la de «estoy
+   * leyendo, no me muevas».
+   */
   useEffect(() => {
-    scrollRef.current?.scrollTo({
-      top: scrollRef.current.scrollHeight,
-      behavior: "smooth",
-    });
+    if (!alPieRef.current) return;
+    const el = scrollRef.current;
+    // `scrollTo` no existe en todos los entornos donde este componente se
+    // monta (jsdom no implementa scroll), y no tenerlo no es motivo para
+    // romper el hilo entero.
+    el?.scrollTo?.({ top: el.scrollHeight, behavior: "smooth" });
   }, [msgs, events]);
+
+  const anotarSiVaAlPie = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    alPieRef.current =
+      el.scrollHeight - el.scrollTop - el.clientHeight <= MARGEN_AL_PIE_PX;
+  };
+
+  /**
+   * Mandar algo es volver al pie, aunque se estuviera leyendo arriba.
+   *
+   * Es la diferencia entre el tráfico y una acción del asesor: que la vista no
+   * se mueva sola no significa que no se mueva cuando él la mueve. Escribir y
+   * no ver salir el mensaje sería el bug contrario.
+   */
+  const volverAlPie = () => {
+    alPieRef.current = true;
+  };
 
   const reload = async () => {
     const r = await fetch(`/api/conversations/${chat.id}/messages`, {
@@ -881,11 +985,34 @@ function ConversationPane({
     es.addEventListener("wa", (e) => {
       try {
         const ev = JSON.parse((e as MessageEvent).data);
-        if (
-          (ev.type === "message.created" || ev.type === "message.status") &&
-          ev.conversationId === chat.id
-        ) {
+        if (ev.conversationId !== chat.id) return;
+        if (ev.type === "message.created") {
           reload();
+          return;
+        }
+        if (ev.type === "message.status") {
+          /**
+           * Un acuse de entrega o de lectura **no vuelve a pedir el hilo**.
+           *
+           * Es el mismo criterio que la lista ya aplica y que el hilo no había
+           * heredado: cada mensaje que sale produce dos o tres acuses, así que
+           * pedía el hilo entero varias veces por mensaje enviado. Lo único que
+           * cambia un acuse es el chulo de un mensaje, y eso se reescribe en
+           * memoria — así el chulo sigue vivo, como en WhatsApp, sin pagar un
+           * viaje ni mover la vista.
+           *
+           * El fallo sí lo pide: trae el motivo (`deliveryError`), que el
+           * evento no lleva y el hilo sí muestra.
+           */
+          if (ev.status === "failed") {
+            reload();
+            return;
+          }
+          setMsgs((prev) =>
+            prev.map((m) =>
+              m.id === ev.messageId ? { ...m, status: ev.status } : m,
+            ),
+          );
         }
       } catch {
         /* ignore */
@@ -906,6 +1033,7 @@ function ConversationPane({
       });
       if (r.ok) {
         setText("");
+        volverAlPie();
         setTimeout(reload, 200);
       } else {
         alert("No se pudo enviar (¿WhatsApp conectado?)");
@@ -935,19 +1063,51 @@ function ConversationPane({
         alert("No se pudo cambiar quién la trabaja.");
         return;
       }
-      location.reload();
+      // Quién quedó trabajándola lo dice el servidor y no se adivina acá: el
+      // endpoint decide que quien toma es siempre el de la sesión, y soltar lo
+      // puede hacer cualquiera. El cuerpo trae la fila tal como quedó.
+      const j = (await r.json().catch(() => null)) as {
+        assignedTo?: ChatItem["assignedTo"];
+      } | null;
+      const assignedTo = j?.assignedTo ?? null;
+      onAplicado((it) => it.id === chat.id, {
+        assignedTo,
+        // Tomarla la saca de «Sin responder» con certeza: `sinResponder` da
+        // `false` en cuanto hay alguien asignado. Soltarla podría devolverla,
+        // pero eso depende de la escalada y de la actividad, que la fila no
+        // trae — ahí no se toca y decide el render del servidor.
+        ...(assignedTo ? { sinResponder: false } : {}),
+      });
     } finally {
       setAssigning(false);
     }
   };
 
   const toggleAgent = async () => {
-    await fetch(`/api/contacts/${chat.contactId}/agent-mode`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ on: !chat.agentMode }),
-    });
-    location.reload();
+    if (agentBusy) return;
+    setAgentBusy(true);
+    const on = !chat.agentMode;
+    try {
+      const r = await fetch(`/api/contacts/${chat.contactId}/agent-mode`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ on }),
+      });
+      if (!r.ok) {
+        alert("No se pudo cambiar el modo del agente.");
+        return;
+      }
+      // El modo agente es del contacto: si tiene dos conversaciones en la
+      // lista, las dos cambian. Prenderlo saca la fila de «Sin responder» con
+      // certeza (`sinResponder` da `false` con el agente encendido); apagarlo
+      // podría devolverla, y eso lo decide el servidor.
+      onAplicado((it) => it.contactId === chat.contactId, {
+        agentMode: on,
+        ...(on ? { sinResponder: false } : {}),
+      });
+    } finally {
+      setAgentBusy(false);
+    }
   };
 
   return (
@@ -981,9 +1141,10 @@ function ConversationPane({
                 : "Trabajarla yo"}
             </button>
           )}
-          <ConfirmationMenu chat={chat} />
+          <ConfirmationMenu chat={chat} onAplicado={onAplicado} />
           <button
             onClick={toggleAgent}
+            disabled={agentBusy}
             className={`inline-flex h-9 items-center gap-2 rounded-md border px-3 text-xs uppercase lg:h-8 ${
               chat.agentMode
                 ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-200"
@@ -1030,8 +1191,14 @@ function ConversationPane({
         </div>
       </div>
 
+      {/* `log` es lo que es: la transcripción de una conversación que crece por
+          abajo. Le da nombre a la región para quien navega con lector de
+          pantalla y no cambia un solo píxel. */}
       <div
         ref={scrollRef}
+        role="log"
+        aria-label="Mensajes de la conversación"
+        onScroll={anotarSiVaAlPie}
         className="flex-1 space-y-2 overflow-y-auto bg-[linear-gradient(180deg,rgba(9,19,28,0.3),rgba(5,12,18,0.18))] p-4"
       >
         {threadEntries(msgs, events).map((entry) =>
@@ -1129,7 +1296,10 @@ function ConversationPane({
               <VoiceRecorder
                 to={chat.to}
                 conversationId={chat.id}
-                onSent={() => setTimeout(reload, 400)}
+                onSent={() => {
+                  volverAlPie();
+                  setTimeout(reload, 400);
+                }}
               />
               <button
                 onClick={send}
@@ -1394,7 +1564,13 @@ function ConfirmationChip({ status }: { status: ConfirmationStatus }) {
   );
 }
 
-function ConfirmationMenu({ chat }: { chat: ChatItem }) {
+function ConfirmationMenu({
+  chat,
+  onAplicado,
+}: {
+  chat: ChatItem;
+  onAplicado: Aplicar;
+}) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const meta = STATUS_META[chat.confirmationStatus];
@@ -1413,13 +1589,22 @@ function ConfirmationMenu({ chat }: { chat: ChatItem }) {
   const set = async (status: ConfirmationStatus) => {
     setBusy(true);
     try {
-      await fetch(`/api/conversations/${chat.id}/confirmation`, {
+      const r = await fetch(`/api/conversations/${chat.id}/confirmation`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ status }),
       });
+      if (!r.ok) {
+        alert("No se pudo marcar la confirmación.");
+        return;
+      }
       setOpen(false);
-      location.reload();
+      // `setConfirmationStatus` escribe siempre `manual` en el origen, también
+      // al volver a «sin clasificar»: la marca dice quién decidió, no qué.
+      onAplicado((it) => it.id === chat.id, {
+        confirmationStatus: status,
+        confirmationSource: "manual",
+      });
     } finally {
       setBusy(false);
     }
