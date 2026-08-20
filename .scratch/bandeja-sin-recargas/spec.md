@@ -4,6 +4,19 @@ Status: ready-for-agent
 
 Origen: diagnóstico de rendimiento del 20-ago-2026 · bloquea a [Orientación visual](../panel-orientacion/spec.md)
 
+## Estado · 20-ago-2026
+
+**En producción: PRO-5, PRO-7, PRO-8 y PRO-13.** Los tres `location.reload()` se
+fueron, el hilo dejó de saltar con los acuses, el Inbox y Pedidos tienen
+esqueleto de carga, y una red de texto impide que una recarga vuelva a entrar.
+
+`apps/web` pasó de cero pruebas a 16, y `pnpm test` desde la raíz corre las del
+panel además de las del worker. Detalle en `01-entrega.md`.
+
+**Falta de este spec: PRO-11 y PRO-12.** El estado de la bandeja en la URL, y la
+lista que se parchea con el evento en vez de refrescar. PRO-12 ya tiene lo que
+necesitaba: PRO-6 dejó el evento enriquecido en producción.
+
 ## Problem Statement
 
 La bandeja tiene tres botones de uso diario —Agente ON/OFF, «la trabajo yo», y marcar confirmación— y **los tres recargan el documento entero**. No refrescan datos: hacen `location.reload()`. Al volver, la conversación abierta no está en ninguna parte porque no vive en la URL, así que el panel aterriza en el primer chat de la lista, con el filtro en blanco y el mensaje a medio escribir perdido.

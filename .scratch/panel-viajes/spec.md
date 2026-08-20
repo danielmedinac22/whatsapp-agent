@@ -4,6 +4,15 @@ Status: ready-for-agent
 
 Origen: diagnóstico de rendimiento del 20-ago-2026 · conviene después de [La bandeja se actualiza sin recargarse](../bandeja-sin-recargas/spec.md)
 
+## Estado · 20-ago-2026
+
+**En producción: PRO-9.** El contador de viajes vive en el repo
+(`scripts/viajes-del-panel.ts`), con la traza apagada salvo `WA_SQL_TRACE=1`.
+Detalle y números en `entrega.md`.
+
+**Falta: PRO-14, PRO-15 y PRO-16** — la región, las cachés y bajar el conteo a
+cuatro. Los tres se miden con el contador, así que dejaron de ser una impresión.
+
 ## Problem Statement
 
 El panel se siente lento y no es por hacer mucho trabajo. Es por distancia.

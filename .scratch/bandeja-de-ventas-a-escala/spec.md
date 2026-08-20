@@ -4,6 +4,19 @@ Status: ready-for-agent
 
 Origen: diagnóstico de rendimiento del 20-ago-2026 · **bloqueante para configurar al vendedor**
 
+## Estado · 20-ago-2026
+
+**En producción: PRO-10**, que es el instrumento; lo medido es un número, no un
+cambio de comportamiento.
+
+Encender la bandeja de ventas lleva el Inbox de 23 idas y vueltas a **45**, y de
+1.256 filas leídas a **8.606**. Casi la mitad del salto es el contador de la
+barra lateral. **El techo está entre 36.000 y 45.000 conversaciones**, donde el
+ordenamiento se cae a disco; hoy hay 1.764. Detalle en `entrega.md`.
+
+**Falta: PRO-17, PRO-18 y PRO-20.** Siguen siendo bloqueantes para configurar al
+vendedor, y ahora con el costo medido en vez de estimado.
+
 ## Problem Statement
 
 Hoy la bandeja de ventas está apagada: no hay vendedor configurado, así que `bandejaPedida` devuelve indefinido y la derivación de bandeja no corre. Todo lo que sigue está escrito, probado y sin ejecutarse.
