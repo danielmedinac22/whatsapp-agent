@@ -1,6 +1,7 @@
 # PRO-10 — Entrega · La bandeja de ventas encendida, medida antes de encenderla
 
-Rama `danielmedinac22/regla-de-medir`. **Sin mergear y sin deployar.**
+Rama `danielmedinac22/regla-de-medir`, commit `087f7fd`, **sin empujar**
+(el push quedó fuera del permiso de la sesión). **Sin mergear y sin deployar.**
 `pnpm -r typecheck` limpio; `pnpm --filter @wa/worker test` en verde: **878
 pruebas en 56 archivos**.
 
