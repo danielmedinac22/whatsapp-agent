@@ -584,6 +584,50 @@ export const conversations = pgTable(
     uniqueIndex("conversations_contact_idx").on(t.contactId),
     index("conversations_last_msg_idx").on(t.lastInboundAt, t.lastOutboundAt),
     index("conversations_confirmation_idx").on(t.confirmationStatus),
+
+    // ── Por operación · `0031` ─────────────────────────────────────────────
+    //
+    // El patrón de `shopify_orders_operation_idx` y
+    // `capi_conversions_operation_idx`: la operación adelante, y detrás la
+    // fecha por la que esa tabla se recorre.
+    //
+    // Acá la fecha es `created_at` y no es la de la lista: es la del **corte
+    // del vendedor**. `born_after_activation` (`./inbox.ts`) es una de las dos
+    // reglas que mandan una conversación a la bandeja de ventas, y dicha en
+    // SQL es `created_at > activated_at`. El día que se encienda a Sebastián
+    // ese corte es *ahora*, así que casi ninguna fila lo pasa — y una
+    // condición muy selectiva sin índice es el peor caso que hay: Postgres
+    // escanea la tabla entera para devolver cero filas. Medido a 17.620
+    // conversaciones: **332 bloques con `Seq Scan`, 5 con este índice**.
+    index("conversations_operation_idx").on(t.operationId, t.createdAt),
+
+    /**
+     * El orden real de la bandeja, que hasta ahora ningún índice podía servir.
+     *
+     * `conversations_last_msg_idx` tiene las dos columnas del medio y **no
+     * sirve**: la lista no ordena por ellas sino por
+     * `GREATEST(last_inbound_at, last_outbound_at, created_at)`, que es una
+     * expresión, y un índice sobre las columnas no ordena la expresión. Es la
+     * misma frase que `lastActivityAt` escribe en `queries.ts` y que
+     * `actividadDe` escribe en TypeScript; ahora son tres los sitios que
+     * tienen que cambiar juntos.
+     *
+     * Con la operación adelante sirve las tres formas en las que el Inbox la
+     * pide: la igualdad sola (el contador de la barra lateral, que se dibuja
+     * en las siete pantallas), el rango (`>= hace 30 días`, el de
+     * `puedeEstarEnSQL`) y el orden con su corte de 200.
+     *
+     * **Sin `desc`, y no es un olvido.** La lista ordena descendente y
+     * Postgres lee este índice hacia atrás (`Index Scan Backward`) para
+     * dárselo: medido con las dos direcciones, el mismo costo estimado, los
+     * mismos 401 bloques y tiempos que no se distinguen del ruido. Ascendente
+     * sirve además el rango de `puedeEstarEnSQL` en su dirección natural, así
+     * que la dirección escrita solo sería una promesa más que mantener.
+     */
+    index("conversations_operation_activity_idx").on(
+      t.operationId,
+      sql`GREATEST(${t.lastInboundAt}, ${t.lastOutboundAt}, ${t.createdAt})`,
+    ),
     // El vocabulario del resultado es el de la cascada, y la base es el único
     // lugar donde un cuarto valor inventado por otra vía no puede entrar en
     // silencio y salir después en la bandeja del asesor.
