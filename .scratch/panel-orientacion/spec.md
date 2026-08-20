@@ -132,6 +132,27 @@ sobre el fondo y 4,54:1 sobre el riel.
 y 6,33:1. No hay nada que rederivar ahí. Está medido para que nadie lo vuelva a
 dudar.
 
+### Nivel 4 · El teléfono — ronda abierta (PRO-31)
+
+Los tres niveles se decidieron mirando una pantalla de escritorio. **Katherine
+trabaja desde el móvil**, cosa que se supo el 20-ago-2026, con el panel claro ya
+en producción.
+
+Hoy, debajo de `lg`, el marco cae a una columna y el menú conserva su formato
+vertical entero: son unos 620-680 px de navegación antes del primer contenido, y
+el campo de escribir queda a unas tres pantallas de scroll.
+
+Dos de las tres preguntas ya están cerradas por las referencias y son trabajo, no
+diseño: el hilo va a pantalla completa con el campo de escribir fijo al fondo, y
+el menú vive en un cajón sobre el contenido en vez de apilado encima. Esconderlo
+es seguro **porque la línea de contexto ya existe**: el país vive en el contenido
+y no en el marco.
+
+**Lo que la ronda decide, y el punto más delicado:** si la fila del nivel 3
+aguanta en 390 px de ancho. Se eligió la más alta de las cinco, cambiando
+densidad por legibilidad, y esa elección se hizo sobre un supuesto que ya no
+vale. Cuando cambia el supuesto, el compromiso se vuelve a mirar.
+
 ### Los prototipos, como referencia visual
 
 No se integran. Están archivados en los comentarios de PRO-19, PRO-21 y PRO-22.
@@ -406,7 +427,10 @@ El arnés de pruebas de `apps/web` lo monta [La bandeja se actualiza sin recarga
 
 - Rendimiento. Los viajes a la base y el refresh por evento son de los otros tres specs.
 - Los bugs de estado del Inbox: los tres `location.reload()`, la conversación que no vive en la URL, el hilo que salta. Son de [La bandeja se actualiza sin recargarse](../bandeja-sin-recargas/spec.md), y conviene que aterricen antes: rediseñar una fila que se recarga sola es diseñar contra un blanco móvil.
-- Diseño móvil, salvo que una ronda lo levante como necesidad real del asesor.
+- ~~Diseño móvil, salvo que una ronda lo levante como necesidad real del asesor.~~
+  **La salvedad se cumplió el 20-ago-2026: Katherine trabaja desde el teléfono y
+  responde clientes desde ahí.** El móvil entra al alcance como nivel 4, con su
+  propia ronda (PRO-31). Ver «Nivel 4» abajo.
 - Accesibilidad más allá de lo que el sistema existente ya resuelve, con una excepción: ninguna variante puede codificar un estado solo con color.
 - Las pantallas de configuración (Agente, Vendedor, Conexión, Plantillas). Ya están articuladas; heredan el sistema del nivel 1 y nada más.
 
