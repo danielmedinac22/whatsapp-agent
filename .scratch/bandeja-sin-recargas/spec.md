@@ -6,29 +6,12 @@ Origen: diagnóstico de rendimiento del 20-ago-2026 · bloquea a [Orientación v
 
 ## Estado · 20-ago-2026
 
-**En producción: PRO-5, PRO-6, PRO-7, PRO-8 y PRO-13.** Los tres
-`location.reload()` se fueron, el hilo dejó de saltar con los acuses, el Inbox y
-Pedidos tienen esqueleto de carga, una red de texto impide que una recarga
-vuelva a entrar, y el evento del stream ya viaja enriquecido.
+**Spec cerrado. Todo en producción: PRO-5, PRO-7, PRO-8, PRO-11, PRO-12 y PRO-13.**
 
-**Hechos y sin mergear: PRO-11 y PRO-12**, en la rama
-`danielmedinac22/bandeja-viva`. Detalle en `02-entrega.md`.
+La bandeja dejó de moverse sola. Los tres `location.reload()` se fueron, el estado vive en la URL, la lista se parchea con el evento en vez de refrescar, el hilo no salta con los acuses, hay esqueletos de carga, y una red de texto impide que una recarga vuelva a entrar.
 
-- La conversación abierta y el filtro viven en `?c=` y `?v=`, escritos con la
-  History API: el enlace se puede mandar, Atrás vuelve al chat anterior,
-  recargar aterriza donde estabas, y cambiar de bandeja ya no deja abierta una
-  conversación de la otra ni el selector en blanco.
-- La lista se parchea con el evento. **Una ráfaga de 60 mensajes pedía 60
-  renders de servidor y ahora pide cero**, medido. La decisión salió a
-  `aplicarEvento` (`packages/db/src/bandeja-viva.ts`), pura y probada desde el
-  worker. Reordenar pasó a ser una acción del asesor, con aviso de novedades.
-  Queda una sola conexión al stream por pestaña.
+`apps/web` pasó de cero pruebas a 43, y `pnpm test` desde la raíz corre las del panel además de las del worker.
 
-`apps/web` pasó de cero pruebas a **43**, y `pnpm test` desde la raíz corre las
-del panel además de las del worker: **983**.
-
-**Lo único de este spec que sigue pendiente** es el `loading.tsx` de las cinco
-rutas que no son el Inbox ni Pedidos.
 
 ## Problem Statement
 

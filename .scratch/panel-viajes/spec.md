@@ -6,16 +6,12 @@ Origen: diagnóstico de rendimiento del 20-ago-2026 · conviene después de [La 
 
 ## Estado · 20-ago-2026
 
-**En producción: PRO-9.** El contador de viajes vive en el repo
-(`scripts/viajes-del-panel.ts`), con la traza apagada salvo `WA_SQL_TRACE=1`.
-Detalle y números en `entrega.md`.
+**Spec cerrado. Todo en producción: PRO-9, PRO-14, PRO-15 y PRO-16.**
 
-**Hechos, sin mergear: PRO-15 y PRO-16.** Las cachés y el conteo. Un render del
-Inbox pasó de **13 consultas y 23 idas y vueltas a 4 y 8**, con las mismas filas
-en el mismo orden. Detalle en `entrega-viajes-cortos.md`.
+Un render del Inbox pasó de **13 consultas y 23 idas y vueltas a 4 y 8**. La meta declarada era cuatro consultas y quedó en cuatro. El contador que lo mide vive en el repo (`scripts/viajes-del-panel.ts`).
 
-**Falta: PRO-14** — la región. Es el que no es código y el único que necesita el
-visto bueno del dueño, porque toca producción. Se mide con el mismo contador.
+**PRO-14 salió con resultado negativo y está escrito así**: mudar el panel a `sfo1` no mejoró nada medible en la ruta que se puede medir sin sesión. La región de Postgres quedó confirmada (`us-west2`). Conviene reevaluar la mudanza ahora que PRO-16 bajó los viajes: el beneficio se dividió por seis y el costo no.
+
 
 ## Problem Statement
 

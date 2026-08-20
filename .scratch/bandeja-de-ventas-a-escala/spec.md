@@ -6,27 +6,14 @@ Origen: diagnóstico de rendimiento del 20-ago-2026 · **bloqueante para configu
 
 ## Estado · 20-ago-2026
 
-**En producción: PRO-10**, que es el instrumento; lo medido es un número, no un
-cambio de comportamiento.
+**En producción: PRO-10, PRO-18 y PRO-20.** Falta aplicar la migración de PRO-17.
 
-**Hechos y sin mergear: PRO-17** (`entrega-pro-17.md`) y **PRO-18 + PRO-20**
-(`entrega-pro-18-y-20.md`).
+Encender la bandeja de ventas **dejó de ser una apuesta**. Antes leía 8.407 filas a la escala de hoy y 69.857 a diez veces esa escala; ahora lee **1.611 en las dos**, porque dejó de escalar con el tamaño de la operación. Y mirar la bandeja pasó de escribir 199 filas por render a **cero**.
 
-El diagnóstico decía que encender la bandeja lleva el Inbox de 1.256 filas
-leídas a **8.606**, creciendo en línea recta con la tabla —69.857 filas a diez
-veces la escala de hoy—, y que un solo render escribe **199 filas** soltando
-asignaciones viejas. Después de PRO-18 y PRO-20 son **1.611 filas y cero
-escrituras**, y a diez veces la escala siguen siendo 1.611: el render vuelve a
-costar lo que dibuja y no lo que la operación acumuló. El conjunto de filas que
-la bandeja devuelve es **idéntico**, verificado volcando a JSON siete escenarios
-antes y después.
+**Pendiente y bloqueante: la migración `0031`** (los dos índices) está escrita, ensayada y mergeada, pero **no aplicada a producción**. Hasta que se aplique, PRO-17 sigue abierto y PRO-24 —borrar el índice muerto— sigue bloqueado.
 
-El techo de las 36.000 conversaciones **dejó de aplicarle a esta consulta**,
-porque la consulta que lo tenía —el `Sort` de la operación entera— desapareció.
-Dónde está el nuevo es una medición que no se hizo.
+El techo entre 36.000 y 45.000 conversaciones sigue en pie: los índices no lo mueven. Lo que cambió es que ahora se llega mucho más tarde.
 
-**Falta:** aplicar la migración `0031` a producción, mergear y deployar. Nada de
-eso lo hicieron los worktrees.
 
 ## Problem Statement
 
