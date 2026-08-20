@@ -46,5 +46,21 @@ export async function POST(
     method: "POST",
     body: JSON.stringify({ type: "conversation.updated", conversationId: id }),
   }).catch(() => {});
-  return Response.json({ ok: true });
+
+  /**
+   * La fila tal como quedó, para que la bandeja la reescriba sin recargarse.
+   *
+   * Va en la respuesta y no lo deduce el cliente porque **quién la trabaja lo
+   * decide este endpoint**, no quien pulsa: tomar es siempre el de la sesión y
+   * soltar lo puede hacer cualquiera del equipo. La etiqueta es la misma regla
+   * que usa la lista —el nombre, y el correo si no hay nombre—, así que la fila
+   * dice lo mismo antes y después del próximo render del servidor.
+   */
+  const assignedTo = body.on
+    ? {
+        id: userId!,
+        label: session.user.name ?? session.user.email ?? userId!,
+      }
+    : null;
+  return Response.json({ ok: true, assignedTo });
 }
