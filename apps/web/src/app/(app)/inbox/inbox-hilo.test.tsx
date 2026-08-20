@@ -12,16 +12,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => router,
+  useSearchParams: () => useSearchParamsFingido(),
 }));
 
 import { InboxClient } from "./inbox-client";
 import {
   chat,
   emitirWa,
+  entrante,
+  irA,
   mensaje,
   montarRed,
+  OPERACION,
   router,
   scrollTo,
+  useSearchParamsFingido,
   type RedFingida,
 } from "./inbox-harness";
 
@@ -46,14 +51,14 @@ async function abrirHiloLargo() {
       mensaje({ id: MIO, direction: "out", body: "ya te confirmo", status: "sent" }),
     ],
   };
+  irA(`/inbox?c=${CHAT}`);
   render(
     <InboxClient
       initial={[chat({ id: CHAT })]}
       approvedTemplates={[]}
       query=""
-      selectedId={CHAT}
+      operationId={OPERACION}
       bandeja={null}
-      vista={null}
       sellerName={null}
       currentUserId="u-katherine"
     />,
@@ -140,7 +145,7 @@ describe("leyendo la parte de arriba del hilo", () => {
     red.hilos[CHAT]!.messages.push(
       mensaje({ id: "m-nuevo", direction: "in", body: "sigo esperando" }),
     );
-    emitirWa({ type: "message.created", conversationId: CHAT, messageId: "m-nuevo" });
+    emitirWa(entrante(CHAT, { messageId: "m-nuevo" }));
 
     // El mensaje llega y se puede bajar a leerlo; lo que no pasa es que la
     // pantalla decida bajar sola mientras se está leyendo arriba.
@@ -157,7 +162,7 @@ describe("siguiendo la conversación al pie", () => {
     red.hilos[CHAT]!.messages.push(
       mensaje({ id: "m-nuevo", direction: "in", body: "sigo esperando" }),
     );
-    emitirWa({ type: "message.created", conversationId: CHAT, messageId: "m-nuevo" });
+    emitirWa(entrante(CHAT, { messageId: "m-nuevo" }));
 
     await screen.findByText("sigo esperando");
     await waitFor(() => expect(scrollTo).toHaveBeenCalled());

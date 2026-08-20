@@ -1,21 +1,34 @@
 # Spec · La bandeja se actualiza sin recargarse
 
-Status: ready-for-agent
+Status: hecho, sin mergear
 
 Origen: diagnóstico de rendimiento del 20-ago-2026 · bloquea a [Orientación visual](../panel-orientacion/spec.md)
 
 ## Estado · 20-ago-2026
 
-**En producción: PRO-5, PRO-7, PRO-8 y PRO-13.** Los tres `location.reload()` se
-fueron, el hilo dejó de saltar con los acuses, el Inbox y Pedidos tienen
-esqueleto de carga, y una red de texto impide que una recarga vuelva a entrar.
+**En producción: PRO-5, PRO-6, PRO-7, PRO-8 y PRO-13.** Los tres
+`location.reload()` se fueron, el hilo dejó de saltar con los acuses, el Inbox y
+Pedidos tienen esqueleto de carga, una red de texto impide que una recarga
+vuelva a entrar, y el evento del stream ya viaja enriquecido.
 
-`apps/web` pasó de cero pruebas a 16, y `pnpm test` desde la raíz corre las del
-panel además de las del worker. Detalle en `01-entrega.md`.
+**Hechos y sin mergear: PRO-11 y PRO-12**, en la rama
+`danielmedinac22/bandeja-viva`. Detalle en `02-entrega.md`.
 
-**Falta de este spec: PRO-11 y PRO-12.** El estado de la bandeja en la URL, y la
-lista que se parchea con el evento en vez de refrescar. PRO-12 ya tiene lo que
-necesitaba: PRO-6 dejó el evento enriquecido en producción.
+- La conversación abierta y el filtro viven en `?c=` y `?v=`, escritos con la
+  History API: el enlace se puede mandar, Atrás vuelve al chat anterior,
+  recargar aterriza donde estabas, y cambiar de bandeja ya no deja abierta una
+  conversación de la otra ni el selector en blanco.
+- La lista se parchea con el evento. **Una ráfaga de 60 mensajes pedía 60
+  renders de servidor y ahora pide cero**, medido. La decisión salió a
+  `aplicarEvento` (`packages/db/src/bandeja-viva.ts`), pura y probada desde el
+  worker. Reordenar pasó a ser una acción del asesor, con aviso de novedades.
+  Queda una sola conexión al stream por pestaña.
+
+`apps/web` pasó de cero pruebas a **43**, y `pnpm test` desde la raíz corre las
+del panel además de las del worker: **983**.
+
+**Lo único de este spec que sigue pendiente** es el `loading.tsx` de las cinco
+rutas que no son el Inbox ni Pedidos.
 
 ## Problem Statement
 
@@ -73,9 +86,23 @@ Tres piezas:
 
 **Reordenar es una acción del usuario, no del tráfico.** Cuando llega un evento que cambiaría el orden mientras la lista está en uso, la fila se actualiza en su sitio y aparece un aviso de que hay novedades. El reordenamiento ocurre cuando el usuario lo pide. Qué cuenta como «en uso» lo decide la implementación, con una preferencia: errar del lado de no mover.
 
+> **Lo que PRO-12 decidió** (20-ago-2026): «en uso» es *siempre*. Un evento no
+> mueve una fila de puesto nunca; el único momento en que la lista se reordena
+> sin que el asesor lo pida es cuando llega un render del servidor, y esos son
+> la navegación, la búsqueda, el botón que suelta una conversación y los dos
+> casos nombrados de `aplicarEvento` que solo el servidor puede resolver. Ver
+> `02-entrega.md` §4, que también dice dónde queda el hueco.
+
 **Los tres `location.reload()` se van y no vuelven.** Tras el POST, la fila se parchea en memoria. Es el patrón de la tabla de Pedidos.
 
 **La conversación abierta pasa a la URL.** Se escribe con `replace` y sin scroll al seleccionar, y el estado se deriva del parámetro en vez de duplicarse. Eso resuelve el enlace compartible, el botón Atrás y el aterrizaje tras recargar, que hoy son tres síntomas de la misma causa.
+
+> **Corrección de PRO-12** (20-ago-2026): **`push`, no `replace`.** Con `replace`
+> no hay historial, y sin historial el botón Atrás no puede devolver a la
+> conversación anterior — que es la historia de usuario 11 y una casilla del
+> ticket. Lo demás de esta decisión se cumplió tal cual: sin scroll, y el estado
+> derivado del parámetro. Se escribe con la History API y no con el router de
+> Next, que es lo que hace que no cueste un render de servidor por clic.
 
 **El filtro de la bandeja de operaciones también pasa a la URL.** La bandeja de ventas ya espeja su vista; la otra no. Quedan iguales.
 

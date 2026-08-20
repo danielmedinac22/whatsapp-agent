@@ -48,7 +48,7 @@ export default async function InboxPage({
   searchParams: Promise<{ q?: string; c?: string; b?: string; v?: string }>;
 }) {
   const session = await auth();
-  const { q, c, b, v } = await searchParams;
+  const { q, c, b } = await searchParams;
   // El CDN del PDF de la guía sale de la logística de la operación del panel.
   // Antes leía `dropi_connection` por `id = 1`: el último `id = 1` del panel, y
   // el que le habría puesto el CDN guatemalteco a las guías colombianas.
@@ -132,9 +132,13 @@ export default async function InboxPage({
       }))}
       approvedTemplates={approvedTemplates}
       query={q ?? ""}
-      selectedId={c ?? null}
+      // La conversación abierta y el filtro **se leen de la dirección en el
+      // cliente** (`?c=` y `?v=`), no viajan como props: seleccionar un chat o
+      // cambiar de filtro escribe la URL sin pedirle un render al servidor. Acá
+      // `c` se sigue usando para anclar esa conversación en la lista aunque se
+      // haya salido del corte por actividad o de la búsqueda.
+      operationId={op.id}
       bandeja={bandeja?.inbox ?? null}
-      vista={v === "sin-responder" || v === "en-automatico" ? v : null}
       // El mismo listón que decide la bandeja, y por lo mismo: `null` es lo que
       // apaga el nombre del vendedor en los eventos del hilo y el botón de
       // «TRABAJARLA YO». Con la fila a medio llenar esto decía «el vendedor» y

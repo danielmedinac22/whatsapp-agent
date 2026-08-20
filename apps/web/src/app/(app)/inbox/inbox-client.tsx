@@ -1,16 +1,22 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { buildReopenOptions, type ReopenOption } from "@/lib/reopen";
 // Del subcamino y no del barril: `@wa/db` arrastra el cliente de la base y
-// `node:fs`, y esto es un componente de cliente. `sales-context` es puro.
+// `node:fs`, y esto es un componente de cliente. `sales-context` y
+// `bandeja-viva` son puros.
 import {
   escalationPhrase,
   isSalesEscalation,
   type RowMark,
   type SalesThreadEvent,
 } from "@wa/db/sales-context";
+import {
+  aplicarEvento,
+  reordenarPorActividad,
+} from "@wa/db/bandeja-viva";
+import type { WaEvent } from "@wa/shared";
 import { VoiceRecorder } from "./voice-recorder";
 import {
   AlertCircle,
@@ -144,18 +150,88 @@ const MARK_META: Record<RowMark, { label: string; title: string; classes: string
   },
 };
 
-/** La vista de la barra lateral (`?v=`), traducida al filtro de la lista. */
-function filterOfView(vista: Vista): FilterKey {
-  if (vista === "sin-responder") return "sin_responder";
-  if (vista === "en-automatico") return "automated";
-  return "all";
+/**
+ * **El filtro de la lista, tal como viaja en `?v=`.**
+ *
+ * La bandeja de ventas ya espejaba su vista en la dirección —son los enlaces de
+ * la barra lateral (`./nav`), y los nombres dicen su regla—; la de operaciones
+ * la guardaba en memoria, así que se perdía al recargar y al salir y volver.
+ * Ahora las dos funcionan igual: el filtro **se deriva del parámetro**, no se
+ * duplica en un estado.
+ *
+ * `all` no tiene token a propósito: la vista por defecto es la URL sin
+ * parámetro, y el enlace de hoy tiene que seguir significando lo mismo mañana.
+ */
+const VISTA_DEL_FILTRO: Record<FilterKey, string | null> = {
+  all: null,
+  pending: "pendientes",
+  confirmed: "confirmadas",
+  not_confirmed: "no-confirmadas",
+  sin_responder: "sin-responder",
+  automated: "en-automatico",
+};
+
+/** Cómo se llama cada filtro en el selector. */
+const ETIQUETA_DEL_FILTRO: Record<FilterKey, string> = {
+  all: "Todas",
+  pending: "Pendientes",
+  confirmed: "Confirmadas",
+  not_confirmed: "No conf.",
+  sin_responder: "Sin responder",
+  automated: "En automático",
+};
+
+/**
+ * **Los filtros que ofrece cada bandeja, en una sola lista.**
+ *
+ * De acá salen las opciones del selector *y* los tokens que `?v=` acepta, y esa
+ * es toda la razón de que exista: mientras fueran dos listas podían discrepar,
+ * y discrepaban. Cambiar de bandeja no remonta el componente —es la misma
+ * ruta—, así que el filtro «En automático» sobrevivía al salto a operaciones,
+ * donde esa opción no se ofrece: el selector se quedaba **en blanco** mientras
+ * la lista sí filtraba, y el asesor veía faltar filas sin poder ver por qué.
+ * Leyendo el filtro de esta misma lista, un valor que la bandeja no ofrece no
+ * se puede ni representar.
+ *
+ * Los tres estados de confirmación no se ofrecen en ventas: una conversación
+ * con pedido ya está en la otra bandeja, así que los tres devuelven cero, y un
+ * filtro que siempre vacía la lista es una trampa, no una opción.
+ */
+const FILTROS_DE_VENTAS: readonly FilterKey[] = [
+  "all",
+  "automated",
+  "sin_responder",
+];
+const FILTROS_DE_OPERACIONES: readonly FilterKey[] = [
+  "all",
+  "pending",
+  "confirmed",
+  "not_confirmed",
+  "sin_responder",
+];
+
+function filtrosDeLaBandeja(esVentas: boolean): readonly FilterKey[] {
+  return esVentas ? FILTROS_DE_VENTAS : FILTROS_DE_OPERACIONES;
+}
+
+/** El filtro que pide la dirección, acotado a lo que esta bandeja ofrece. */
+function filtroDeLaVista(vista: string | null, esVentas: boolean): FilterKey {
+  return (
+    filtrosDeLaBandeja(esVentas).find((f) => VISTA_DEL_FILTRO[f] === vista) ??
+    "all"
+  );
 }
 
 /**
- * Las vistas de la barra, tal como viajan en la URL. Son las de `./nav`, y los
- * nombres dicen su regla: «Sin responder» y «En automático».
+ * Cuánto espera un `router.refresh()` antes de salir, y cuántos se juntan en
+ * uno.
+ *
+ * El refresh no desaparece —sigue siendo el camino de lo que solo el servidor
+ * sabe—, pero **deja de ser el camino de los eventos**: un render del Inbox son
+ * 23 idas y vueltas a la base, y sin ventana una ráfaga de avisos los pide
+ * todos. Con ventana, una ráfaga cuesta uno.
  */
-type Vista = "sin-responder" | "en-automatico" | null;
+const VENTANA_DE_REFRESCO_MS = 400;
 
 const STATUS_META: Record<
   ConfirmationStatus,
@@ -269,13 +345,27 @@ const DROPI_META: Record<
   },
 };
 
+/**
+ * Lo que la bandeja anotó y todavía no se ha mirado.
+ *
+ * `conversaciones` son las que cambiaron y **quedarían en otro puesto** si la
+ * lista se reordenara; `faltaAlguna` dice que al menos una de esas novedades es
+ * de una conversación que no está en la lista, y por lo tanto solo la puede
+ * traer el servidor.
+ */
+type Novedades = {
+  conversaciones: readonly string[];
+  faltaAlguna: boolean;
+};
+
+const SIN_NOVEDADES: Novedades = { conversaciones: [], faltaAlguna: false };
+
 export function InboxClient({
   initial,
   approvedTemplates,
   query,
-  selectedId,
+  operationId,
   bandeja,
-  vista,
   sellerName,
   currentUserId,
 }: {
@@ -283,60 +373,173 @@ export function InboxClient({
   approvedTemplates: string[];
   /** Término de búsqueda vigente en la URL (?q=), resuelto en el servidor. */
   query: string;
-  /** Conversación pedida por URL (?c=), p. ej. desde un pedido. */
-  selectedId: string | null;
+  /**
+   * La operación que está mirando esta pestaña, o `null` si no se pudo
+   * resolver.
+   *
+   * Es lo que impide que un entrante de Colombia mueva la bandeja de Guatemala.
+   * El stream ya filtra en el servidor —un evento que no sale no hay que
+   * confiar en que nadie lo mire—, y esto es el cinturón de acá: la pestaña
+   * puede quedar abierta mientras el riel cambia de operación sin que el
+   * `EventSource` se vuelva a abrir.
+   */
+  operationId: string | null;
   /**
    * La bandeja que se está viendo, o `null` cuando la operación no tiene
    * vendedor configurado y por lo tanto **no hay dos bandejas**: ahí esta
    * pantalla es exactamente la de siempre.
    */
   bandeja: "ventas" | "operaciones" | null;
-  /** La vista de la barra lateral (?v=), que solo existe dentro de ventas. */
-  vista: Vista;
   /** El nombre del vendedor configurado, o `null` si no hay ninguno. */
   sellerName: string | null;
   /** Quién está mirando, para poder decir «la trabajo yo» y no solo «alguien». */
   currentUserId: string | null;
 }) {
   const router = useRouter();
+  /**
+   * **El estado de la bandeja vive en la dirección, no en memoria.**
+   *
+   * Tres síntomas de la misma causa se van con esto: no se podía mandar el
+   * enlace de un chat, Atrás sacaba de la pantalla en vez de volver al chat
+   * anterior, y recargar aterrizaba en otro. Un cuarto también: cambiar de
+   * bandeja es la misma ruta, así que el componente no se remonta y quedaba
+   * abierta una conversación de la bandeja de al lado.
+   */
+  const params = useSearchParams();
+  /**
+   * Los parámetros como texto. Es lo que se usa de dependencia y no el objeto:
+   * un `URLSearchParams` nuevo en cada render volvería a armar el temporizador
+   * de la búsqueda cada vez, y la búsqueda no saldría nunca.
+   */
+  const qsActual = params.toString();
+  const pedidaEnLaDireccion = params.get("c");
   const esVentas = bandeja === "ventas";
   const [items, setItems] = useState<ChatItem[]>(initial);
-  const [selected, setSelected] = useState<ChatItem | null>(
-    (selectedId ? initial.find((i) => i.id === selectedId) : null) ??
-      initial[0] ??
-      null,
-  );
-  const [filter, setFilter] = useState<FilterKey>(
-    esVentas ? filterOfView(vista) : "all",
-  );
+  const [novedades, setNovedades] = useState<Novedades>(SIN_NOVEDADES);
   const [search, setSearch] = useState(query);
   const [searching, startSearch] = useTransition();
-
-  // La vista la manda la barra lateral: entrar por «Sin responder» tiene que
-  // dejar la lista en esa vista, y volver a «Todas» tiene que deshacerlo.
-  useEffect(() => {
-    if (esVentas) setFilter(filterOfView(vista));
-  }, [esVentas, vista]);
+  const [, startRefresh] = useTransition();
 
   /**
-   * La URL de esta pantalla, conservando bandeja y vista.
+   * La lista tal como está **ahora mismo**, para que una ráfaga de eventos no
+   * se pise a sí misma: dos entrantes en el mismo tick leen los dos el estado
+   * anterior, y el segundo borraría lo que escribió el primero.
+   */
+  const itemsRef = useRef(items);
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
+
+  /**
+   * El filtro **se deriva de `?v=`**; no hay un estado que pueda discrepar.
+   * Ver {@link filtroDeLaVista}: un valor que esta bandeja no ofrece no llega
+   * a existir, así que el selector no puede quedar en blanco mientras la lista
+   * filtra.
+   */
+  const filter = filtroDeLaVista(params.get("v"), esVentas);
+
+  /**
+   * Escribir un parámetro de esta pantalla en la dirección, sin pedirle nada al
+   * servidor.
    *
-   * Buscar dentro de Conversaciones **no puede devolverte al Inbox de
-   * Katherine**, y eso es justo lo que pasaba al reconstruir la URL con solo el
-   * término: `?b=` y `?v=` se perdían y la bandeja cambiaba sola.
+   * Es la History API y no `router.push`: lo que se está guardando es **dónde
+   * está parado el asesor**, no otra pantalla. Next sincroniza `usePathname` y
+   * `useSearchParams` con estas dos llamadas, así que la dirección y lo que se
+   * ve no se pueden separar; y como no hay navegación, seleccionar un chat no
+   * cuesta un render de servidor ni mueve el scroll de la lista.
+   *
+   * `push` para la conversación, que es lo que Atrás tiene que devolver;
+   * `replace` para el filtro, que es cómo se está mirando y no a dónde se fue.
+   */
+  const escribirEnLaDireccion = useCallback(
+    (clave: string, valor: string | null, modo: "push" | "replace") => {
+      const proximos = new URLSearchParams(qsActual);
+      if (valor === null) proximos.delete(clave);
+      else proximos.set(clave, valor);
+      const qs = proximos.toString();
+      const url = qs ? `/inbox?${qs}` : "/inbox";
+      if (modo === "push") window.history.pushState(null, "", url);
+      else window.history.replaceState(null, "", url);
+    },
+    [qsActual],
+  );
+
+  const abrirConversacion = useCallback(
+    (it: ChatItem) => {
+      if (pedidaEnLaDireccion === it.id) return;
+      escribirEnLaDireccion("c", it.id, "push");
+    },
+    [escribirEnLaDireccion, pedidaEnLaDireccion],
+  );
+
+  const ponerFiltro = useCallback(
+    (f: FilterKey) => {
+      escribirEnLaDireccion("v", VISTA_DEL_FILTRO[f], "replace");
+    },
+    [escribirEnLaDireccion],
+  );
+
+  /**
+   * **La conversación abierta se deriva de la dirección**, y no se duplica en
+   * un estado que pueda ir por su cuenta.
+   *
+   * Sin `?c=` se abre la primera de la lista, como siempre. La que pide la
+   * dirección está garantizada en la lista: el servidor la ancla (`pinnedId`)
+   * aunque se haya salido del corte por actividad o de la búsqueda.
+   */
+  const selected =
+    (pedidaEnLaDireccion
+      ? items.find((i) => i.id === pedidaEnLaDireccion) ?? null
+      : null) ??
+    items[0] ??
+    null;
+
+  /**
+   * Volver a pedirle el render al servidor: con ventana y dentro de una
+   * transición.
+   *
+   * **No es un `location.reload()` con otro nombre** —no reinicia el cliente,
+   * no borra el borrador ni mueve el scroll—, pero cuesta 23 idas y vueltas a
+   * la base, así que ya no es el camino de los eventos: solo el de lo que
+   * únicamente el servidor puede saber. La ventana junta la ráfaga en uno.
+   */
+  const refrescoPendiente = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refrescar = useCallback(() => {
+    if (refrescoPendiente.current !== null) return;
+    refrescoPendiente.current = setTimeout(() => {
+      refrescoPendiente.current = null;
+      startRefresh(() => router.refresh());
+    }, VENTANA_DE_REFRESCO_MS);
+  }, [router]);
+  useEffect(
+    () => () => {
+      if (refrescoPendiente.current !== null) {
+        clearTimeout(refrescoPendiente.current);
+      }
+    },
+    [],
+  );
+
+  /**
+   * La URL de esta pantalla con otro término de búsqueda.
+   *
+   * Se arma sobre los parámetros vigentes y no desde cero: buscar dentro de
+   * Conversaciones **no puede devolverte al Inbox de Katherine**, y eso es
+   * justo lo que pasaba al reconstruir la URL con solo el término. Ahora
+   * también conserva la conversación abierta y el filtro puesto.
    */
   const urlDeLaBandeja = (term: string): string => {
-    const params = new URLSearchParams();
-    if (bandeja === "ventas") params.set("b", "ventas");
-    if (esVentas && vista) params.set("v", vista);
-    if (term) params.set("q", term);
-    const qs = params.toString();
+    const proximos = new URLSearchParams(qsActual);
+    if (term) proximos.set("q", term);
+    else proximos.delete("q");
+    const qs = proximos.toString();
     return qs ? `/inbox?${qs}` : "/inbox";
   };
 
   // La búsqueda vive en la URL y la resuelve el servidor sobre TODAS las
   // conversaciones — la lista solo carga las 200 más recientes, así que un
-  // filtro local no encontraría a nadie de hace meses.
+  // filtro local no encontraría a nadie de hace meses. Es de las dos cosas que
+  // siguen siendo un render de servidor, con su ventana y en transición.
   useEffect(() => {
     if (search.trim() === query) return;
     const timer = setTimeout(() => {
@@ -347,7 +550,7 @@ export function InboxClient({
     }, 250);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, query, router, bandeja, vista]);
+  }, [search, query, router, qsActual]);
   const automatedCount = items.filter((item) => item.agentMode).length;
   const unreadCount = items.reduce((sum, item) => sum + item.unread, 0);
   const pendingCount = items.filter(
@@ -369,10 +572,23 @@ export function InboxClient({
    * trae siempre las que dan `true` — sin eso este contador diría 1, porque las
    * 200 filas que se cargan por actividad cubren los últimos cinco días y las
    * conversaciones sin responder son más viejas.
+   *
+   * Un evento del stream solo lo mueve **hacia arriba y con certeza** —ver
+   * `aplicarEvento` (`@wa/db/bandeja-viva`)—; apagarlo sigue siendo del
+   * servidor.
    */
   const sinResponderCount = items.filter((item) => item.sinResponder).length;
 
   const assignedCount = items.filter((item) => item.assignedTo !== null).length;
+
+  const contadorDelFiltro: Record<FilterKey, number> = {
+    all: items.length,
+    pending: pendingCount,
+    confirmed: confirmedCount,
+    not_confirmed: notConfirmedCount,
+    sin_responder: sinResponderCount,
+    automated: automatedCount,
+  };
 
   const visibleItems =
     filter === "all"
@@ -383,94 +599,158 @@ export function InboxClient({
           ? items.filter((item) => item.agentMode)
           : items.filter((item) => item.confirmationStatus === filter);
 
+  /** Anotar que llegó algo que la lista no va a mostrar sola. */
+  const anotarNovedad = useCallback(
+    (conversationId: string, fueraDeLaLista: boolean) => {
+      setNovedades((prev) => ({
+        conversaciones: prev.conversaciones.includes(conversationId)
+          ? prev.conversaciones
+          : [...prev.conversaciones, conversationId],
+        faltaAlguna: prev.faltaAlguna || fueraDeLaLista,
+      }));
+    },
+    [],
+  );
+
+  /**
+   * **Lo que un evento del stream le hace a la lista.**
+   *
+   * La decisión no está acá: está en `aplicarEvento` (`@wa/db/bandeja-viva`),
+   * que es puro y se prueba desde el worker como `resolveInbox` y
+   * `sinResponder`. Acá solo se ejecuta lo que decidió.
+   *
+   * Antes esto era una línea —`router.refresh()`— y costaba el render del
+   * servidor entero por cada mensaje que entraba: 23 idas y vueltas a la base y
+   * 1.256 filas leídas para entregar una fila que cambió.
+   */
+  const manejarEvento = useCallback(
+    (ev: WaEvent) => {
+      const decision = aplicarEvento(itemsRef.current, ev, { operationId });
+      if (decision.accion === "refrescar") {
+        refrescar();
+        return;
+      }
+      if (decision.accion === "ignorar") {
+        // La única que el asesor tiene que saber: llegó un mensaje de una
+        // conversación que no está en la lista. No se inventa la fila —el
+        // evento trae tres campos y la fila dibuja veinte—, se avisa.
+        if (decision.motivo === "fuera-de-la-lista" && decision.conversationId) {
+          anotarNovedad(decision.conversationId, true);
+        }
+        return;
+      }
+      itemsRef.current = decision.filas;
+      setItems(decision.filas);
+      // La fila se actualizó **en su sitio**. Que tendría que haber subido lo
+      // dice el aviso, y reordenar lo decide el asesor: entrar un mensaje de
+      // otro cliente, que todo baje un puesto y abrir la conversación
+      // equivocada es el bug que esto saca.
+      if (decision.desordena) anotarNovedad(decision.conversationId, false);
+    },
+    [anotarNovedad, operationId, refrescar],
+  );
+
+  /**
+   * **Una sola conexión al stream por pestaña.**
+   *
+   * Antes se abrían dos contra `/api/events` —una la lista y otra el hilo—, y
+   * la del hilo se cerraba y volvía a abrir con cada cambio de conversación.
+   * Ahora la abre la lista, una vez, y el hilo se cuelga de ella con
+   * {@link suscribirse}.
+   */
+  const oyentes = useRef(new Set<(ev: WaEvent) => void>());
+  const suscribirse = useCallback((fn: (ev: WaEvent) => void) => {
+    oyentes.current.add(fn);
+    return () => {
+      oyentes.current.delete(fn);
+    };
+  }, []);
+
+  // El manejador vive en una referencia para que la conexión no se reabra cada
+  // vez que cambia algo de lo que depende. Las dependencias del efecto son
+  // vacías **a propósito**: es lo que hace que sea una sola conexión.
+  const manejarRef = useRef(manejarEvento);
+  useEffect(() => {
+    manejarRef.current = manejarEvento;
+  }, [manejarEvento]);
+
   useEffect(() => {
     const es = new EventSource("/api/events");
     es.addEventListener("wa", (e) => {
+      let ev: WaEvent;
       try {
-        const ev = JSON.parse((e as MessageEvent).data);
-        if (
-          ev.type === "message.created" ||
-          ev.type === "conversation.updated" ||
-          // Los chulos de la lista solo cambian con un fallo; refrescar con
-          // cada delivered/read sería un refresh por cada mensaje enviado.
-          (ev.type === "message.status" && ev.status === "failed")
-        ) {
-          router.refresh();
-        }
+        ev = JSON.parse((e as MessageEvent).data) as WaEvent;
       } catch {
-        /* ignore */
+        return;
       }
+      manejarRef.current(ev);
+      for (const fn of [...oyentes.current]) fn(ev);
     });
     return () => es.close();
-  }, [router]);
-
-  // Un ?c= nuevo (salto desde Pedidos) selecciona esa conversación una sola
-  // vez: si se reaplicara en cada refresh del servidor, pisaría el click del
-  // asesor cada vez que entra un mensaje.
-  const appliedSelectedId = useRef<string | null>(null);
-  useEffect(() => {
-    if (!selectedId || appliedSelectedId.current === selectedId) return;
-    const target = initial.find((i) => i.id === selectedId);
-    if (target) {
-      appliedSelectedId.current = selectedId;
-      setSelected(target);
-    }
-  }, [selectedId, initial]);
+  }, []);
 
   /**
    * La lista se resincroniza cuando **el servidor** manda un `initial` nuevo, y
-   * solo entonces.
+   * solo entonces: una navegación, una búsqueda o el refresh de lo que el
+   * cliente no puede recalcular.
    *
-   * Antes esto también dependía de `selected`, y esa dependencia es la que
-   * impedía cualquier cambio en memoria: tocar la fila abierta volvía a
-   * disparar el efecto, que reponía `items` e `initial.find(...)` sobre la fila
-   * recién parcheada y la dejaba como estaba. Con la selección leída dentro del
-   * `set` funcional no hace falta que sea dependencia, y el parche sobrevive
-   * hasta que llega el render del servidor, que es quien manda.
+   * Lo que llega es la lista entera y en su orden, así que las novedades
+   * anotadas ya están adentro y el aviso se apaga. Es el único momento en que
+   * la lista se reordena sin que el asesor lo pida, y es el que él provocó.
    */
   useEffect(() => {
+    itemsRef.current = initial;
     setItems(initial);
-    setSelected((prev) => {
-      if (!prev) return initial[0] ?? null;
-      // Si la conversación abierta no viene en el render nuevo, se queda: pudo
-      // salirse del corte por actividad, y sacarla de la pantalla sería
-      // moverle el sitio al asesor, que es justo lo que estos tickets sacan.
-      return initial.find((i) => i.id === prev.id) ?? prev;
-    });
+    setNovedades(SIN_NOVEDADES);
   }, [initial]);
+
+  /**
+   * Ponerse al día: la lista vuelve a su orden y, si hacía falta, se le pide al
+   * servidor lo que no está en ella.
+   *
+   * **Reordenar es una acción del asesor, no del tráfico.** Solo se le pide al
+   * servidor cuando alguna novedad es de una conversación que la lista no
+   * tiene: reordenar lo que ya está es instantáneo y no cuesta un viaje.
+   */
+  const ponerseAlDia = useCallback(() => {
+    const ordenadas = reordenarPorActividad(itemsRef.current);
+    itemsRef.current = ordenadas;
+    setItems(ordenadas);
+    if (novedades.faltaAlguna) refrescar();
+    setNovedades(SIN_NOVEDADES);
+  }, [novedades.faltaAlguna, refrescar]);
 
   /**
    * Lo que un botón acaba de escribir en el servidor, aplicado donde ocurrió.
    *
-   * Es el patrón de la tabla de Pedidos (`orders-table.tsx`), y reemplaza a los
-   * tres `location.reload()` que tenían los botones de esta pantalla. El
-   * `reload` no refrescaba datos: rehacía el documento entero, y como la
-   * conversación abierta no vive en la URL, el panel volvía en el primer chat
-   * de la lista, con el filtro en blanco y el borrador perdido.
+   * Es el patrón de la tabla de Pedidos (`orders-table.tsx`), y reemplazó a los
+   * tres `location.reload()` que tenían los botones de esta pantalla.
    *
    * `coincide` es un predicado y no un id porque **el modo agente es del
    * contacto, no de la conversación**: un contacto con dos conversaciones en la
    * lista cambia las dos, y con un id se quedaría una mintiendo.
    *
-   * El `router.refresh()` del final no es el `reload` con otro nombre. Solo
-   * vuelve a pedir el render del servidor —no reinicia el cliente— y está
-   * medido que no borra el borrador ni mueve el scroll de la lista: las `key`
-   * son estables y React reutiliza los `<li>`. Hace falta porque hay campos
-   * derivados que el cliente no puede recalcular (`sinResponder` mira la
-   * escalada y la actividad, que la fila no trae). El parche da la respuesta
-   * inmediata; el refresh trae la verdad un momento después.
+   * `necesitaAlServidor` dice si queda algo **derivado** que el cliente no
+   * puede recalcular, y es explícito y no siempre: soltar una conversación o
+   * apagar el agente pueden devolverla a «sin responder» —eso mira la escalada
+   * y la actividad, que la fila no trae—, pero marcar una confirmación no
+   * deriva nada, y pedir la pantalla entera por eso son 23 viajes a la base
+   * para repintar un chip que el parche ya repintó.
    */
   const aplicarCambio = useCallback(
-    (coincide: (it: ChatItem) => boolean, patch: Partial<ChatItem>) => {
-      setItems((prev) =>
-        prev.map((it) => (coincide(it) ? { ...it, ...patch } : it)),
+    (
+      coincide: (it: ChatItem) => boolean,
+      patch: Partial<ChatItem>,
+      necesitaAlServidor = false,
+    ) => {
+      const filas = itemsRef.current.map((it) =>
+        coincide(it) ? { ...it, ...patch } : it,
       );
-      setSelected((prev) =>
-        prev && coincide(prev) ? { ...prev, ...patch } : prev,
-      );
-      router.refresh();
+      itemsRef.current = filas;
+      setItems(filas);
+      if (necesitaAlServidor) refrescar();
     },
-    [router],
+    [refrescar],
   );
 
   return (
@@ -504,7 +784,7 @@ export function InboxClient({
             label="Conversaciones"
             value={String(items.length)}
             active={filter === "all"}
-            onClick={() => setFilter("all")}
+            onClick={() => ponerFiltro("all")}
           />
           <SummaryCard label="Sin leer" value={String(unreadCount)} />
           {!esVentas && (
@@ -518,7 +798,7 @@ export function InboxClient({
               value={String(pendingCount)}
               accent={pendingCount > 0 ? "text-amber-200" : undefined}
               active={filter === "pending"}
-              onClick={() => setFilter("pending")}
+              onClick={() => ponerFiltro("pending")}
             />
           )}
           {/* El mismo nombre y la misma regla que la vista de la barra: un
@@ -529,7 +809,7 @@ export function InboxClient({
             value={String(sinResponderCount)}
             accent={sinResponderCount > 0 ? "text-red-200" : undefined}
             active={filter === "sin_responder"}
-            onClick={() => setFilter("sin_responder")}
+            onClick={() => ponerFiltro("sin_responder")}
           />
         </div>
       </header>
@@ -567,28 +847,20 @@ export function InboxClient({
                 es lo único que puede encoger. Sin esto, una opción larga —«Las
                 lleva Sebastián (99)»— empuja el «99/115» fuera de la tarjeta. */}
             <div className="flex min-w-0 items-center gap-2">
+              {/* Las opciones salen de la MISMA lista de la que sale el filtro
+                  que `?v=` acepta (`filtrosDeLaBandeja`). Mientras fueron dos
+                  listas podían discrepar, y discrepaban: al cambiar de bandeja
+                  el selector se quedaba en blanco mientras la lista filtraba. */}
               <select
                 value={filter}
-                onChange={(e) => setFilter(e.target.value as FilterKey)}
+                onChange={(e) => ponerFiltro(e.target.value as FilterKey)}
                 className="h-9 min-w-0 rounded-md border border-[var(--color-border)] bg-[rgba(8,21,30,0.72)] px-2 text-xs text-[var(--color-text-dim)] outline-none transition hover:border-[rgba(110,231,183,0.3)] focus:border-[rgba(110,231,183,0.5)] lg:h-7"
               >
-                <option value="all">Todas ({items.length})</option>
-                {/* Los tres estados de confirmación no se ofrecen en ventas:
-                    una conversación con pedido ya está en la otra bandeja, así
-                    que los tres filtros devuelven cero. Un filtro que siempre
-                    vacía la lista es una trampa, no una opción. */}
-                {esVentas ? (
-                  <option value="automated">En automático ({automatedCount})</option>
-                ) : (
-                  <>
-                    <option value="pending">Pendientes ({pendingCount})</option>
-                    <option value="confirmed">Confirmadas ({confirmedCount})</option>
-                    <option value="not_confirmed">No conf. ({notConfirmedCount})</option>
-                  </>
-                )}
-                <option value="sin_responder">
-                  Sin responder ({sinResponderCount})
-                </option>
+                {filtrosDeLaBandeja(esVentas).map((f) => (
+                  <option key={f} value={f}>
+                    {ETIQUETA_DEL_FILTRO[f]} ({contadorDelFiltro[f]})
+                  </option>
+                ))}
               </select>
               <span className="shrink-0 rounded-md border border-[var(--color-border)] bg-[rgba(8,21,30,0.72)] px-2 py-1 text-xs text-[var(--color-text-dim)]">
                 {visibleItems.length}/{items.length}
@@ -596,6 +868,27 @@ export function InboxClient({
             </div>
             </div>
           </div>
+          {/*
+            **El aviso de novedades.** La lista no se reordena sola: la fila que
+            cambió se repinta donde está y esto dice que hay algo que subiría de
+            puesto, o que llegó un mensaje de una conversación que la lista no
+            tiene. Reordenar lo decide el asesor, tocándolo.
+
+            Cómo se ve lo decide `.scratch/panel-orientacion/spec.md`; que exista
+            lo decide este ticket.
+          */}
+          {novedades.conversaciones.length > 0 && (
+            <button
+              type="button"
+              onClick={ponerseAlDia}
+              className="mx-2 mt-2 rounded-lg border border-[rgba(110,231,183,0.35)] bg-[rgba(18,42,53,0.92)] px-3 py-1.5 text-left text-xs text-[var(--color-accent)] transition hover:bg-[rgba(24,54,68,0.95)]"
+            >
+              {novedades.conversaciones.length === 1
+                ? "1 conversación con novedades"
+                : `${novedades.conversaciones.length} conversaciones con novedades`}{" "}
+              · ponerse al día
+            </button>
+          )}
           <ul className="flex-1 overflow-y-auto p-2">
           {visibleItems.length === 0 && (
             <li className="p-4 text-center text-sm text-[var(--color-text-dim)]">
@@ -616,7 +909,7 @@ export function InboxClient({
             return (
             <li
               key={it.id}
-              onClick={() => setSelected(it)}
+              onClick={() => abrirConversacion(it)}
               className={`mb-2 cursor-pointer rounded-lg border px-3 py-2.5 transition ${
                 selected?.id === it.id
                   ? "border-[rgba(110,231,183,0.35)] bg-[rgba(18,42,53,0.92)] shadow-[0_6px_18px_rgba(3,10,16,0.45)]"
@@ -720,6 +1013,7 @@ export function InboxClient({
             currentUserId={currentUserId}
             sellerConfigured={sellerName !== null}
             onAplicado={aplicarCambio}
+            suscribirse={suscribirse}
           />
         ) : (
           <div className="app-card flex flex-1 items-center justify-center text-[var(--color-text-dim)]">
@@ -846,6 +1140,8 @@ function threadEntries(msgs: Msg[], events: WireEvent[]): ThreadEntry[] {
 type Aplicar = (
   coincide: (it: ChatItem) => boolean,
   patch: Partial<ChatItem>,
+  /** Si queda algo derivado que solo el servidor puede recalcular. */
+  necesitaAlServidor?: boolean,
 ) => void;
 
 function ConversationPane({
@@ -854,12 +1150,21 @@ function ConversationPane({
   currentUserId,
   sellerConfigured,
   onAplicado,
+  suscribirse,
 }: {
   chat: ChatItem;
   approvedTemplates: string[];
   currentUserId: string | null;
   sellerConfigured: boolean;
   onAplicado: Aplicar;
+  /**
+   * Colgarse del stream que la lista ya tiene abierto. Devuelve cómo soltarse.
+   *
+   * El hilo abría su propio `EventSource` y lo cerraba y reabría con cada
+   * cambio de conversación: dos conexiones por pestaña contra el mismo stream,
+   * y una de ellas reconectándose todo el tiempo.
+   */
+  suscribirse: (fn: (ev: WaEvent) => void) => () => void;
 }) {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [events, setEvents] = useState<WireEvent[]>([]);
@@ -981,46 +1286,39 @@ function ConversationPane({
 
   useEffect(() => {
     reload();
-    const es = new EventSource("/api/events");
-    es.addEventListener("wa", (e) => {
-      try {
-        const ev = JSON.parse((e as MessageEvent).data);
-        if (ev.conversationId !== chat.id) return;
-        if (ev.type === "message.created") {
+    return suscribirse((ev) => {
+      if (!("conversationId" in ev) || ev.conversationId !== chat.id) return;
+      if (ev.type === "message.created") {
+        reload();
+        return;
+      }
+      if (ev.type === "message.status") {
+        /**
+         * Un acuse de entrega o de lectura **no vuelve a pedir el hilo**.
+         *
+         * Es el mismo criterio que la lista ya aplica y que el hilo no había
+         * heredado: cada mensaje que sale produce dos o tres acuses, así que
+         * pedía el hilo entero varias veces por mensaje enviado. Lo único que
+         * cambia un acuse es el chulo de un mensaje, y eso se reescribe en
+         * memoria — así el chulo sigue vivo, como en WhatsApp, sin pagar un
+         * viaje ni mover la vista.
+         *
+         * El fallo sí lo pide: trae el motivo (`deliveryError`), que el
+         * evento no lleva y el hilo sí muestra.
+         */
+        if (ev.status === "failed") {
           reload();
           return;
         }
-        if (ev.type === "message.status") {
-          /**
-           * Un acuse de entrega o de lectura **no vuelve a pedir el hilo**.
-           *
-           * Es el mismo criterio que la lista ya aplica y que el hilo no había
-           * heredado: cada mensaje que sale produce dos o tres acuses, así que
-           * pedía el hilo entero varias veces por mensaje enviado. Lo único que
-           * cambia un acuse es el chulo de un mensaje, y eso se reescribe en
-           * memoria — así el chulo sigue vivo, como en WhatsApp, sin pagar un
-           * viaje ni mover la vista.
-           *
-           * El fallo sí lo pide: trae el motivo (`deliveryError`), que el
-           * evento no lleva y el hilo sí muestra.
-           */
-          if (ev.status === "failed") {
-            reload();
-            return;
-          }
-          setMsgs((prev) =>
-            prev.map((m) =>
-              m.id === ev.messageId ? { ...m, status: ev.status } : m,
-            ),
-          );
-        }
-      } catch {
-        /* ignore */
+        setMsgs((prev) =>
+          prev.map((m) =>
+            m.id === ev.messageId ? { ...m, status: ev.status } : m,
+          ),
+        );
       }
     });
-    return () => es.close();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chat.id]);
+  }, [chat.id, suscribirse]);
 
   const send = async () => {
     if (!text.trim() || sending) return;
@@ -1070,14 +1368,20 @@ function ConversationPane({
         assignedTo?: ChatItem["assignedTo"];
       } | null;
       const assignedTo = j?.assignedTo ?? null;
-      onAplicado((it) => it.id === chat.id, {
-        assignedTo,
-        // Tomarla la saca de «Sin responder» con certeza: `sinResponder` da
-        // `false` en cuanto hay alguien asignado. Soltarla podría devolverla,
-        // pero eso depende de la escalada y de la actividad, que la fila no
-        // trae — ahí no se toca y decide el render del servidor.
-        ...(assignedTo ? { sinResponder: false } : {}),
-      });
+      onAplicado(
+        (it) => it.id === chat.id,
+        {
+          assignedTo,
+          // Tomarla la saca de «Sin responder» con certeza: `sinResponder` da
+          // `false` en cuanto hay alguien asignado. Soltarla podría devolverla,
+          // pero eso depende de la escalada y de la actividad, que la fila no
+          // trae — ahí no se toca y decide el render del servidor.
+          ...(assignedTo ? { sinResponder: false } : {}),
+        },
+        // Soltarla es lo único que deja algo por derivar: tomarla ya quedó
+        // resuelto acá arriba, con certeza.
+        assignedTo === null,
+      );
     } finally {
       setAssigning(false);
     }
@@ -1101,10 +1405,16 @@ function ConversationPane({
       // lista, las dos cambian. Prenderlo saca la fila de «Sin responder» con
       // certeza (`sinResponder` da `false` con el agente encendido); apagarlo
       // podría devolverla, y eso lo decide el servidor.
-      onAplicado((it) => it.contactId === chat.contactId, {
-        agentMode: on,
-        ...(on ? { sinResponder: false } : {}),
-      });
+      onAplicado(
+        (it) => it.contactId === chat.contactId,
+        {
+          agentMode: on,
+          ...(on ? { sinResponder: false } : {}),
+        },
+        // Apagarlo puede devolver la conversación a «sin responder», y eso mira
+        // la escalada y la actividad. Prenderlo la saca con certeza.
+        !on,
+      );
     } finally {
       setAgentBusy(false);
     }

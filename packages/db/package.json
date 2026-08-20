@@ -8,7 +8,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./schema": "./src/schema.ts",
-    "./sales-context": "./src/sales-context.ts"
+    "./sales-context": "./src/sales-context.ts",
+    "./bandeja-viva": "./src/bandeja-viva.ts"
   },
   "scripts": {
     "generate": "drizzle-kit generate",

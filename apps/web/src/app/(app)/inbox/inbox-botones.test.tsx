@@ -13,10 +13,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => router,
+  useSearchParams: () => useSearchParamsFingido(),
 }));
 
 import { InboxClient } from "./inbox-client";
-import { chat, montarRed, router, type RedFingida } from "./inbox-harness";
+import {
+  chat,
+  irA,
+  montarRed,
+  OPERACION,
+  router,
+  useSearchParamsFingido,
+  type RedFingida,
+} from "./inbox-harness";
 
 let red: RedFingida;
 
@@ -35,14 +44,16 @@ const KATHERINE = "u-katherine";
  * —que es lo que enciende el botón de «trabajarla yo»—.
  */
 function abrirBandeja(items = [chat({ id: "c-uno" }), chat({ id: "c-dos" })]) {
+  // La conversación abierta viene de la dirección, que es donde vive desde
+  // PRO-11: es lo mismo que llegar por un enlace o recargar la página.
+  irA("/inbox?c=c-dos");
   render(
     <InboxClient
       initial={items}
       approvedTemplates={[]}
       query=""
-      selectedId="c-dos"
+      operationId={OPERACION}
       bandeja={null}
-      vista={null}
       sellerName="Sebastián"
       currentUserId={KATHERINE}
     />,
