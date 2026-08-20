@@ -129,6 +129,12 @@ export default async function InboxPage({
       }))}
       approvedTemplates={approvedTemplates}
       query={q ?? ""}
+      // El nombre y el país, para la línea de contexto que va sobre el `h1`.
+      // Van desde acá y no se piden en el cliente porque `resolvePanelOperation`
+      // ya trajo la fila entera en este mismo render: es el dato que el Inbox
+      // no tenía y por el que la pantalla desde la que salen mensajes a
+      // Guatemala no decía en ningún sitio que era Guatemala.
+      op={{ name: op.name, countryCode: op.countryCode }}
       // La conversación abierta y el filtro **se leen de la dirección en el
       // cliente** (`?c=` y `?v=`), no viajan como props: seleccionar un chat o
       // cambiar de filtro escribe la URL sin pedirle un render al servidor. Acá

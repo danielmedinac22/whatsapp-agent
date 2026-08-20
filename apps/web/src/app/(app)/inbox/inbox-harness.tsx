@@ -129,6 +129,15 @@ export function emitirWa(dato: unknown) {
 export const OPERACION = "op-guatemala";
 
 /**
+ * La misma operación, con lo que la línea de contexto dibuja.
+ *
+ * Es Guatemala y no un nombre cualquiera **a propósito**: la pantalla desde la
+ * que salen los mensajes es la de una operación guatemalteca, y el bug que la
+ * línea de contexto viene a cerrar es que en ningún sitio lo decía.
+ */
+export const OP = { name: "Vorare Store Guatemala", countryCode: "GT" };
+
+/**
  * Un `message.created` **como el que emite el worker**: con la operación y con
  * el resumen de la fila pegado.
  *
