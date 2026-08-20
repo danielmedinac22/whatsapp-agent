@@ -126,6 +126,13 @@ export function htmlToPlainText(html: string): string {
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
     .replace(/[ \t]+/g, " ")
+    // **Los espacios pegados al salto se van antes de contar líneas en blanco.**
+    // Sin esta línea la siguiente no sirve para nada: cada etiqueta se
+    // reemplaza por un espacio, así que una línea "vacía" es en realidad `" "`
+    // y `\n{3,}` nunca casa porque los saltos no quedan adyacentes. Medido
+    // contra una ficha real de la tienda: 333 líneas, 197 en blanco, 175 de
+    // ellas con un espacio adentro, y rachas de hasta 9 seguidas.
+    .replace(/ *\n */g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
