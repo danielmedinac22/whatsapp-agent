@@ -313,4 +313,24 @@
   .app-table tbody tr {
     @apply border-t border-[var(--color-border)];
   }
+
+  /* ── Esqueletos de carga ──────────────────────────────────────────
+     El relleno de un `loading.tsx`: una barra gris con la forma del dato que
+     todavía no llegó. La **silueta** la pone cada pantalla — esta clase no
+     sabe nada de bandejas ni de tablas, solo pinta el hueco.
+
+     Es `--color-panel-3`, el mismo gris con el que el panel dibuja su tercera
+     capa, y no un gris nuevo: el esqueleto tiene que leerse como parte de la
+     pantalla que viene, no como otra cosa encima.
+
+     **Late en cada barra y no en un grupo**, y aun así va acompasado: todas
+     las barras de un `loading.tsx` nacen en el mismo fotograma, así que sus
+     animaciones arrancan en fase. `motion-safe` lo deja quieto para quien
+     pidió menos movimiento — la silueta sigue diciendo lo mismo sin el
+     latido, que es lo que la vuelve información y no adorno. */
+
+  .app-skeleton {
+    background: var(--color-panel-3);
+    @apply rounded-md motion-safe:animate-pulse;
+  }
 }
