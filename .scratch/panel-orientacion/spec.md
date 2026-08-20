@@ -1,6 +1,6 @@
 # Spec · Orientación visual del panel
 
-Status: ready-for-agent
+Status: **entregado** · 20-ago-2026, en producción
 
 Método: **`grill-design`** — cinco prototipos radicalmente distintos por pregunta, en un solo archivo HTML vivo, y el veredicto del usuario baja un nivel del árbol. Es el mismo método de [Pulido de interfaz](../ventas-pulido-ui/spec.md), y por la misma razón: son decisiones de diseño, y un agente que responde sus propias preguntas de diseño no está haciendo el ejercicio.
 
@@ -135,6 +135,41 @@ dudar.
 ### Los prototipos, como referencia visual
 
 No se integran. Están archivados en los comentarios de PRO-19, PRO-21 y PRO-22.
+
+## Entregado · 20-ago-2026
+
+Los tres tickets de implementación salieron a producción la misma tarde en que se
+cerró el árbol de diseño. **El panel es claro.**
+
+| ticket | qué entregó |
+| -- | -- |
+| PRO-25 | la decisión: solo claro, sin modo oscuro |
+| PRO-26 | los tokens, la escala de tres niveles, el marco y las pantallas de configuración |
+| PRO-27 | `<ContextLine>` en siete pantallas, y Pedidos con secciones y retintado |
+| PRO-28 | la fila con etiquetas de estado, el tiempo relativo y la lista partida en secciones |
+
+41 archivos, 2.177 líneas agregadas y 927 quitadas. Typecheck limpio en los cuatro
+paquetes, 79 pruebas del panel y 970 del worker en verde.
+
+**Los tres worktrees corrieron a la vez.** Lo que lo hizo posible fue fijar el
+contrato de nombres antes de repartir, no una cadena de esperas: solo PRO-26
+escribió `globals.css`, y los otros dos escribieron contra clases que en sus
+ramas todavía no existían. Al unir las tres no hubo un solo conflicto, y el único
+archivo que dos ramas crearon (`context-line.tsx`) salió idéntico byte a byte.
+
+**Lo que la medición cambió antes de que existiera una línea de CSS.** Dos
+criterios de aceptación eran inalcanzables tal como estaban escritos, y no se
+habría sabido hasta tener el panel entero pintado:
+
+- El tinte de operación tenía que seguir distinguiéndose sobre claro, y daba
+  2,51:1 en Guatemala y 1,97:1 en Colombia. Se oscureció.
+- El spec pedía AA sobre cada superficie mientras su propio tono «suave» daba
+  2,85:1, con 79 textos usándolo.
+
+**Lo que queda para el día que alguien pida modo oscuro:** darle pareja a cada
+token del contrato, y resolver qué separa dos superficies cuando la sombra no se
+ve. Ningún componente debería cambiar, porque ya no queda un solo color escrito
+fuera de los tokens. Está en el comentario de PRO-25.
 
 ## El contrato de nombres
 
