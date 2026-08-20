@@ -9,13 +9,24 @@ Origen: diagnóstico de rendimiento del 20-ago-2026 · **bloqueante para configu
 **En producción: PRO-10**, que es el instrumento; lo medido es un número, no un
 cambio de comportamiento.
 
-Encender la bandeja de ventas lleva el Inbox de 23 idas y vueltas a **45**, y de
-1.256 filas leídas a **8.606**. Casi la mitad del salto es el contador de la
-barra lateral. **El techo está entre 36.000 y 45.000 conversaciones**, donde el
-ordenamiento se cae a disco; hoy hay 1.764. Detalle en `entrega.md`.
+**Hechos y sin mergear: PRO-17** (`entrega-pro-17.md`) y **PRO-18 + PRO-20**
+(`entrega-pro-18-y-20.md`).
 
-**Falta: PRO-17, PRO-18 y PRO-20.** Siguen siendo bloqueantes para configurar al
-vendedor, y ahora con el costo medido en vez de estimado.
+El diagnóstico decía que encender la bandeja lleva el Inbox de 1.256 filas
+leídas a **8.606**, creciendo en línea recta con la tabla —69.857 filas a diez
+veces la escala de hoy—, y que un solo render escribe **199 filas** soltando
+asignaciones viejas. Después de PRO-18 y PRO-20 son **1.611 filas y cero
+escrituras**, y a diez veces la escala siguen siendo 1.611: el render vuelve a
+costar lo que dibuja y no lo que la operación acumuló. El conjunto de filas que
+la bandeja devuelve es **idéntico**, verificado volcando a JSON siete escenarios
+antes y después.
+
+El techo de las 36.000 conversaciones **dejó de aplicarle a esta consulta**,
+porque la consulta que lo tenía —el `Sort` de la operación entera— desapareció.
+Dónde está el nuevo es una medición que no se hizo.
+
+**Falta:** aplicar la migración `0031` a producción, mergear y deployar. Nada de
+eso lo hicieron los worktrees.
 
 ## Problem Statement
 

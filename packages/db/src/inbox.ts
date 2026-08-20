@@ -469,3 +469,80 @@ export function inboxChangedSince(
     resolveInboxAsOf(facts, since, cutoff).inbox !== resolveInbox(facts, cutoff).inbox
   );
 }
+
+/**
+ * **La criba de la bandeja de ventas**: qué conversación *puede* caer en ella,
+ * mirando solo lo que una consulta puede filtrar sin derivar nada.
+ *
+ * Es un **superconjunto declarado**, no la regla. Deja pasar de más —una
+ * conversación con clic de anuncio anterior a su último pedido la pasa y
+ * {@link resolveInbox} la manda a operaciones— y **no deja fuera ninguna que
+ * la regla mandaría a ventas**. Esa asimetría es todo el contrato: equivocarse
+ * de más cuesta derivar una fila que no hacía falta; equivocarse de menos
+ * esconde una conversación, y eso es un cambio de producto disfrazado de
+ * optimización.
+ *
+ * Existe por la misma razón y con la misma forma que
+ * {@link puedeEstarSinResponder} (`sin-responder.ts`): para mostrar 200
+ * conversaciones de la bandeja había que traer **todas** las de la operación,
+ * pedir los pedidos de todos esos contactos y decidir fila por fila en
+ * memoria. Con la bandeja apagada el Inbox lee 1.256 filas y no crece con la
+ * tabla; encendida leía 8.606 y crecía en línea recta con cada conversación
+ * que la operación acumulara. El render pasaba de O(recientes) a O(todas).
+ * Cribar antes lo devuelve a O(las que pueden ser de ventas).
+ *
+ * **Por qué estos tres hechos y no otros.** Salen de leer las seis reglas al
+ * revés, preguntando qué hace falta para que alguna mande a ventas:
+ *
+ * - regla 1 (el recomprador) y regla 5 (el clic sin pedido) **exigen un clic de
+ *   anuncio**: sin `lastAdClickAt` ninguna de las dos llega a compararse;
+ * - regla 4 (el lead) exige **no tener pedidos** y haber **nacido después del
+ *   corte**;
+ * - las reglas 2, 3 y 6 mandan a operaciones siempre.
+ *
+ * De ahí que baste con: *hubo clic de anuncio alguna vez*, **o** *no hay
+ * ningún pedido y nació después del corte*. Sin línea de corte —la operación
+ * no tiene vendedor encendido— la regla 4 no puede dispararse y solo queda el
+ * clic.
+ *
+ * **El «sin pedidos» es lo que la vuelve pequeña, y por eso está.** Con solo
+ * las dos columnas de `conversations` la criba deja pasar todo lo nacido desde
+ * el encendido: el día uno son cero filas y un año después son todas las del
+ * año, o sea el mismo problema con un año de atraso. Es el único de los tres
+ * hechos que vive en otra tabla, y es el que hace que la criba mida la bandeja
+ * y no el calendario.
+ *
+ * Lo que esta función **no** hace es decidir. Quien decide sigue siendo
+ * {@link resolveInbox}, sobre lo que la criba deja pasar; el test que las ata
+ * recorre todas las combinaciones de hechos y falla si alguna cae en ventas
+ * sin haber pasado por acá.
+ */
+export interface SalesSieveFacts {
+  /**
+   * `conversations.ad_referral_at` — el clic de anuncio más reciente, o `null`.
+   * Es el mismo campo que {@link InboxFacts.lastAdClickAt}; se nombra igual a
+   * propósito, porque es el mismo hecho leído por la consulta que criba.
+   */
+  lastAdClickAt: Date | null;
+  /** `conversations.created_at`: cuándo nació. La otra mitad del corte. */
+  bornAt: Date;
+  /**
+   * Si el contacto tiene **algún** pedido en esta operación, de tienda o de
+   * logística. Es `facts.orders.length > 0` dicho sin traer los pedidos: la
+   * consulta lo responde con un `not exists` y no cargando las filas.
+   */
+  hasOrders: boolean;
+}
+
+/**
+ * Si esta conversación puede caer en la bandeja de ventas. Ver
+ * {@link SalesSieveFacts} para el contrato y por qué son estos tres hechos.
+ */
+export function puedeSerDeVentas(
+  facts: SalesSieveFacts,
+  activatedAt: Date | null,
+): boolean {
+  if (facts.lastAdClickAt !== null) return true;
+  if (activatedAt === null) return false;
+  return !facts.hasOrders && facts.bornAt.getTime() > activatedAt.getTime();
+}

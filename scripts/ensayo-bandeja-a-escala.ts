@@ -58,6 +58,7 @@ import {
   getDb,
   getRawClient,
   getSalesAgentSettings,
+  invalidateSalesAgentSettingsCache,
   medirViajes,
   operations,
   salesAgentIsConfigured,
@@ -73,6 +74,7 @@ import {
   listConversations,
   type BandejaPedida,
 } from "../apps/web/src/lib/queries";
+import { liberarAsignacionesVencidas } from "../apps/worker/src/inbox/asignacion";
 import {
   contar,
   entero,
@@ -228,6 +230,15 @@ async function vendedorEn(estado: "encendido" | "apagado", nombre: string) {
   await getDb().execute(
     sql`update sales_agent_settings set display_name = ${estado === "encendido" ? nombre : ""}`,
   );
+  // **Sin esto la escena «apagada» medía la encendida.** `getSalesAgentSettings`
+  // cachea la fila cinco segundos (`CACHE_DEL_VENDEDOR_MS`) y el marco la
+  // **lee** para decidir si dibuja los contadores de la barra: con la caché
+  // caliente seguía viendo al vendedor configurado y `countSalesInboxViews`
+  // corría igual, sumándole 3.605 filas a la línea base. Medido acá: la escena
+  // apagada daba 4.661 filas donde PRO-10 midió 1.256, y a 10× —donde la caché
+  // sí había expirado— daba 1.056. Una línea base que depende de si un TTL
+  // venció no es una línea base.
+  invalidateSalesAgentSettingsCache();
 }
 
 function escenasDe(
@@ -330,7 +341,13 @@ async function medirLaEscritura(
   op: Operation,
   vendedor: SalesAgentSettings,
   cuantas: number,
-): Promise<{ preparadas: number; escritas: number; consultas: number }> {
+): Promise<{
+  preparadas: number;
+  escritas: number;
+  consultas: number;
+  /** Lo que suelta el camino nuevo (PRO-20) sobre el mismo caso fabricado. */
+  porElCaminoNuevo: { miradas: number; sueltas: number; ms: number };
+}> {
   const base = getDb();
   const [asesor] = await base.select({ id: users.id }).from(users).limit(1);
   if (!asesor) return { preparadas: 0, escritas: 0, consultas: 0 };
@@ -341,6 +358,12 @@ async function medirLaEscritura(
   await base.execute(
     sql`update sales_agent_settings set activated_at = now() - interval '400 days'`,
   );
+  // La misma trampa que arriba, y acá cambiaba el resultado del ticket: sin
+  // vaciar la caché, `recargado` devolvía la fila con el `activated_at` de
+  // antes —o sea *ahora*—, ninguna conversación caía en la bandeja de ventas y
+  // el render soltaba **una** asignación en vez de las 199 que este caso
+  // fabrica. El número dependía de si habían pasado cinco segundos.
+  invalidateSalesAgentSettingsCache();
   const recargado = await getSalesAgentSettings(op);
   const corte = salesAgentIsConfigured(recargado) ? recargado : vendedor;
 
@@ -368,10 +391,22 @@ async function medirLaEscritura(
     }),
   );
   const c = contar(traza);
+
+  // **Y ahora el camino nuevo, sobre el mismo caso fabricado.** Es la otra
+  // mitad de la pregunta: sacar la escritura de la lectura solo vale si lo que
+  // se soltaba se sigue soltando. El número que importa no es solo cuántas
+  // suelta —tienen que ser las mismas—, sino **cuántas filas mira para
+  // encontrarlas**: la versión de antes recorría las conversaciones de la
+  // operación entera; ésta pide `assigned_user_id is not null`.
+  const t = performance.now();
+  const nuevo = await liberarAsignacionesVencidas(op);
+  const msNuevo = performance.now() - t;
+
   return {
     preparadas: Number((preparadas as unknown as { count?: number }).count ?? cuantas),
     escritas: c.filasEscritas,
     consultas: c.viajes,
+    porElCaminoNuevo: { ...nuevo, ms: msNuevo },
   };
 }
 
@@ -423,8 +458,12 @@ interface Derrame {
   usadoKb: number;
   filas: number;
   workMemKb: number;
-  /** Conversaciones a las que el orden se cae al disco. */
-  filasAlDerrame: number;
+  /**
+   * Conversaciones a las que el orden se cae al disco, o `null` si el `Sort`
+   * medido es demasiado chico para extrapolar. Ver
+   * {@link FILAS_MINIMAS_PARA_EXTRAPOLAR}.
+   */
+  filasAlDerrame: number | null;
 }
 
 /**
@@ -455,6 +494,21 @@ async function puntoDeDerrame(plan: readonly string[]): Promise<Derrame | null> 
     "select setting::int as kb from pg_settings where name = 'work_mem'",
   )) as unknown as Array<{ kb: number }>;
   const workMemKb = fila?.kb ?? 4096;
+  // **Extrapolar desde un orden chico no da un techo, da un número inventado.**
+  // Un `Sort` de siete filas reporta 25 kB, que es casi todo su piso fijo: la
+  // regla de tres da «se cae a disco a las 1.147 conversaciones» sobre una
+  // consulta que ordena siete. Desde que PRO-18 acotó la derivación, la
+  // consulta de la bandeja ya no ordena la operación entera, y este cálculo
+  // deja de tener a qué aplicarse — decirlo es más útil que estimarlo.
+  if (filas < FILAS_MINIMAS_PARA_EXTRAPOLAR) {
+    return {
+      metodo: /Sort Method: (.+?)(?: {2}|$)/.exec(metodo)?.[1]?.trim() ?? "?",
+      usadoKb: kb,
+      filas,
+      workMemKb,
+      filasAlDerrame: null,
+    };
+  }
   return {
     metodo: /Sort Method: (.+?)(?: {2}|$)/.exec(metodo)?.[1]?.trim() ?? "?",
     usadoKb: kb,
@@ -462,6 +516,21 @@ async function puntoDeDerrame(plan: readonly string[]): Promise<Derrame | null> 
     workMemKb,
     filasAlDerrame: Math.round((workMemKb / kb) * filas),
   };
+}
+
+/**
+ * Por debajo de esto, los kB que reporta un `Sort` son su piso fijo y no lo que
+ * cuesta una fila, así que la regla de tres miente. Mil filas es donde el piso
+ * ya no domina, medido sobre los planes de este mismo ensayo.
+ */
+const FILAS_MINIMAS_PARA_EXTRAPOLAR = 1000;
+
+/** El vendedor con su `activated_at` al día, después de haberlo movido. */
+async function requireVendedor(op: Operation): Promise<SalesAgentSettings> {
+  invalidateSalesAgentSettingsCache();
+  const v = await getSalesAgentSettings(op);
+  if (!salesAgentIsConfigured(v)) throw new Error("vendedor apagado");
+  return v;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -510,6 +579,29 @@ async function main() {
     process.exit(1);
   }
 
+  // **Hace cuánto se encendió el vendedor**, que es la línea de corte y decide
+  // cuántas conversaciones puede reclamar la bandeja de ventas.
+  //
+  // No es una perilla decorativa: es la diferencia entre medir el día del
+  // encendido y medir un año después. `reciente` pone el corte en *ahora*, que
+  // es el estado del día uno —casi nada nació después, así que a ventas solo
+  // llega el recomprador—. `vieja` lo pone 400 días atrás, con lo que **todo lo
+  // sembrado nació después del corte** y la regla del lead está viva sobre la
+  // tabla entera. Medir solo la primera se lee como una mejora que no envejece,
+  // y medir solo la segunda esconde el caso que de verdad va a ocurrir el lunes.
+  const activacion = process.env.ACTIVACION?.trim() ?? "reciente";
+  if (activacion !== "reciente" && activacion !== "vieja") {
+    throw new Error(`ACTIVACION=${activacion}: solo "reciente" o "vieja"`);
+  }
+  if (activacion === "vieja") {
+    await base.execute(
+      sql`update sales_agent_settings set activated_at = now() - interval '400 days'`,
+    );
+    invalidateSalesAgentSettingsCache();
+  }
+  const conCorte = await getSalesAgentSettings(op);
+  if (!salesAgentIsConfigured(conCorte)) throw new Error("vendedor apagado");
+
   const escalas = (process.env.ESCALAS ?? "1,5,10")
     .split(",")
     .map((x) => Number(x.trim()))
@@ -529,7 +621,13 @@ async function main() {
     "  │               no la distancia. La distancia se mide contra producción",
   );
   console.log("  │               con scripts/viajes-del-panel.ts.");
-  console.log(`  │  vendedor    ${vendedor.displayName}, encendido`);
+  console.log(
+    `  │  vendedor    ${vendedor.displayName}, encendido · corte ${
+      activacion === "vieja"
+        ? "hace 400 días (todo lo sembrado nació después)"
+        : "ahora (el día del encendido)"
+    }`,
+  );
   console.log(
     `  │  escalas     ${escalas.map((e) => `${e}× = ${entero(e * ESCALA_PRODUCCION)}`).join("  ·  ")}`,
   );
@@ -557,7 +655,7 @@ async function main() {
     console.log(
       "     escena                                        consultas  i/v   cadena      ms      filas",
     );
-    for (const escena of escenasDe(op, vendedor)) {
+    for (const escena of escenasDe(op, conCorte)) {
       const toma = await medirEscena(escena, n, pasadas);
       todas.push(toma);
       const c = toma.cuentas;
@@ -573,21 +671,30 @@ async function main() {
   // ── ¿Leer escribe? ────────────────────────────────────────────────────────
   console.log("");
   console.log("  ── Leer, ¿escribe?");
-  const escritura = await medirLaEscritura(op, vendedor, asignadas);
+  const escritura = await medirLaEscritura(op, conCorte, asignadas);
   console.log(
     `     ${entero(escritura.preparadas)} conversaciones asignadas antes de que naciera su pedido\n` +
-      `     → un solo render de la bandeja escribió ${entero(escritura.escritas)} filas de \`conversations\`\n` +
-      "     con un UPDATE, sin que nadie tocara un botón.",
+      `     → un solo render de la bandeja escribió ${entero(escritura.escritas)} filas de \`conversations\`` +
+      (escritura.escritas === 0
+        ? "\n     — leer no escribe.\n"
+        : "\n     con un UPDATE, sin que nadie tocara un botón.\n"),
   );
+  if (escritura.escritas > 0) {
+    console.log(
+      "     Y el panel llama router.refresh() con cada evento SSE: eso es una vez\n" +
+        "     por mensaje de WhatsApp que entra, sobre la tabla más caliente.",
+    );
+  }
+  const n = escritura.porElCaminoNuevo;
   console.log(
-    "     Y el panel llama router.refresh() con cada evento SSE: eso es una vez\n" +
-      "     por mensaje de WhatsApp que entra, sobre la tabla más caliente.",
+    `     Y por el camino nuevo (worker · inbox/asignacion.ts): miró ${entero(n.miradas)}\n` +
+      `     conversaciones —las asignadas, no todas— y soltó ${entero(n.sueltas)} en ${ms(n.ms)} ms.`,
   );
 
   // ── El plan ───────────────────────────────────────────────────────────────
   console.log("");
   console.log("  ── El plan de la consulta sin LIMIT (la del ticket)");
-  const plan = await planDeLaBandeja(op, vendedor);
+  const plan = await planDeLaBandeja(op, await requireVendedor(op));
   if (!plan) {
     console.log("     no se encontró la consulta en la traza — revisar el filtro");
   } else {
@@ -595,12 +702,23 @@ async function main() {
     if (plan.derrame) {
       const d = plan.derrame;
       console.log("");
-      console.log(
-        `     Ordena con ${d.metodo}: ${entero(d.usadoKb)} kB para ${entero(d.filas)} filas,\n` +
-          `     y \`work_mem\` de esta base es ${entero(d.workMemKb)} kB. A ese ritmo el orden\n` +
-          `     deja de caber en memoria alrededor de las ${entero(d.filasAlDerrame)} conversaciones,\n` +
-          "     y ahí el plan pasa a `external merge`: ordenar contra el disco.",
-      );
+      if (d.filasAlDerrame === null) {
+        console.log(
+          `     Ordena con ${d.metodo}: ${entero(d.usadoKb)} kB para ${entero(d.filas)} filas.\n` +
+            "     **Son muy pocas para extrapolar un techo**, y eso es el resultado: esta\n" +
+            "     consulta ya no ordena la operación entera, así que el borde de `work_mem`\n" +
+            "     que PRO-10 declaró sobre ella no le aplica. El techo hay que volver a\n" +
+            "     buscarlo donde sí quede un orden grande: `scripts/planes-de-la-bandeja.ts`\n" +
+            "     saca el plan de las doce consultas del render.",
+        );
+      } else {
+        console.log(
+          `     Ordena con ${d.metodo}: ${entero(d.usadoKb)} kB para ${entero(d.filas)} filas,\n` +
+            `     y \`work_mem\` de esta base es ${entero(d.workMemKb)} kB. A ese ritmo el orden\n` +
+            `     deja de caber en memoria alrededor de las ${entero(d.filasAlDerrame)} conversaciones,\n` +
+            "     y ahí el plan pasa a `external merge`: ordenar contra el disco.",
+        );
+      }
     }
   }
 
@@ -676,7 +794,7 @@ async function main() {
     );
     console.log(`  │  y 1.000 ms en ${entero(paraMs(1000))}.`);
     console.log("  │");
-    if (plan?.derrame) {
+    if (plan?.derrame?.filasAlDerrame != null) {
       console.log(
         `  │  Y hay un borde antes que cualquiera de esos: a las ~${entero(plan.derrame.filasAlDerrame)}`,
       );

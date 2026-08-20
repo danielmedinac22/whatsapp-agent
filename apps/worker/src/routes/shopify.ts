@@ -16,6 +16,7 @@ import { scheduleFollowup } from "../jobs/followup";
 import { scheduleRemarketing } from "../jobs/remarketing";
 import { normalizePhone } from "../lib/phone";
 import { upsertContactByWaId } from "../inbound/contacts";
+import { liberarAsignacionesVencidas } from "../inbox/asignacion";
 import { getSingleActiveOperation } from "../operations";
 
 export const shopify = new Hono();
@@ -195,6 +196,31 @@ shopify.post("/webhook", async (c) => {
     },
     "shopify order accepted, follow-up + remarketing scheduled",
   );
+
+  // **El pedido acaba de mover la conversación de bandeja.** Un contacto sin
+  // pedido puede estar en la bandeja de ventas; con pedido es de operaciones,
+  // y si el vendedor la tenía tomada, esa asignación dejó de corresponder en
+  // este preciso instante. Éste es el hecho, y por eso la liberación ocurre
+  // acá y no en la carga del Inbox — donde era un `UPDATE` disparado por cada
+  // mensaje de WhatsApp que entraba (`inbox/asignacion.ts`).
+  //
+  // Va después de responderle a la tienda todo lo demás y **no puede tumbar la
+  // ingesta**: si falla, la asignación queda vieja hasta el barrido siguiente,
+  // que es exactamente lo que el barrido existe para cubrir. Perder el pedido
+  // por no poder soltar una asignación sería cambiar un problema chico por el
+  // único que no se puede tener.
+  //
+  // Sin vendedor configurado —producción hoy— no cuesta ni una consulta.
+  try {
+    await liberarAsignacionesVencidas(await requireOperationOrSole(orderOperationId), {
+      contactId: contact.id,
+    });
+  } catch (err) {
+    logger.error(
+      { err: String(err), orderId: order.id, contactId: contact.id },
+      "bandeja: no se pudo soltar la asignación tras el pedido; queda para el barrido",
+    );
+  }
 
   return c.json({ ok: true });
 });

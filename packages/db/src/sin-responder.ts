@@ -133,8 +133,12 @@ export function pelotaNuestra(
  *   dos meses quieto no es trabajo vivo, es historia;
  * - **no está asignada** a nadie — si tomar un chat no lo saca de la lista roja,
  *   el botón «TRABAJARLA YO» no sirve para nada y dos personas siguen viendo el
- *   mismo pendiente. El abandono ya está cubierto: `releaseStaleAssignments` la
- *   suelta sola cuando cambia de bandeja, y vuelve a aparecer al soltarse.
+ *   mismo pendiente. El abandono ya está cubierto: la conversación se suelta
+ *   sola cuando cambia de bandeja —`liberarAsignacionesVencidas`, en el
+ *   worker— y vuelve a aparecer al soltarse. Desde PRO-20 eso ocurre donde
+ *   nace el hecho (un pedido nuevo) o en el barrido periódico, y ya no en la
+ *   carga del Inbox: leer no la suelta, así que entre el cambio de bandeja y
+ *   la liberación puede pasar hasta un ciclo del barrido.
  *
  * Está separada y exportada por un motivo concreto y medido: son las tres que
  * una consulta puede descartar **en la base**, con columnas y sin cruzar nada.

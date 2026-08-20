@@ -57,6 +57,10 @@ import {
   startDropiNovedadReminderWorker,
 } from "./jobs/dropi-novedad-reminder";
 import { startDropiNovedadHandoffWorker } from "./jobs/dropi-novedad-handoff";
+import {
+  scheduleLiberarAsignaciones,
+  startLiberarAsignacionesWorker,
+} from "./jobs/liberar-asignaciones";
 
 const app = new Hono();
 
@@ -179,5 +183,14 @@ serve({ fetch: app.fetch, port }, (info) => {
   );
   startDropiNovedadHandoffWorker().catch((err) =>
     logger.error({ err }, "dropi novedad-handoff worker failed to start"),
+  );
+  // La red que suelta las asignaciones que cambiaron de bandeja. El caso normal
+  // —la venta que cierra— lo suelta el webhook del pedido al instante; esto
+  // cubre lo que no pasa por ahí. Con el vendedor apagado no consulta nada.
+  startLiberarAsignacionesWorker().catch((err) =>
+    logger.error({ err }, "liberar-asignaciones worker failed to start"),
+  );
+  scheduleLiberarAsignaciones().catch((err) =>
+    logger.error({ err }, "liberar-asignaciones scheduling failed"),
   );
 });

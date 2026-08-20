@@ -157,16 +157,22 @@ async function main() {
       }
     : undefined;
 
-  // **Contra producción, medir no escribe.** Con bandeja, `conversationIdsOfInbox`
-  // suelta asignaciones viejas con un UPDATE sobre `conversations`, y
-  // `getSalesAgentSettings` estampa `activated_at` si falta. Las dos son
-  // legítimas en la aplicación y ninguna es aceptable dentro de una medición
-  // contra la base de verdad.
+  // **Contra producción, medir no escribe.**
+  //
+  // Desde PRO-20 derivar la bandeja ya **no** escribe: la liberación de
+  // asignaciones salió del camino de lectura y vive en el worker
+  // (`apps/worker/src/inbox/asignacion.ts`). Lo que queda escribiendo es
+  // `getSalesAgentSettings`, que estampa `activated_at` la primera vez que lee
+  // una fila configurada sin fecha — una vez en la vida de la operación, y
+  // legítima en la aplicación.
+  //
+  // El guardia se queda igual de estricto, y a propósito: la escala encendida
+  // se mide contra la base de ensayo, que es donde se puede sembrar. Contra
+  // producción esto sigue siendo una medición de solo lectura.
   if (prod && bandeja !== undefined) {
     console.error(
       `\n  ${host} es producción y esta operación tiene vendedor configurado.\n` +
-        "  Derivar la bandeja escribe (`releaseStaleAssignments`), así que acá no se mide.\n" +
-        "  La bandeja encendida se mide contra la base de ensayo: ver\n" +
+        "  La bandeja encendida se mide contra la base de ensayo, con datos: ver\n" +
         "  scripts/ensayo-bandeja-a-escala.ts\n",
     );
     process.exit(1);
@@ -347,7 +353,7 @@ async function main() {
     console.log(
       `  │     …ejecutando SQL    ${ms(enBase.total)} ms  ` +
         `= ${pct(enBase.total, promedioCaliente)} del render  ` +
-        `(EXPLAIN ANALYZE de las ${enBase.porConsulta.length} consultas)`,
+        `(EXPLAIN ANALYZE de las ${enBase.porConsulta.length} consultas · ${entero(enBase.bloques)} bloques)`,
     );
     if (fria) {
       console.log(

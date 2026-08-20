@@ -19,12 +19,12 @@ import {
   inArray,
   isNotNull,
   isNull,
+  notInArray,
   or,
   sql,
   actividadDe,
   DIAS_SIN_RESPONDER,
   escalationReasonFromDedupKey,
-  inboxChangedSince,
   parseRecognitionOutcome,
   plantillasAprobadasCache,
   resolveInbox,
@@ -33,11 +33,10 @@ import {
   SALIENTES_CONVERSACIONALES,
 } from "@wa/db";
 import type { SQL } from "drizzle-orm";
-import { unionAll } from "drizzle-orm/pg-core";
+import { union, unionAll } from "drizzle-orm/pg-core";
 import type {
   EscalationFacts,
   Inbox,
-  InboxFacts,
   Operation,
   OrderFacts,
   SalesAgentSettings,
@@ -579,91 +578,348 @@ async function loadSinResponderIds(
 }
 
 /**
- * Suelta las conversaciones cuya asignación quedó vieja porque cambiaron de
- * bandeja. Las dos columnas a `null`, que es lo que el ticket 04 llama soltar.
+ * **La criba de `puedeSerDeVentas` (`@wa/db`), dicha en SQL — y en dos
+ * consultas, no en una.**
  *
- * **Escribe desde una lectura, y es a propósito.** El cambio de bandeja no
- * tiene un momento propio en el que engancharse: nadie mueve la conversación,
- * la mueve un pedido que nació o un clic que llegó, y eso se descubre al volver
- * a derivar. El ticket lo dice con esas palabras —«al detectar el cambio, las
- * dos columnas a null»— y detectarlo es esto. Es idempotente y solo corre
- * cuando hay algo que soltar.
+ * Es la única copia de la criba que existe fuera de `@wa/db`, y está acotada al
+ * mismo trato que tiene `puedeEstarEnSQL` con `sinResponder`: acá se dicen
+ * hechos, allá se decide. Si esta deja pasar de más, {@link resolveInbox} lo
+ * corrige sobre la fila que llegó; si dejara pasar de menos, escondería una
+ * conversación — y por eso la función pura y su test exhaustivo son los que
+ * mandan, no este `where`.
+ *
+ * Existe porque derivar la bandeja obligaba a traer **todas** las
+ * conversaciones de la operación, sin `LIMIT`, para quedarse con 200: 8.606
+ * filas por render contra las 1.256 de la bandeja apagada, y creciendo en línea
+ * recta con la tabla. La criba no cambia el conjunto, cambia cuántas filas hay
+ * que mirar para encontrarlo.
+ *
+ * ## Por qué son dos ramas y no un `or`
+ *
+ * Son **dos motivos distintos con dos caminos distintos a las filas**:
+ *
+ * - *llegó por un anuncio* es una columna sin índice, y se resuelve escaneando;
+ * - *nació después del corte y no compró* es un rango sobre
+ *   `conversations_operation_idx` —el índice que PRO-17 puso **para esto**— más
+ *   un anti-join contra los pedidos.
+ *
+ * Juntarlos en un `or` los deja sin ninguno. El porqué, con su número, está en
+ * {@link candidatasDeVentas}, que es donde las dos ramas se unen.
  */
-async function releaseStaleAssignments(
-  op: Operation,
-  conversationIds: readonly string[],
-): Promise<void> {
-  if (conversationIds.length === 0) return;
-  await db
-    .update(conversations)
-    .set({ assignedUserId: null, assignedAt: null })
-    .where(
-      and(
-        ofOperation(op, conversations.operationId),
-        inArray(conversations.id, [...conversationIds]),
-      ),
-    );
+function porElClicDeAnuncio(term: string | undefined): SQL {
+  return and(
+    isNotNull(conversations.adReferralAt),
+    term ? conversationSearchFilter(term) : undefined,
+  )!;
 }
 
 /**
- * Qué conversaciones de la operación caen en una bandeja, por actividad.
- *
- * Deriva sobre **todas** las conversaciones y no sobre las 200 más recientes:
- * cortar antes de filtrar dejaría la bandeja de ventas vacía cuando las 200
- * últimas sean de operaciones, que es exactamente lo que pasa hoy en Guatemala.
- * El corte se aplica después, sobre lo que ya es de la bandeja.
- *
- * Aprovecha el viaje para soltar las asignaciones que quedaron viejas: los
- * hechos que deciden si cambió de bandeja son los mismos que acaba de cargar.
+ * La otra mitad de la criba: nació después del corte y su contacto no tiene
+ * ningún pedido en esta operación. Sin línea de corte esta mitad no existe —la
+ * regla del lead no puede dispararse—, y ese es el estado de producción hoy.
  */
-async function conversationIdsOfInbox(
+function porElCorteDelVendedor(
+  op: Operation,
+  activatedAt: Date,
+  term: string | undefined,
+): SQL {
+  return and(
+    // En texto y con el `cast` puesto, por lo mismo que en `puedeEstarEnSQL`:
+    // en un `sql` crudo el parámetro viaja sin el tipo de la columna y el
+    // driver no sabe serializar un `Date` suelto.
+    sql`${conversations.createdAt} > ${activatedAt.toISOString()}::timestamptz`,
+    sinPedidosEnSQL(op),
+    term ? conversationSearchFilter(term) : undefined,
+  )!;
+}
+
+/**
+ * **El contacto de esta conversación no tiene ningún pedido en esta operación.**
+ *
+ * Es `facts.orders.length === 0` preguntado sin traer los pedidos, y tiene que
+ * ser **exactamente** el complemento de lo que carga
+ * {@link loadOrderFactsByContact}, tabla por tabla y filtro por filtro: los
+ * pedidos de tienda de la operación, y los de logística que **no** cruzan con
+ * ninguno de tienda. Esa segunda mitad no es un detalle. Un pedido de logística
+ * que apunta a un pedido de tienda de otra operación no es un pedido *de acá* —
+ * `loadOrderFactsByContact` no lo devuelve—, así que preguntar por `dropi_orders`
+ * a secas diría «tiene pedidos» de un contacto que para el ruteo no tiene
+ * ninguno, y la criba escondería un lead. Equivocarse de más acá cuesta derivar
+ * una fila de sobra; equivocarse de menos borra una conversación de la pantalla.
+ *
+ * Van como dos `not exists` y no como un `left join ... is null` para que cada
+ * mitad conserve su `from`, su `where` y su filtro por operación a la vista,
+ * que es lo que la red de alcance sabe leer.
+ */
+function sinPedidosEnSQL(op: Operation): SQL {
+  const deTienda = db
+    .select({ hay: sql`1` })
+    .from(shopifyOrders)
+    .where(
+      and(
+        eq(shopifyOrders.contactId, conversations.contactId),
+        ofOperation(op, shopifyOrders.operationId),
+      ),
+    );
+  const soloDeLogistica = db
+    .select({ hay: sql`1` })
+    .from(dropiOrders)
+    .where(
+      and(
+        eq(dropiOrders.contactId, conversations.contactId),
+        ofOperation(op, dropiOrders.operationId),
+        isNull(dropiOrders.shopifyOrderRowId),
+      ),
+    );
+  return sql`not exists ${deTienda} and not exists ${soloDeLogistica}`;
+}
+
+/**
+ * **A qué conversaciones alcanza la bandeja pedida, dicho como pertenencia y no
+ * como lista.**
+ *
+ * La forma importa y es el cambio de este ticket. Las dos bandejas son
+ * complementarias, así que enumerarlas cuesta muy distinto: la de ventas es un
+ * puñado y se puede nombrar; la de operaciones son casi todas y nombrarlas es
+ * exactamente el `SELECT` sin `LIMIT` que había que sacar. Derivando **siempre
+ * la de ventas** —la chica— las dos preguntas se contestan: la de ventas es
+ * `id in (…)` y la de operaciones es `id not in (…)`, y esta última la resuelve
+ * el corte de 200 con su índice, sin leer la operación entera.
+ */
+interface AlcanceDeBandeja {
+  /** Cuál de las dos se pidió. */
+  inbox: Inbox;
+  /** Los ids de la bandeja de **ventas**, en orden de actividad. */
+  ventas: string[];
+  /** Los mismos, para preguntar por pertenencia sin recorrer. */
+  deVentas: Set<string>;
+}
+
+/**
+ * Las columnas de `conversations` que la criba necesita: las que deciden la
+ * bandeja, y la actividad con la que se ordena.
+ *
+ * La actividad viene **con nombre** porque la criba es un `union` y el
+ * `ORDER BY` de un `union` no puede nombrar la tabla —a esa altura ya no
+ * existe—: ordena por una columna de salida. Es el mismo `GREATEST` de
+ * {@link lastActivityAt}, escrito una sola vez.
+ */
+const CANDIDATA = {
+  id: conversations.id,
+  contactId: conversations.contactId,
+  adReferralAt: conversations.adReferralAt,
+  createdAt: conversations.createdAt,
+  actividad: sql<Date>`${lastActivityAt}`.as("actividad"),
+};
+
+/** Por esa columna ordena el `union`, y por eso se la nombra una sola vez. */
+const POR_ACTIVIDAD = desc(sql`actividad`);
+
+/**
+ * Una rama de la criba, tal como sale de la base.
+ *
+ * **El join a `contacts` solo cuando hay buscador**, porque el filtro mira el
+ * nombre y el teléfono. Sin buscador no aporta ni una columna, y no es gratis:
+ * sobre 1.108 candidatas el planificador resuelve `contacts_pkey` fila por fila
+ * y son **3.324 bloques contra 569** sin él, medido a 17.620 conversaciones. Lo
+ * único que ese join agregaba era leer la tabla de contactos para tirarla.
+ *
+ * El `where` va pegado a la consulta y no en una variable aparte: la red de
+ * alcance (`apps/worker/src/operations/consultas-del-panel.ts`) corta por
+ * sentencia, así que un `.from(conversations)` que termina en `;` antes de
+ * llegar a su filtro es, para ella, una consulta sin acotar.
+ */
+function traerCandidatas(op: Operation, motivo: SQL, term: string | undefined) {
+  return (
+    term
+      ? db
+          .select(CANDIDATA)
+          .from(conversations)
+          .$dynamic()
+          .innerJoin(contacts, eq(conversations.contactId, contacts.id))
+      : db.select(CANDIDATA).from(conversations).$dynamic()
+  ).where(and(ofOperation(op, conversations.operationId), motivo));
+}
+
+/**
+ * La misma rama, con el modo agente del contacto pegado.
+ *
+ * Lo pide **solo** el contador de la barra lateral, para su vista «En
+ * automático», y por eso el join va acá y no en {@link traerCandidatas}: ese
+ * contador sí necesita la columna, así que sus bloques compran algo. La
+ * alternativa —pedirlo en una consulta aparte, después de saber qué
+ * conversaciones son de ventas— sería un viaje más en la cadena secuencial, y
+ * desde Colombia un viaje cuesta 120 ms contra los 0,8 ms que cuesta este join.
+ */
+function traerCandidatasConModoAgente(op: Operation, motivo: SQL) {
+  return db
+    .select({ ...CANDIDATA, agentMode: contacts.agentMode })
+    .from(conversations)
+    .innerJoin(contacts, eq(conversations.contactId, contacts.id))
+    .where(and(ofOperation(op, conversations.operationId), motivo));
+}
+
+/**
+ * **Las conversaciones de la operación que podrían ser de la bandeja de
+ * ventas**, en orden de actividad.
+ *
+ * Los dos motivos van en **una** consulta, unidos por `union`, y eso es una
+ * decisión con dos mitades:
+ *
+ * - **`union` y no un `or`**, porque Postgres solo convierte un `not exists` en
+ *   un anti-join cuando es un conjunto de primer nivel. Colgado de un `or` lo
+ *   resuelve como subplan —bien: lo *hashea* y le cuesta 5 ms— pero lo **cotiza**
+ *   como si lo repitiera por fila: esa consulta pasa a costar 12.212.184, cruza
+ *   `jit_above_cost` y enciende el compilador JIT. Medido a 17.620
+ *   conversaciones: **131,7 ms de los 136,9 ms de la consulta eran compilar**,
+ *   sobre un trabajo real de cinco. Cada rama del `union` se cotiza sola.
+ * - **`union` y no dos consultas**, porque son dos viajes a la base y el ticket
+ *   se mide en viajes. Una conversación puede cumplir los dos motivos —clic de
+ *   anuncio, y además nacida después del corte sin pedidos—, así que la unión
+ *   tiene que deduplicar: es `union` y no `union all`.
+ *
+ * El orden lo sigue poniendo la base, por la misma actividad de siempre.
+ *
+ * Es el único sitio donde la criba se arma, y tiene dos clientes que antes
+ * hacían lo mismo por separado y sobre la tabla entera: la bandeja
+ * ({@link idsDeLaBandejaDeVentas}) y el contador de la barra lateral
+ * ({@link countSalesInboxViews}), que se dibuja en las siete pantallas del
+ * panel. Comparten forma y ahora comparten la criba: lo que arregle una
+ * arregla la otra, que es lo que PRO-10 anotó al medirlas.
+ *
+ * **Sin línea de corte hay una sola rama y no hay `union`.** Es el estado de
+ * producción hoy: sin vendedor encendido la regla del lead no se dispara y lo
+ * único que puede caer en ventas es el recomprador, o sea el clic.
+ */
+function candidatasDeVentas(
+  op: Operation,
+  activatedAt: Date | null,
+  term: string | undefined,
+) {
+  const porElClic = traerCandidatas(op, porElClicDeAnuncio(term), term);
+  if (activatedAt === null) return porElClic.orderBy(POR_ACTIVIDAD);
+  return union(
+    porElClic,
+    traerCandidatas(op, porElCorteDelVendedor(op, activatedAt, term), term),
+  ).orderBy(POR_ACTIVIDAD);
+}
+
+/** La misma criba, con el modo agente. Ver {@link traerCandidatasConModoAgente}. */
+function candidatasDeVentasConModoAgente(
+  op: Operation,
+  activatedAt: Date | null,
+) {
+  const porElClic = traerCandidatasConModoAgente(op, porElClicDeAnuncio(undefined));
+  if (activatedAt === null) return porElClic.orderBy(POR_ACTIVIDAD);
+  return union(
+    porElClic,
+    traerCandidatasConModoAgente(
+      op,
+      porElCorteDelVendedor(op, activatedAt, undefined),
+    ),
+  ).orderBy(POR_ACTIVIDAD);
+}
+
+/**
+ * **A qué conversaciones alcanza la bandeja pedida, dicho como pertenencia y no
+ * como lista.**
+ *
+ * La forma importa y es el cambio de este ticket. Las dos bandejas son
+ * complementarias, así que enumerarlas cuesta muy distinto: la de ventas es un
+ * puñado y se puede nombrar; la de operaciones son casi todas y nombrarlas es
+ * exactamente el `SELECT` sin `LIMIT` que había que sacar. Derivando **siempre
+ * la de ventas** —la chica— las dos preguntas se contestan: la de ventas es
+ * `id in (…)` y la de operaciones es `id not in (…)`, y esta última la resuelve
+ * el corte de 200 con su índice, sin leer la operación entera.
+ */
+interface AlcanceDeBandeja {
+  /** Cuál de las dos se pidió. */
+  inbox: Inbox;
+  /** Los ids de la bandeja de **ventas**, en orden de actividad. */
+  ventas: string[];
+  /** Los mismos, para preguntar por pertenencia sin recorrer. */
+  deVentas: Set<string>;
+}
+
+/**
+ * Deriva la bandeja de ventas de la operación **sobre las filas que pueden
+ * caer en ella**, y no sobre todas.
+ *
+ * Antes esta función traía las 1.762 conversaciones de la operación con su
+ * join de contactos, pedía los pedidos de esos 1.762 contactos y recorría todo
+ * en memoria. Lo que decide la bandeja son los pedidos del contacto y la fecha
+ * de nacimiento, y de esas dos cosas {@link porElClicDeAnuncio} y
+ * {@link porElCorteDelVendedor} saben lo suficiente para descartar en la base
+ * lo que ninguna regla podría mandar a ventas. **El corte de 200 sigue
+ * aplicándose después de derivar** —eso no cambió y no puede cambiar: la
+ * bandeja de ventas de Guatemala está entera fuera de las 200 más recientes—;
+ * lo que cambió es cuántas filas hay que derivar para encontrarla.
+ *
+ * El orden es el de siempre —la actividad—, y lo sigue poniendo la base: el
+ * `union` de la criba ordena por la misma expresión con la que la lista ordena
+ * después.
+ *
+ * **Ya no suelta asignaciones.** Eso era una escritura en el camino de lectura,
+ * disparada por `router.refresh()` en cada evento SSE, o sea una vez por
+ * mensaje de WhatsApp que entra. Vive ahora en el worker
+ * (`apps/worker/src/inbox/asignacion.ts`), donde el hecho ocurre y donde el
+ * conjunto que hay que mirar son las conversaciones asignadas y no todas.
+ */
+async function idsDeLaBandejaDeVentas(
   op: Operation,
   { inbox, activatedAt }: BandejaPedida,
   term: string | undefined,
-): Promise<string[]> {
-  const candidatas = await db
-    .select({
-      id: conversations.id,
-      contactId: conversations.contactId,
-      adReferralAt: conversations.adReferralAt,
-      assignedUserId: conversations.assignedUserId,
-      assignedAt: conversations.assignedAt,
-      createdAt: conversations.createdAt,
-    })
-    .from(conversations)
-    .innerJoin(contacts, eq(conversations.contactId, contacts.id))
-    .where(
-      and(
-        ofOperation(op, conversations.operationId),
-        term ? conversationSearchFilter(term) : undefined,
-      ),
-    )
-    .orderBy(desc(lastActivityAt));
+): Promise<AlcanceDeBandeja> {
+  const candidatas = await candidatasDeVentas(op, activatedAt, term);
 
   const pedidos = await loadOrderFactsByContact(
     op,
     candidatas.map((c) => c.contactId),
   );
 
-  const elegidas: string[] = [];
-  const soltar: string[] = [];
+  const ventas: string[] = [];
   for (const fila of candidatas) {
-    const facts: InboxFacts = {
-      lastAdClickAt: fila.adReferralAt,
-      orders: pedidos.get(fila.contactId) ?? [],
-    };
-    const corte = corteDelVendedor(activatedAt, fila.createdAt);
-    if (resolveInbox(facts, corte).inbox === inbox) elegidas.push(fila.id);
-    if (
-      fila.assignedUserId !== null &&
-      fila.assignedAt !== null &&
-      inboxChangedSince(facts, fila.assignedAt, corte)
-    ) {
-      soltar.push(fila.id);
-    }
+    const decision = resolveInbox(
+      {
+        lastAdClickAt: fila.adReferralAt,
+        orders: pedidos.get(fila.contactId) ?? [],
+      },
+      corteDelVendedor(activatedAt, fila.createdAt),
+    );
+    if (decision.inbox === "ventas") ventas.push(fila.id);
   }
-  await releaseStaleAssignments(op, soltar);
-  return elegidas;
+  return { inbox, ventas, deVentas: new Set(ventas) };
+}
+
+/**
+ * El `where` que deja pasar las filas de la bandeja pedida.
+ *
+ * Con la de ventas es la lista de ids ya cortada a 200 —el mismo corte de
+ * siempre, sobre lo que ya es de la bandeja—. Con la de operaciones es su
+ * complemento: el filtro del buscador si lo hay, y **fuera** las de ventas. El
+ * corte de 200 lo pone entonces el `LIMIT` de la subconsulta, que es lo que
+ * permite que esta bandeja no se enumere nunca.
+ */
+function alcanceEnSQL(
+  alcance: AlcanceDeBandeja,
+  term: string | undefined,
+): SQL | undefined {
+  if (alcance.inbox === "ventas") {
+    return alcance.ventas.length === 0
+      ? sql`false`
+      : inArray(conversations.id, alcance.ventas.slice(0, CORTE_DE_LISTA));
+  }
+  return and(
+    term ? conversationSearchFilter(term) : undefined,
+    alcance.ventas.length === 0
+      ? undefined
+      : notInArray(conversations.id, alcance.ventas),
+  );
+}
+
+/** Si esta conversación pertenece a la bandeja pedida. */
+function esDeLaBandeja(alcance: AlcanceDeBandeja, id: string): boolean {
+  return alcance.deVentas.has(id) === (alcance.inbox === "ventas");
 }
 
 /** Lo que la fila necesita del asignado, sin exponer más del usuario. */
@@ -733,18 +989,19 @@ export async function listConversations(
     },
   };
 
-  // Con bandeja, el conjunto se decide derivando y el `where` solo trae esos
-  // ids; sin bandeja, es el filtro de siempre.
-  const deLaBandeja =
-    bandeja === undefined ? null : await conversationIdsOfInbox(op, bandeja, term);
+  // Con bandeja, el conjunto se decide derivando —la de ventas, que es la
+  // chica— y el `where` sale de ahí: `id in (…)` para ventas, `id not in (…)`
+  // para operaciones. Sin bandeja, es el filtro de siempre.
+  const alcanceDeBandeja =
+    bandeja === undefined
+      ? null
+      : await idsDeLaBandejaDeVentas(op, bandeja, term);
   const alcance =
-    deLaBandeja === null
+    alcanceDeBandeja === null
       ? term
         ? conversationSearchFilter(term)
         : undefined
-      : deLaBandeja.length === 0
-        ? sql`false`
-        : inArray(conversations.id, deLaBandeja.slice(0, CORTE_DE_LISTA));
+      : alcanceEnSQL(alcanceDeBandeja, term);
 
   /**
    * **Las 200 del corte, como subconsulta de ids y no como consulta aparte.**
@@ -840,7 +1097,6 @@ export async function listConversations(
   //
   // La unión **no se aplica al buscar**: buscando, la lista es el resultado de
   // la búsqueda y nada más.
-  const deLaBandejaSet = deLaBandeja === null ? null : new Set(deLaBandeja);
   const muestra = new Set<string>();
   for (const fila of traidas) {
     const id = fila.conversation.id;
@@ -848,7 +1104,7 @@ export async function listConversations(
     else if (
       !term &&
       sinResponderDeLaOperacion.has(id) &&
-      (deLaBandejaSet === null || deLaBandejaSet.has(id))
+      (alcanceDeBandeja === null || esDeLaBandeja(alcanceDeBandeja, id))
     ) {
       muestra.add(id);
     }
@@ -1024,18 +1280,14 @@ export async function countSalesInboxViews(
   vendedor: SalesAgentSettings,
 ): Promise<InboxViewCounts> {
   const ahora = new Date();
+  // **La misma criba que la bandeja, por el mismo motivo.** Este contador
+  // cuenta la bandeja de ventas, así que lo que no puede caer en ella no hace
+  // falta ni traerlo. Contaba sobre **todas** las conversaciones de la
+  // operación —3.605 filas a la escala de hoy, 34.330 a diez veces— y lo
+  // pagaba en las siete pantallas del panel, porque lo dibuja la barra
+  // lateral. Ese era casi la mitad del salto que medía PRO-10.
   const [filas, sinResponderIds] = await Promise.all([
-    db
-      .select({
-        id: conversations.id,
-        contactId: conversations.contactId,
-        adReferralAt: conversations.adReferralAt,
-        createdAt: conversations.createdAt,
-        agentMode: contacts.agentMode,
-      })
-      .from(conversations)
-      .innerJoin(contacts, eq(conversations.contactId, contacts.id))
-      .where(ofOperation(op, conversations.operationId)),
+    candidatasDeVentasConModoAgente(op, vendedor.activatedAt),
     loadSinResponderIds(op, ahora),
   ]);
 
