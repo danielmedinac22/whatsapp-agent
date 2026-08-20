@@ -88,6 +88,14 @@ export type ChatItem = {
   /** Quién la está trabajando, o `null` si está libre. */
   assignedTo: { id: string; label: string } | null;
   /**
+   * Está esperando que una persona conteste. Lo decide el servidor con
+   * `sinResponder` (`@wa/db`) sobre **todas** las conversaciones de la
+   * operación, no sobre las que se ven; la lista trae siempre las que dan
+   * `true`, aunque queden fuera del corte por actividad, para que la tarjeta y
+   * las filas cuenten lo mismo.
+   */
+  sinResponder: boolean;
+  /**
    * Lo que la fila marca del reconocimiento, o `null` si no marca nada — que es
    * el caso limpio y el de siempre. Lo decide `resolveRowMark` en el servidor.
    */
@@ -99,10 +107,12 @@ type FilterKey =
   | "pending"
   | "confirmed"
   | "not_confirmed"
-  | "needs_attention"
-  /** Las que lleva el vendedor. Es el `automatedCount` que la pantalla ya
-   *  calculaba, ahora también como filtro; solo se ofrece en la bandeja de
-   *  ventas, donde es una de las tres vistas de la barra. */
+  /** Las que esperan que una persona conteste. Lo decide el servidor: acá solo
+   *  se lee `it.sinResponder`, para que la fila, la tarjeta y el contador de la
+   *  barra no puedan discrepar. */
+  | "sin_responder"
+  /** Las que lleva el agente. En la bandeja de ventas es «En automático», una
+   *  de las tres vistas de la barra. */
   | "automated";
 
 /**
@@ -134,12 +144,18 @@ const MARK_META: Record<RowMark, { label: string; title: string; classes: string
   },
 };
 
-/** La vista de la barra lateral, traducida al filtro que la lista ya tenía. */
-function filterOfView(vista: "atencion" | "agente" | null): FilterKey {
-  if (vista === "atencion") return "needs_attention";
-  if (vista === "agente") return "automated";
+/** La vista de la barra lateral (`?v=`), traducida al filtro de la lista. */
+function filterOfView(vista: Vista): FilterKey {
+  if (vista === "sin-responder") return "sin_responder";
+  if (vista === "en-automatico") return "automated";
   return "all";
 }
+
+/**
+ * Las vistas de la barra, tal como viajan en la URL. Son las de `./nav`, y los
+ * nombres dicen su regla: «Sin responder» y «En automático».
+ */
+type Vista = "sin-responder" | "en-automatico" | null;
 
 const STATUS_META: Record<
   ConfirmationStatus,
@@ -276,7 +292,7 @@ export function InboxClient({
    */
   bandeja: "ventas" | "operaciones" | null;
   /** La vista de la barra lateral (?v=), que solo existe dentro de ventas. */
-  vista: "atencion" | "agente" | null;
+  vista: Vista;
   /** El nombre del vendedor configurado, o `null` si no hay ninguno. */
   sellerName: string | null;
   /** Quién está mirando, para poder decir «la trabajo yo» y no solo «alguien». */
@@ -296,8 +312,8 @@ export function InboxClient({
   const [search, setSearch] = useState(query);
   const [searching, startSearch] = useTransition();
 
-  // La vista la manda la barra lateral: entrar por «Necesitan atención» tiene
-  // que dejar la lista en esa vista, y volver a «Todas» tiene que deshacerlo.
+  // La vista la manda la barra lateral: entrar por «Sin responder» tiene que
+  // dejar la lista en esa vista, y volver a «Todas» tiene que deshacerlo.
   useEffect(() => {
     if (esVentas) setFilter(filterOfView(vista));
   }, [esVentas, vista]);
@@ -343,17 +359,26 @@ export function InboxClient({
   const notConfirmedCount = items.filter(
     (item) => item.confirmationStatus === "not_confirmed",
   ).length;
-  const needsAttentionCount = items.filter(
-    (item) => !item.agentMode && item.unread > 0,
-  ).length;
+  /**
+   * **«Sin responder»**: el cliente escribió y nadie le contestó.
+   *
+   * Ya no se calcula acá. Era `!agentMode && unread > 0`, y `unread_count` mide
+   * «nadie la abrió en el panel», no «hay que atenderla»: el 19-ago-2026, de las
+   * 54 que marcaba, 30 ya habían sido respondidas. Ahora lo decide el servidor
+   * con `sinResponder` (`@wa/db`) sobre las 1.760 conversaciones, y la lista
+   * trae siempre las que dan `true` — sin eso este contador diría 1, porque las
+   * 200 filas que se cargan por actividad cubren los últimos cinco días y las
+   * conversaciones sin responder son más viejas.
+   */
+  const sinResponderCount = items.filter((item) => item.sinResponder).length;
 
   const assignedCount = items.filter((item) => item.assignedTo !== null).length;
 
   const visibleItems =
     filter === "all"
       ? items
-      : filter === "needs_attention"
-        ? items.filter((item) => !item.agentMode && item.unread > 0)
+      : filter === "sin_responder"
+        ? items.filter((item) => item.sinResponder)
         : filter === "automated"
           ? items.filter((item) => item.agentMode)
           : items.filter((item) => item.confirmationStatus === filter);
@@ -451,12 +476,15 @@ export function InboxClient({
               onClick={() => setFilter("pending")}
             />
           )}
+          {/* El mismo nombre y la misma regla que la vista de la barra: un
+              nombre por número. Antes decía «Necesita atención» acá y
+              «Necesitan atención» allá, y contaban cosas distintas. */}
           <SummaryCard
-            label="Necesita atención"
-            value={String(needsAttentionCount)}
-            accent={needsAttentionCount > 0 ? "text-red-200" : undefined}
-            active={filter === "needs_attention"}
-            onClick={() => setFilter("needs_attention")}
+            label="Sin responder"
+            value={String(sinResponderCount)}
+            accent={sinResponderCount > 0 ? "text-red-200" : undefined}
+            active={filter === "sin_responder"}
+            onClick={() => setFilter("sin_responder")}
           />
         </div>
       </header>
@@ -505,9 +533,7 @@ export function InboxClient({
                     que los tres filtros devuelven cero. Un filtro que siempre
                     vacía la lista es una trampa, no una opción. */}
                 {esVentas ? (
-                  <option value="automated">
-                    Las lleva {sellerName ?? "el vendedor"} ({automatedCount})
-                  </option>
+                  <option value="automated">En automático ({automatedCount})</option>
                 ) : (
                   <>
                     <option value="pending">Pendientes ({pendingCount})</option>
@@ -515,7 +541,9 @@ export function InboxClient({
                     <option value="not_confirmed">No conf. ({notConfirmedCount})</option>
                   </>
                 )}
-                <option value="needs_attention">Atención ({needsAttentionCount})</option>
+                <option value="sin_responder">
+                  Sin responder ({sinResponderCount})
+                </option>
               </select>
               <span className="shrink-0 rounded-md border border-[var(--color-border)] bg-[rgba(8,21,30,0.72)] px-2 py-1 text-xs text-[var(--color-text-dim)]">
                 {visibleItems.length}/{items.length}
@@ -534,7 +562,12 @@ export function InboxClient({
             </li>
           )}
           {visibleItems.map((it) => {
-            const needsAttention = !it.agentMode && it.unread > 0;
+            // La ventana cerrada **no la saca de la cuenta**: un lead de hace
+            // treinta horas sigue esperando respuesta, y el panel sabe reabrir
+            // con plantilla. Lo que cambia es que la fila lo diga, para que
+            // nadie abra el chat esperando poder escribir suelto.
+            const ventanaCerrada =
+              it.sinResponder && windowStateOf(it.lastInboundAt) === "closed";
             return (
             <li
               key={it.id}
@@ -543,7 +576,7 @@ export function InboxClient({
                 selected?.id === it.id
                   ? "border-[rgba(110,231,183,0.35)] bg-[rgba(18,42,53,0.92)] shadow-[0_6px_18px_rgba(3,10,16,0.45)]"
                   : "border-[var(--color-border)] bg-[rgba(12,26,36,0.55)] shadow-[0_2px_8px_rgba(3,10,16,0.3)] hover:border-[rgba(110,231,183,0.2)] hover:bg-[rgba(18,35,48,0.78)]"
-              } ${needsAttention ? "border-l-2 border-l-red-400/60" : ""}`}
+              } ${it.sinResponder ? "border-l-2 border-l-red-400/60" : ""}`}
             >
               <div className="flex items-center justify-between">
                 <p className="truncate font-medium text-[var(--color-text)]">
@@ -575,6 +608,15 @@ export function InboxClient({
                   {/* Solo lo que NO es limpio: «reconocido» no se marca.
                       Marcar todas las filas es no marcar ninguna. */}
                   {it.mark && <MarkChip mark={it.mark} />}
+                  {ventanaCerrada && (
+                    <span
+                      title="El cliente lleva más de 24 horas sin escribir: WhatsApp solo permite reabrir con una plantilla"
+                      className="inline-flex items-center gap-1 rounded-md border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-[10px] uppercase text-amber-200"
+                    >
+                      <Clock className="h-3 w-3" />
+                      ventana cerrada
+                    </span>
+                  )}
                   {/* Sin vendedor configurado la fila es la de siempre: la
                       asignación no se puede tomar, así que tampoco se enseña. */}
                   {sellerName !== null && it.assignedTo && (

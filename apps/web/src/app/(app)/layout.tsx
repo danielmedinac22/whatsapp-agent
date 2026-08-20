@@ -105,7 +105,11 @@ export default async function AppLayout({
   const sales: SalesNav | null =
     active && salesAgentIsConfigured(seller)
       ? {
-          counts: await countSalesInboxViews(active),
+          // La fila entera y no solo la operación: el corte del vendedor
+          // (`activated_at`) decide qué conversación es suya, y «En automático»
+          // solo significa algo con el vendedor encendido — que es justo lo que
+          // el guardia de arriba acaba de comprobar.
+          counts: await countSalesInboxViews(active, seller),
           // El listón garantiza que no está vacío: es literalmente lo que
           // pregunta. Por eso acá no hay ningún «o el vendedor» de reserva —un
           // nombre de reserva es la barra diciendo un nombre que nadie escribió.
