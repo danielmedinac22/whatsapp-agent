@@ -58,25 +58,18 @@ set -a && source .env && set +a && pnpm --filter @wa/db migrate
 
 ### 2.4 · Verificar el resultado
 
-`psql` no está instalado. Usa un script tsx desde la raíz del repo:
+`psql` está instalado (`/opt/homebrew/bin/psql`). Una línea desde la raíz del repo:
 
 ```bash
-cat > /tmp/check-db.ts <<'EOF'
-import { getDb, contacts } from "@wa/db";
-import { sql } from "drizzle-orm";
-async function main() {
-  const db = getDb();
-  const rows = await db.select().from(contacts).orderBy(sql`created_at`);
-  for (const r of rows) console.log(JSON.stringify(r));
-  process.exit(0);
-}
-main();
-EOF
-cd /Users/danielmedina/Documents/whatsapp-agent && set -a && source .env && set +a && npx tsx /tmp/check-db.ts
-rm /tmp/check-db.ts
+export PGURL=$(grep '^DATABASE_URL=' .env | cut -d= -f2-)
+psql "$PGURL" -c "select * from contacts order by created_at"
 ```
 
-> No uses top-level await en estos scripts — tsx lo bloquea con CJS. Envuélvelo en `async function main()`.
+Para confirmar que la columna nueva existe y quedó poblada, `information_schema.columns` responde antes que abrir el schema:
+
+```bash
+psql "$PGURL" -c "select column_name, is_nullable from information_schema.columns where table_name = 'contacts'"
+```
 
 ## 3 · Commit
 
