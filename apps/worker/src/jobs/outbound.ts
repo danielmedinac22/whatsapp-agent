@@ -18,6 +18,7 @@ import {
 } from "@wa/shared";
 import { db } from "../db";
 import { events } from "../lib/events";
+import { instantaneaDe, type HechosDeLaFila } from "../lib/eventos";
 import { logger } from "../lib/logger";
 import { huellaDelSaliente } from "../inbox/saliente-conversacional";
 import {
@@ -224,17 +225,36 @@ async function resolveOutboundOperation(
   return requireOperationOrSole(operationId);
 }
 
-async function resolveConversationId(
+/**
+ * La conversación del mensaje y **de qué operación es**.
+ *
+ * La operación se suma porque el evento que sale de acá la necesita para no
+ * mover la bandeja del otro país, y se suma sin costo: cuando el saliente ya
+ * trae conversación, la operación es la que `handleOutbound` acaba de resolver
+ * para elegir el número por el que sale; cuando no la trae, viene como una
+ * columna más del mismo `select` que ya buscaba la conversación. El atajo del
+ * principio sigue igual de corto, que es lo que mantiene esta función en cero
+ * consultas para el saliente que sí sabe a qué conversación pertenece.
+ *
+ * `op` falta en un solo llamador: el fallo que se decide **antes** de resolver
+ * la operación —un cuerpo más largo de lo que Meta acepta—. Ahí el evento sale
+ * con la operación en `null`, que es «no se sabe» y llega a todos los paneles,
+ * en vez de salir con una inventada.
+ */
+async function resolveConversationRef(
   row: OutboundMessage,
-): Promise<string | null> {
-  if (row.conversationId) return row.conversationId;
+  op?: Operation,
+): Promise<{ id: string; operationId: string | null } | null> {
+  if (row.conversationId) {
+    return { id: row.conversationId, operationId: op?.id ?? null };
+  }
   const [conv] = await db
-    .select({ id: conversations.id })
+    .select({ id: conversations.id, operationId: conversations.operationId })
     .from(conversations)
     .innerJoin(contacts, eq(contacts.id, conversations.contactId))
     .where(eq(contacts.waId, row.toWaId))
     .limit(1);
-  return conv?.id ?? null;
+  return conv ?? null;
 }
 
 /**
@@ -246,9 +266,11 @@ async function resolveConversationId(
 async function mirrorFailedSend(
   row: OutboundMessage,
   reason: string,
+  op?: Operation,
 ): Promise<void> {
-  const conversationId = await resolveConversationId(row);
-  if (!conversationId) return;
+  const conv = await resolveConversationRef(row, op);
+  if (!conv) return;
+  const conversationId = conv.id;
   const [stored] = await db
     .insert(messages)
     .values({
@@ -266,8 +288,15 @@ async function mirrorFailedSend(
   if (stored) {
     events.emitEvent({
       type: "message.created",
+      operationId: conv.operationId,
       conversationId,
       messageId: stored.id,
+      // Sin instantánea, y no es un olvido: un envío que murió no le deja
+      // huella a la conversación —`huellaDelSaliente` devuelve `null` sin
+      // `wa_id`—, así que la vista previa, el contador y la fecha siguen siendo
+      // los que el panel ya tiene. Repetirlos sería ruido; averiguarlos, un
+      // viaje por cada fallo.
+      conversation: null,
     });
   }
 }
@@ -281,7 +310,7 @@ async function mirrorFailedSend(
 async function markPermanent(
   row: OutboundMessage,
   err: unknown,
-  reason?: string,
+  opts?: { reason?: string; op?: Operation },
 ): Promise<void> {
   await db
     .update(outboundMessages)
@@ -294,7 +323,11 @@ async function markPermanent(
       updatedAt: new Date(),
     })
     .where(eq(outboundMessages.id, row.id));
-  await mirrorFailedSend(row, reason ?? humanSendError(err)).catch((mirrorErr) =>
+  await mirrorFailedSend(
+    row,
+    opts?.reason ?? humanSendError(err),
+    opts?.op,
+  ).catch((mirrorErr) =>
     logger.error(
       { err: mirrorErr, outboundId: row.id },
       "outbound: no se pudo espejar el fallo en el hilo",
@@ -399,7 +432,7 @@ async function handleOutbound(payload: OutboundJob): Promise<void> {
         .where(eq(messageMedia.id, row.mediaId))
         .limit(1);
       if (!media) {
-        await markPermanent(row, new Error("media row not found"));
+        await markPermanent(row, new Error("media row not found"), { op });
         return;
       }
       mediaMime = media.mime;
@@ -436,7 +469,7 @@ async function handleOutbound(payload: OutboundJob): Promise<void> {
         await markPermanent(
           row,
           new Error(`product media ${productMediaId} no es de la operación ${op.id}`),
-          "El archivo ya no está disponible.",
+          { reason: "El archivo ya no está disponible.", op },
         );
         return;
       }
@@ -447,7 +480,10 @@ async function handleOutbound(payload: OutboundJob): Promise<void> {
         await markPermanent(
           row,
           new Error(`product media ${media.id} ya no es enviable`),
-          `${media.filename} ya no está marcado como enviable: no se envió.`,
+          {
+            reason: `${media.filename} ya no está marcado como enviable: no se envió.`,
+            op,
+          },
         );
         return;
       }
@@ -560,7 +596,7 @@ async function handleOutbound(payload: OutboundJob): Promise<void> {
   } catch (err) {
     const kind = classifyKapsoError(err);
     if (kind === "permanent") {
-      await markPermanent(row, err);
+      await markPermanent(row, err, { op });
       logger.warn(
         { outboundId: row.id, err: errorDetail(err) },
         "outbound: permanent failure, marked dead",
@@ -588,8 +624,9 @@ async function handleOutbound(payload: OutboundJob): Promise<void> {
   // Mirror the outbound into messages so the chat UI shows it for every source.
   // The Cloud API sends no echo of our own messages (statuses only), so this is
   // the single write — no race to resolve.
-  const convId = await resolveConversationId(row);
-  if (convId) {
+  const conv = await resolveConversationRef(row, op);
+  if (conv) {
+    const convId = conv.id;
     const [stored] = await db
       .insert(messages)
       .values({
@@ -625,8 +662,26 @@ async function handleOutbound(payload: OutboundJob): Promise<void> {
       cuerpo: sentBody,
       ahora: new Date(),
     });
+    // La fila **como quedó**, para que el panel repinte en vez de volver a
+    // pedir la pantalla. Sale por `RETURNING` y no de `huella` porque
+    // `unreadCount` es opcional ahí: un saliente que no es respuesta deja el
+    // contador donde estaba, y ese valor no lo tenemos en la mano. `RETURNING`
+    // lo trae en el mismo viaje que la escritura que ya se hacía — misma
+    // consulta, ni una más.
+    let fila: HechosDeLaFila | null = null;
     if (huella) {
-      await db.update(conversations).set(huella).where(eq(conversations.id, convId));
+      const [actualizada] = await db
+        .update(conversations)
+        .set(huella)
+        .where(eq(conversations.id, convId))
+        .returning({
+          lastMessagePreview: conversations.lastMessagePreview,
+          unreadCount: conversations.unreadCount,
+          lastInboundAt: conversations.lastInboundAt,
+          lastOutboundAt: conversations.lastOutboundAt,
+          createdAt: conversations.createdAt,
+        });
+      fila = actualizada ?? null;
     }
 
     // Meta suele confirmar la entrega ANTES de que llegue este insert, y el
@@ -657,8 +712,10 @@ async function handleOutbound(payload: OutboundJob): Promise<void> {
       }
       events.emitEvent({
         type: "message.created",
+        operationId: conv.operationId,
         conversationId: convId,
         messageId: stored.id,
+        conversation: fila ? instantaneaDe(fila) : null,
       });
     }
   }
