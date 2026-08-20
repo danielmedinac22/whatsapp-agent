@@ -1,6 +1,5 @@
 import { eq, and, isNull, gte, lte, sql, like } from "@wa/db";
 import {
-  contacts,
   dropiOrders,
   getAgentSettings,
   listActiveOperations,

@@ -5,7 +5,6 @@ import {
   text,
   timestamp,
   integer,
-  bigint,
   numeric,
   boolean,
   jsonb,

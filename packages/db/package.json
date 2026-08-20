@@ -17,7 +17,8 @@
     "studio": "drizzle-kit studio",
     "seed": "tsx src/seed.ts",
     "typecheck": "tsc --noEmit",
-    "build": "tsc --noEmit"
+    "build": "tsc --noEmit",
+    "lint": "eslint ."
   },
   "dependencies": {
     "@wa/shared": "workspace:*",

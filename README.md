@@ -80,6 +80,7 @@ Open http://localhost:3000, log in with the seeded credentials, go to **Conexió
 | `pnpm db:seed` | Seed admin user, default templates, and agent settings |
 | `pnpm db:studio` | Drizzle Studio |
 | `pnpm typecheck` | Typecheck every workspace |
+| `pnpm lint` | ESLint over every workspace plus `scripts/` — see [docs/linter.md](docs/linter.md) |
 | `pnpm build` | Production build (web + worker) |
 
 ## Deployment

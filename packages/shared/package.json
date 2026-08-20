@@ -11,7 +11,8 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "tsc --noEmit"
+    "build": "tsc --noEmit",
+    "lint": "eslint ."
   },
   "dependencies": {
     "zod": "^4.0.0"

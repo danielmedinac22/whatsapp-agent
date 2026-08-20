@@ -6,6 +6,8 @@ import { db } from "@/lib/db";
 import { users, eq } from "@wa/db";
 // El import es lo que mete `next-auth/jwt` en el programa; sin él TypeScript no
 // encuentra el módulo que se aumenta más abajo y falla con TS2664.
+// ESLint no ve ese uso —no mira la augmentación— y lo cuenta como muerto.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import type { JWT } from "next-auth/jwt";
 import type { Role } from "@/access/resolve";
 

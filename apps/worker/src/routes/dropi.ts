@@ -5,7 +5,6 @@ import {
   contacts,
   dropiOrders,
   shopifyOrders,
-  type Operation,
 } from "@wa/db";
 import { dropiConnectionInput } from "@wa/shared";
 import { db } from "../db";

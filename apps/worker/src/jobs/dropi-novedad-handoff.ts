@@ -8,7 +8,6 @@ import {
 } from "@wa/db";
 import { db } from "../db";
 import { logger } from "../lib/logger";
-import { contactWaId } from "../lib/phone";
 import { ADMIN_AVISO_TEMPLATE, sanitizeParam } from "../kapso/templates";
 import { enqueueOutbound } from "./outbound";
 import { getDropiConnection } from "../dropi/config";
