@@ -765,9 +765,7 @@ function Ficha({
           </>
         ) : (
           <>
-            <p className="app-muted whitespace-pre-line text-xs leading-relaxed">
-              {row.description || "Sin descripción en la tienda."}
-            </p>
+            <DescripcionDeLaTienda texto={row.description} />
             <button
               className="app-button-secondary gap-1.5 text-[var(--color-danger)]"
               onClick={borrar}
@@ -1405,6 +1403,87 @@ function ElegirAnuncio({
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * La descripción del producto, tal como vive en la tienda.
+ *
+ * **Va plegada, y no es una preferencia estética.** La descripción de un
+ * producto de esta tienda no es un párrafo: es una **página de venta entera** —
+ * medida contra la ficha real, 27.655 caracteres de HTML que quedan en ~3.600
+ * de texto, con letreros rotativos, tablas de packs y bloques de objeciones.
+ * Dibujada completa empujaba Anuncios y Archivos tan abajo que para registrar
+ * un anuncio había que scrollear una landing entera — y registrar anuncios es
+ * el trabajo recurrente que esta pantalla existe para hacer corto.
+ *
+ * **Desplegada tampoco crece sin límite: scrollea adentro.** Un panel que se
+ * estira hasta donde llegue el texto vuelve al mismo problema con un clic de
+ * distancia, y la altura de la ficha pasaría a depender de cuánto copy escribió
+ * el cliente.
+ *
+ * Lo que **no** hace es recortar el texto. Esto es material de referencia para
+ * saber qué se está vendiendo; esconder el final sin decirlo es cómo alguien
+ * concluye que el producto no menciona la garantía.
+ */
+function DescripcionDeLaTienda({ texto }: { texto: string }) {
+  const [abierta, setAbierta] = useState(false);
+  const limpio = texto?.trim() ?? "";
+
+  if (!limpio) {
+    return (
+      <p className="app-muted text-xs leading-relaxed">
+        Sin descripción en la tienda.
+      </p>
+    );
+  }
+
+  // El listón es el alto plegado, no el largo del texto: una descripción de
+  // cuatro renglones entra entera y no necesita botón. Aproximado en líneas
+  // para no medir el DOM — el error de más se paga con un botón de más, y el
+  // de menos con una descripción cortada sin aviso, así que el umbral es bajo.
+  const lineas = limpio.split("\n").length;
+  const cabeEntera = lineas <= 8 && limpio.length <= 400;
+
+  if (cabeEntera) {
+    return (
+      <p className="app-muted whitespace-pre-line text-xs leading-relaxed">
+        {limpio}
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <div className="relative">
+        <p
+          className={`app-muted whitespace-pre-line text-xs leading-relaxed ${
+            abierta ? "max-h-72 overflow-y-auto pr-1" : "max-h-24 overflow-hidden"
+          }`}
+        >
+          {limpio}
+        </p>
+        {!abierta && (
+          // El degradado dice «hay más» sin ocupar una línea diciéndolo.
+          <div
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-8"
+            style={{
+              background:
+                "linear-gradient(to bottom, transparent, var(--color-panel))",
+            }}
+          />
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={() => setAbierta((v) => !v)}
+        className="text-[11px] text-[var(--color-accent)] underline underline-offset-2 hover:text-[var(--color-accent-hover)]"
+      >
+        {abierta
+          ? "Ver menos"
+          : `Ver la descripción completa · ${lineas} líneas`}
+      </button>
     </div>
   );
 }
