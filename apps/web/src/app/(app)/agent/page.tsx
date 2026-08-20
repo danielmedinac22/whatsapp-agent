@@ -4,6 +4,7 @@ import {
   listRecentConversationOptions,
   listTemplates,
 } from "@/lib/queries";
+import { ContextLine } from "../context-line";
 import { AgentForm } from "./agent-form";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +23,7 @@ export default async function AgentPage() {
   return (
     <div className="app-page max-w-5xl space-y-3">
       <header className="max-w-3xl">
+        <ContextLine op={op} pantalla="Confirmación" />
         <h1 className="app-title">Agente</h1>
         <p className="app-subtitle app-muted mt-1">Modelo, prompt y automatizaciones</p>
       </header>

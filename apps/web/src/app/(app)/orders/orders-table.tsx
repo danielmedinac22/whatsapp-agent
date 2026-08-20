@@ -33,65 +33,74 @@ export type OrderRow = {
   } | null;
 };
 
+/**
+ * Las cinco parejas de estado del contrato de nombres, como clases.
+ *
+ * **Son cinco para dieciséis estados de Dropi y seis de Shopify, y eso es la
+ * decisión, no una limitación que haya que sortear.** Hasta hoy la tabla usaba
+ * ocho matices —ámbar, rojo, esmeralda, azul, cian, violeta, fucsia, naranja—
+ * que no querían decir ocho cosas distintas: querían decir «este es otro
+ * estado». Un arcoíris no se recorre con la vista, porque ningún color pesa más
+ * que otro.
+ *
+ * Lo que las cinco parejas codifican es **qué tiene que hacer quien mira**:
+ * `espera` algo pendiente, `escalada` algo que falló, `novedad` la novedad de
+ * logística, `auto` lo que terminó bien y `neutro` lo que va en camino y no pide
+ * nada. Los seis estados del camino feliz en movimiento —confirmado, guía,
+ * preparado, recolectado, en tránsito, con mensajero— comparten el neutro a
+ * propósito: el ojo tiene que caer en el ámbar y en el rojo, no en ellos.
+ *
+ * Lo que se pierde de distinción entre matices lo carga la etiqueta, que lleva
+ * el nombre escrito. Es la misma regla del nivel 3 del spec: ningún estado se
+ * codifica solo con color.
+ *
+ * `neutro` es `--state-sinprod-*`. El token se llama por el estado del Inbox que
+ * lo estrenó; acá es el gris azulado neutro de la paleta y no hay otro.
+ */
+const ESTADO = {
+  espera: "bg-[var(--state-espera-bg)] text-[var(--state-espera-fg)]",
+  auto: "bg-[var(--state-auto-bg)] text-[var(--state-auto-fg)]",
+  escalada: "bg-[var(--state-escalada-bg)] text-[var(--state-escalada-fg)]",
+  novedad: "bg-[var(--state-novedad-bg)] text-[var(--state-novedad-fg)]",
+  neutro: "bg-[var(--state-sinprod-bg)] text-[var(--state-sinprod-fg)]",
+} as const;
+
 const STATUS_LABEL: Record<string, { label: string; color: string }> = {
-  received: { label: "Recibido", color: "bg-blue-500/20 text-blue-300" },
-  followup_scheduled: {
-    label: "Follow-up agendado",
-    color: "bg-amber-500/20 text-amber-300",
-  },
-  followup_sent: {
-    label: "Follow-up enviado",
-    color: "bg-purple-500/20 text-purple-300",
-  },
-  confirmed: {
-    label: "Confirmado",
-    color: "bg-emerald-500/20 text-emerald-300",
-  },
-  no_response: {
-    label: "Sin respuesta",
-    color: "bg-zinc-500/20 text-zinc-300",
-  },
-  cancelled: { label: "Cancelado", color: "bg-red-500/20 text-red-300" },
+  received: { label: "Recibido", color: ESTADO.neutro },
+  // Los dos follow-up esperan lo mismo —que el cliente conteste— y hasta hoy
+  // eran ámbar y violeta. Comparten el ámbar; los distingue el nombre.
+  followup_scheduled: { label: "Follow-up agendado", color: ESTADO.espera },
+  followup_sent: { label: "Follow-up enviado", color: ESTADO.espera },
+  confirmed: { label: "Confirmado", color: ESTADO.auto },
+  // El cliente ya no va a contestar: no es una espera, es un pedido muerto.
+  no_response: { label: "Sin respuesta", color: ESTADO.neutro },
+  cancelled: { label: "Cancelado", color: ESTADO.escalada },
 };
 
 const DROPI_STATUS_LABEL: Record<string, { label: string; color: string }> = {
-  unknown: { label: "—", color: "bg-zinc-500/20 text-zinc-300" },
-  pendiente_confirmacion: {
-    label: "Pend. confirmación",
-    color: "bg-amber-500/20 text-amber-200",
-  },
-  pendiente: {
-    label: "Confirmado en Dropi",
-    color: "bg-blue-500/20 text-blue-200",
-  },
-  guia_generada: {
-    label: "Guía generada",
-    color: "bg-purple-500/20 text-purple-200",
-  },
-  preparado_transportadora: {
-    label: "Preparado",
-    color: "bg-purple-500/20 text-purple-200",
-  },
-  recolectado: { label: "Recolectado", color: "bg-cyan-500/20 text-cyan-200" },
-  en_transito: { label: "En tránsito", color: "bg-cyan-500/20 text-cyan-200" },
-  con_mensajero: {
-    label: "Con mensajero",
-    color: "bg-fuchsia-500/20 text-fuchsia-200",
-  },
-  en_oficina: {
-    label: "En oficina (por reclamar)",
-    color: "bg-orange-500/20 text-orange-200",
-  },
-  entregado: { label: "Entregado", color: "bg-emerald-500/20 text-emerald-200" },
-  novedad: { label: "Novedad", color: "bg-red-500/20 text-red-200" },
-  novedad_solucionada: {
-    label: "Novedad resuelta",
-    color: "bg-emerald-500/20 text-emerald-200",
-  },
-  devolucion: { label: "Devolución", color: "bg-amber-500/20 text-amber-200" },
-  rechazado: { label: "Rechazado", color: "bg-red-500/20 text-red-200" },
-  retornado: { label: "Retornado", color: "bg-amber-500/20 text-amber-200" },
-  anulada: { label: "Anulada", color: "bg-red-500/20 text-red-200" },
+  unknown: { label: "—", color: ESTADO.neutro },
+  // El único de la columna que espera algo de este lado: es el que enciende el
+  // botón de confirmar, dos celdas más allá.
+  pendiente_confirmacion: { label: "Pend. confirmación", color: ESTADO.espera },
+  // Los seis del camino feliz en movimiento. Nada que hacer con ellos.
+  pendiente: { label: "Confirmado en Dropi", color: ESTADO.neutro },
+  guia_generada: { label: "Guía generada", color: ESTADO.neutro },
+  preparado_transportadora: { label: "Preparado", color: ESTADO.neutro },
+  recolectado: { label: "Recolectado", color: ESTADO.neutro },
+  en_transito: { label: "En tránsito", color: ESTADO.neutro },
+  con_mensajero: { label: "Con mensajero", color: ESTADO.neutro },
+  // El paquete llegó pero nadie lo reclamó: espera al cliente, no al sistema.
+  en_oficina: { label: "En oficina (por reclamar)", color: ESTADO.espera },
+  entregado: { label: "Entregado", color: ESTADO.auto },
+  // **Este es el estado para el que existe el token `novedad`**, y hasta hoy se
+  // pintaba del mismo rojo que «Rechazado» y «Anulada». No es lo mismo: una
+  // novedad se resuelve, un rechazo ya pasó.
+  novedad: { label: "Novedad", color: ESTADO.novedad },
+  novedad_solucionada: { label: "Novedad resuelta", color: ESTADO.auto },
+  devolucion: { label: "Devolución", color: ESTADO.espera },
+  rechazado: { label: "Rechazado", color: ESTADO.escalada },
+  retornado: { label: "Retornado", color: ESTADO.espera },
+  anulada: { label: "Anulada", color: ESTADO.escalada },
 };
 
 const SHOPIFY_STATUS_OPTIONS = Object.entries(STATUS_LABEL).map(
@@ -205,238 +214,266 @@ export function OrdersTable({
     }
   }
 
+  // «1 pedidos» lo decía la barra desde siempre. Ahora que la cuenta es el
+  // encabezado de una sección se lee más, así que se arregla de paso.
+  const cuenta = `${rows.length} ${rows.length === 1 ? "pedido" : "pedidos"}`;
+
+  /**
+   * **Las dos secciones que Pedidos no tenía.** Era, con el Inbox, una de las
+   * dos pantallas del panel con un `h1` y cero encabezados por dentro, mientras
+   * Vendedor tenía seis `h2` y Conexión cuatro: las de configuración, que se
+   * abren una vez al mes, estaban mejor articuladas que las de trabajo diario.
+   *
+   * Son dos y no más porque la pantalla tiene dos zonas y no más: con qué se
+   * recorta la lista, y la lista. Inventar una tercera para que el árbol se vea
+   * poblado sería nombrar algo que no existe.
+   *
+   * **La cuenta viaja en el encabezado**, no al final de la barra de filtros:
+   * es el resultado de la sección, no un dato de los filtros, y ahí la
+   * encuentra quien viene a saber cuántos quedaron. La barra conserva
+   * «Filtrando…», que es lo otro que decía y sí es suyo — el aviso de que la
+   * consulta está en viaje.
+   */
   return (
     <div className="space-y-3">
-      <div className="app-card space-y-2 p-3">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--color-text-soft)]" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por pedido, cliente, teléfono o guía…"
-            className="app-input h-9 w-full pl-8 pr-8 text-xs"
-          />
-          {search && (
-            <button
-              type="button"
-              onClick={() => setSearch("")}
-              title="Limpiar búsqueda"
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--color-text-soft)] hover:text-[var(--color-text)]"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          )}
-        </div>
+      <section className="space-y-2">
+        <h2 className="app-section">Búsqueda y filtros</h2>
+        <div className="app-card space-y-2 p-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--color-text-dim)]" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar por pedido, cliente, teléfono o guía…"
+              className="app-input h-9 w-full pl-8 pr-8 text-xs"
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch("")}
+                title="Limpiar búsqueda"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--color-text-dim)] hover:text-[var(--color-text)]"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <FilterSelect
-            label="Situación logística"
-            value={filters.situacion ?? ""}
-            onChange={(v) => navigate({ ...filters, situacion: v || undefined })}
-            options={LOGISTIC_SITUATIONS.map((s) => ({
-              value: s.key,
-              label: s.label,
-            }))}
-          />
-          <FilterSelect
-            label="Estado Dropi"
-            value={filters.dropi ?? ""}
-            onChange={(v) => navigate({ ...filters, dropi: v || undefined })}
-            options={DROPI_STATUS_OPTIONS}
-          />
-          <FilterSelect
-            label="Estado Shopify"
-            value={filters.shopify ?? ""}
-            onChange={(v) => navigate({ ...filters, shopify: v || undefined })}
-            options={SHOPIFY_STATUS_OPTIONS}
-          />
-          <FilterSelect
-            label="Transportadora"
-            value={filters.carrier ?? ""}
-            onChange={(v) => navigate({ ...filters, carrier: v || undefined })}
-            options={carriers.map((c) => ({ value: c, label: c }))}
-          />
-          <FilterSelect
-            label="Match"
-            value={filters.match ?? ""}
-            onChange={(v) => navigate({ ...filters, match: v || undefined })}
-            options={MATCH_OPTIONS}
-          />
-          {hasFilters && (
-            <button
-              type="button"
-              onClick={() => {
-                setSearch("");
-                startNavigate(() => router.replace("/orders"));
-              }}
-              className="rounded-full border border-[var(--color-border)] px-3 py-1 text-xs text-[var(--color-text-dim)] hover:border-[var(--color-accent)]"
-            >
-              Limpiar filtros
-            </button>
-          )}
-          <span className="ml-auto text-xs text-[var(--color-text-soft)]">
-            {pending ? "Filtrando…" : `${rows.length} pedidos`}
-          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <FilterSelect
+              label="Situación logística"
+              value={filters.situacion ?? ""}
+              onChange={(v) => navigate({ ...filters, situacion: v || undefined })}
+              options={LOGISTIC_SITUATIONS.map((s) => ({
+                value: s.key,
+                label: s.label,
+              }))}
+            />
+            <FilterSelect
+              label="Estado Dropi"
+              value={filters.dropi ?? ""}
+              onChange={(v) => navigate({ ...filters, dropi: v || undefined })}
+              options={DROPI_STATUS_OPTIONS}
+            />
+            <FilterSelect
+              label="Estado Shopify"
+              value={filters.shopify ?? ""}
+              onChange={(v) => navigate({ ...filters, shopify: v || undefined })}
+              options={SHOPIFY_STATUS_OPTIONS}
+            />
+            <FilterSelect
+              label="Transportadora"
+              value={filters.carrier ?? ""}
+              onChange={(v) => navigate({ ...filters, carrier: v || undefined })}
+              options={carriers.map((c) => ({ value: c, label: c }))}
+            />
+            <FilterSelect
+              label="Match"
+              value={filters.match ?? ""}
+              onChange={(v) => navigate({ ...filters, match: v || undefined })}
+              options={MATCH_OPTIONS}
+            />
+            {hasFilters && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearch("");
+                  startNavigate(() => router.replace("/orders"));
+                }}
+                className="rounded-full border border-[var(--color-border)] px-3 py-1 text-xs text-[var(--color-text-dim)] hover:border-[var(--color-ink)]"
+              >
+                Limpiar filtros
+              </button>
+            )}
+            {pending && (
+              <span className="ml-auto text-xs text-[var(--color-text-dim)]">
+                Filtrando…
+              </span>
+            )}
+          </div>
         </div>
-      </div>
+      </section>
 
-      {rows.length === 0 ? (
-        <div className="app-card p-4 text-center text-sm text-[var(--color-text-dim)]">
-          {hasFilters
-            ? "Ningún pedido coincide con estos filtros."
-            : "No hay pedidos todavía."}
-        </div>
-      ) : (
-        <div className="app-card overflow-x-auto">
-          <table className="app-table">
-            <thead className="bg-[rgba(12,27,38,0.82)]">
-              <tr>
-                <th className="px-4 py-3">Pedido</th>
-                <th className="px-4 py-3">Cliente</th>
-                <th className="px-4 py-3">Recibido</th>
-                <th className="px-4 py-3">Estado Shopify</th>
-                <th className="px-4 py-3">Estado Dropi</th>
-                <th className="px-4 py-3">Situación logística</th>
-                <th className="px-4 py-3">Guía / Transportadora</th>
-                <th className="px-4 py-3">Match</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => {
-                const o = row.shopify;
-                const d = row.dropi;
-                const st = STATUS_LABEL[o.status] ?? {
-                  label: o.status,
-                  color: "bg-zinc-500/20 text-zinc-200",
-                };
-                const ds = d
-                  ? (DROPI_STATUS_LABEL[d.status] ?? {
-                      label: d.status,
-                      color: "bg-zinc-500/20 text-zinc-200",
-                    })
-                  : null;
-                const situation = situationOfMovement(d?.lastMovementRaw);
-                return (
-                  <tr key={`${o.id}:${d?.id ?? "none"}`}>
-                    <td className="px-4 py-3 font-mono text-xs">
-                      {o.orderId}
-                      {d?.dropiOrderId && (
-                        <div className="text-[10px] text-[var(--color-text-soft)]">
-                          dropi #{d.dropiOrderId}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      {row.conversationId ? (
-                        <Link
-                          href={`/inbox?c=${row.conversationId}`}
-                          className="inline-flex min-h-9 items-center gap-1.5 text-[var(--color-accent)] hover:underline lg:min-h-0"
-                          title="Abrir la conversación de este cliente"
-                        >
-                          <MessageSquare className="h-3.5 w-3.5" />
-                          {o.customerName ?? o.customerPhone}
-                        </Link>
-                      ) : (
-                        <div>{o.customerName ?? "—"}</div>
-                      )}
-                      <div className="text-xs text-[var(--color-text-dim)]">
-                        {o.customerPhone}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">{fmt(o.receivedAt)}</td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`inline-block rounded px-2 py-0.5 text-xs ${st.color}`}
-                      >
-                        {st.label}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      {ds ? (
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span
-                            className={`inline-block rounded px-2 py-0.5 text-xs ${ds.color}`}
-                          >
-                            {ds.label}
-                          </span>
-                          <ConfirmButton
-                            row={row}
-                            busy={busy === d!.id}
-                            onClick={() => confirm(row)}
-                          />
-                          {error?.id === d!.id && (
-                            <span className="text-[10px] text-red-300">
-                              {error.msg}
-                            </span>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-xs text-[var(--color-text-soft)]">
-                          —
-                        </span>
-                      )}
-                      {d?.confirmDryRunAt && !d.confirmPutAt && (
-                        <div className="text-[10px] text-amber-300">
-                          dry-run {fmt(d.confirmDryRunAt)}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-xs">
-                      {d?.lastMovementRaw ? (
-                        <>
-                          <div className="text-[var(--color-text)]">
-                            {situation?.label ?? d.lastMovementRaw}
+      <section className="space-y-2">
+        <h2 className="app-section">Resultados · {cuenta}</h2>
+        {rows.length === 0 ? (
+          <div className="app-card p-4 text-center text-sm text-[var(--color-text-dim)]">
+            {hasFilters
+              ? "Ningún pedido coincide con estos filtros."
+              : "No hay pedidos todavía."}
+          </div>
+        ) : (
+          <div className="app-card overflow-x-auto">
+            <table className="app-table">
+              <thead className="bg-[var(--color-bg)]">
+                <tr>
+                  <th className="px-4 py-3">Pedido</th>
+                  <th className="px-4 py-3">Cliente</th>
+                  <th className="px-4 py-3">Recibido</th>
+                  <th className="px-4 py-3">Estado Shopify</th>
+                  <th className="px-4 py-3">Estado Dropi</th>
+                  <th className="px-4 py-3">Situación logística</th>
+                  <th className="px-4 py-3">Guía / Transportadora</th>
+                  <th className="px-4 py-3">Match</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => {
+                  const o = row.shopify;
+                  const d = row.dropi;
+                  const st = STATUS_LABEL[o.status] ?? {
+                    label: o.status,
+                    color: ESTADO.neutro,
+                  };
+                  const ds = d
+                    ? (DROPI_STATUS_LABEL[d.status] ?? {
+                        label: d.status,
+                        color: ESTADO.neutro,
+                      })
+                    : null;
+                  const situation = situationOfMovement(d?.lastMovementRaw);
+                  return (
+                    <tr key={`${o.id}:${d?.id ?? "none"}`}>
+                      <td className="px-4 py-3 font-mono text-xs">
+                        {o.orderId}
+                        {d?.dropiOrderId && (
+                          <div className="text-[10px] text-[var(--color-text-dim)]">
+                            dropi #{d.dropiOrderId}
                           </div>
-                          <div
-                            className="text-[10px] text-[var(--color-text-soft)]"
-                            title={d.lastMovementRaw}
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {row.conversationId ? (
+                          <Link
+                            href={`/inbox?c=${row.conversationId}`}
+                            className="inline-flex min-h-9 items-center gap-1.5 text-[var(--color-ink)] hover:underline lg:min-h-0"
+                            title="Abrir la conversación de este cliente"
                           >
-                            {situation ? d.lastMovementRaw : ""}
-                            {d.lastMovementAt
-                              ? ` · ${fmt(d.lastMovementAt)}`
-                              : ""}
-                          </div>
-                        </>
-                      ) : (
-                        <span className="text-[var(--color-text-soft)]">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-xs">
-                      {d?.guideNumber ? (
-                        <div className="font-mono">{d.guideNumber}</div>
-                      ) : (
-                        <span className="text-[var(--color-text-soft)]">—</span>
-                      )}
-                      {d?.carrier && (
-                        <div className="text-[var(--color-text-dim)]">
-                          {d.carrier}
+                            <MessageSquare className="h-3.5 w-3.5" />
+                            {o.customerName ?? o.customerPhone}
+                          </Link>
+                        ) : (
+                          <div>{o.customerName ?? "—"}</div>
+                        )}
+                        <div className="text-xs text-[var(--color-text-dim)]">
+                          {o.customerPhone}
                         </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-xs">
-                      {d?.matchConfidence ? (
+                      </td>
+                      <td className="px-4 py-3">{fmt(o.receivedAt)}</td>
+                      <td className="px-4 py-3">
                         <span
-                          className={
-                            d.matchConfidence === "high"
-                              ? "text-emerald-300"
-                              : d.matchConfidence === "manual"
-                                ? "text-blue-300"
-                                : "text-amber-300"
-                          }
+                          className={`inline-block rounded px-2 py-0.5 text-xs ${st.color}`}
                         >
-                          {d.matchConfidence}
+                          {st.label}
                         </span>
-                      ) : (
-                        <span className="text-[var(--color-text-soft)]">—</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {ds ? (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span
+                              className={`inline-block rounded px-2 py-0.5 text-xs ${ds.color}`}
+                            >
+                              {ds.label}
+                            </span>
+                            <ConfirmButton
+                              row={row}
+                              busy={busy === d!.id}
+                              onClick={() => confirm(row)}
+                            />
+                            {error?.id === d!.id && (
+                              <span className="text-[10px] text-[var(--color-danger)]">
+                                {error.msg}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-[var(--color-text-dim)]">
+                            —
+                          </span>
+                        )}
+                        {d?.confirmDryRunAt && !d.confirmPutAt && (
+                          <div className="text-[10px] text-[var(--color-warn)]">
+                            dry-run {fmt(d.confirmDryRunAt)}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-xs">
+                        {d?.lastMovementRaw ? (
+                          <>
+                            <div className="text-[var(--color-text)]">
+                              {situation?.label ?? d.lastMovementRaw}
+                            </div>
+                            <div
+                              className="text-[10px] text-[var(--color-text-dim)]"
+                              title={d.lastMovementRaw}
+                            >
+                              {situation ? d.lastMovementRaw : ""}
+                              {d.lastMovementAt
+                                ? ` · ${fmt(d.lastMovementAt)}`
+                                : ""}
+                            </div>
+                          </>
+                        ) : (
+                          <span className="text-[var(--color-text-dim)]">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-xs">
+                        {d?.guideNumber ? (
+                          <div className="font-mono">{d.guideNumber}</div>
+                        ) : (
+                          <span className="text-[var(--color-text-dim)]">—</span>
+                        )}
+                        {d?.carrier && (
+                          <div className="text-[var(--color-text-dim)]">
+                            {d.carrier}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-xs">
+                        {d?.matchConfidence ? (
+                          <span
+                            className={
+                              d.matchConfidence === "high"
+                                ? "text-[var(--state-auto-fg)]"
+                                : d.matchConfidence === "manual"
+                                  ? "text-[var(--state-sinprod-fg)]"
+                                  : "text-[var(--state-espera-fg)]"
+                            }
+                          >
+                            {d.matchConfidence}
+                          </span>
+                        ) : (
+                          <span className="text-[var(--color-text-dim)]">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
     </div>
   );
 }
@@ -459,8 +496,8 @@ function FilterSelect({
       title={label}
       className={`h-9 rounded-md border px-2 text-xs outline-none transition lg:h-8 ${
         value
-          ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-200"
-          : "border-[var(--color-border)] bg-[rgba(8,21,30,0.72)] text-[var(--color-text-dim)] hover:border-[rgba(110,231,183,0.3)]"
+          ? "border-[var(--color-ink)] bg-[var(--color-ink-wash)] text-[var(--color-ink)]"
+          : "border-[var(--color-border)] bg-[var(--color-card)] text-[var(--color-text-dim)] hover:border-[var(--color-ink)]"
       }`}
     >
       <option value="">{label}: todas</option>
@@ -497,8 +534,8 @@ function ConfirmButton({
       title={tooltip}
       className={`inline-flex h-9 w-9 items-center justify-center rounded-full border text-xs transition disabled:opacity-50 lg:h-6 lg:w-6 ${
         shopifyConfirmed
-          ? "border-emerald-400/50 bg-emerald-500/20 text-emerald-200 hover:bg-emerald-500/30"
-          : "border-zinc-500/40 bg-zinc-500/10 text-zinc-300 hover:bg-zinc-500/20"
+          ? "border-[var(--state-auto-fg)] bg-[var(--state-auto-bg)] text-[var(--state-auto-fg)] hover:bg-[var(--color-ink-soft)]"
+          : "border-[var(--color-border-strong)] bg-[var(--state-sinprod-bg)] text-[var(--state-sinprod-fg)] hover:bg-[var(--color-hover)]"
       }`}
     >
       {busy ? "…" : "✓"}
