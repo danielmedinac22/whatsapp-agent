@@ -1,6 +1,65 @@
 # Estado del Panel de Ventas — punto de entrada
 
-**Si acabas de llegar a este proyecto con contexto fresco, lee este archivo primero.** Está al día al **18-ago-2026**.
+**Si acabas de llegar a este proyecto con contexto fresco, lee este archivo primero.** Está al día al **19-ago-2026**.
+
+## Ola de credenciales del 19-ago-2026 — cerrada y en producción
+
+**Llegaron las dos llaves de Vorare** (`~/Downloads/Accesos-Sebastian-WaiChat.md`)
+y una de las dos no tenía la forma que el código suponía. Migración `0029`
+aplicada, worker y dashboard desplegados y verificados. Suite: **814 tests en 52
+archivos** (venía de 787 en 49).
+
+| Qué se destrabó | Estado |
+| -- | -- |
+| `ventas-cierre-orden/01` — conexión de la tienda | **cerrado en lo que dependía de la credencial**; la tienda está conectada y en modo seco |
+| `ventas-panel/03` — elegir el anuncio por su nombre | **la mitad de Meta, cerrada**; la lista se lee en producción |
+| `ventas-capi/04` — verificar la conversión | **sigue bloqueado**, y ahora se sabe por qué exactamente |
+
+### Lo que cambió el diseño: Shopify ya no emite un token fijo
+
+`keuvhs-wt.myshopify.com` **solo soporta el modelo del Dev Dashboard**. No hay
+`shpat_` estático: se guardan client id y secret, y el token de administración se
+pide con *client credentials grant*. Y **caduca a las 24 horas**
+(`expires_in: 86399`, medido).
+
+Guardar el token acuñado —que es lo que el ticket daba por hecho— habría dado el
+peor fallo del proyecto: **el día uno todo funciona** y el día dos un `401` en
+medio de un cierre. Así que lo que se guarda es **cómo pedir el token**
+(`shopify/token.ts`): se acuña en memoria, se renueva cinco minutos antes de
+vencer, y dos cierres simultáneos comparten una sola acuñación. El camino del
+`shpat_` fijo sigue intacto para una tienda vieja.
+
+**Medido contra la tienda real:** Vorare Store Guatemala, GTQ,
+`America/Guatemala`, **46 productos** con variantes y `gid`. Las tres capacidades
+concedidas; `read_customers` y `write_customers` sobran y el panel los muestra
+como de más.
+
+### Los dos fallos que encontró ejecutar, y ninguno lo veía el compilador
+
+1. **La lista de anuncios se recortaba antes de ordenar.** La cuenta tiene **905
+   anuncios y 24 activos**: con una sola pasada con tope, un anuncio recién
+   lanzado podía caer en la posición 700 y la pantalla diría «ningún anuncio
+   coincide» sobre el anuncio que la persona acaba de crear. Ahora son dos
+   pasadas, los activos completos primero.
+2. **Dos sitios seguían preguntando por `admin_access_token`**, que con la
+   credencial nueva está vacía a propósito. La pantalla de estado decía «tienda
+   no conectada» mientras el catálogo leía 46 productos al lado — y peor,
+   `buildShopifyContextBlock` devolvía `null`: **Sebastián conversando sin la
+   ficha del producto que vende**, sin error y sin alarma.
+
+**La lección nueva, y es la contracara de la de las olas pasadas:** lo que un
+cambio *retira* lo encuentra el tipado; lo que un cambio *vacía de significado*,
+no. La columna seguía existiendo y seguía siendo `string | null`, así que
+`if (!conn.adminAccessToken)` compilaba igual y significaba otra cosa. Queda una
+red de fuente (`credencial-unica.test.ts`), comprobada reintroduciendo el fallo.
+
+### Lo único que quedó sin cargar, a propósito
+
+**`META_CAPI_SYSTEM_USER_TOKEN` no está en Railway.** El token trae
+`whatsapp_business_manage_events`, pero **el dataset de Guatemala no existe y con
+este token no se puede ni leer ni crear**: ese endpoint exige además
+`whatsapp_business_management`, que no se pidió. Sin dataset, cargar el token no
+habilita nada y sí quita el segundo de los tres frenos. Ver `ventas-capi/04`.
 
 ## Lo primero, antes de tocar nada
 
@@ -10,7 +69,7 @@
 
 ## Reglas de trabajo, aprendidas a golpes
 
-- **`pnpm -r typecheck` y `pnpm --filter @wa/worker test` después de CADA ticket**, no al final. Hoy: **4 paquetes limpios, 787 tests en 49 archivos.**
+- **`pnpm -r typecheck` y `pnpm --filter @wa/worker test` después de CADA ticket**, no al final. Hoy: **4 paquetes limpios, 814 tests en 52 archivos.**
 - **`dropi_dry_run` está en `true` a propósito.** Confirmado intencional: es el default del esquema, está expuesto como interruptor en el panel, y `84b62c0` quitó el auto-confirm dejando el botón manual como único camino. **No lo cambies.**
 - **Los tests van sobre funciones puras con fixtures**, en el estilo de `kapso/inbound.test.ts`. **Nombres en español que enuncian el comportamiento**, no la mecánica.
 - **Si algo del ticket contradice el código real, para y pregunta. El código gana.** Pasó varias veces y las correcciones valieron más que los tickets.
@@ -20,7 +79,7 @@
 
 ## Qué está construido y en producción
 
-**37 de 43 tickets resueltos.** Ocho migraciones aplicadas (`0020`–`0027`) y la **`0028` sin aplicar**. Worker en Railway y dashboard en Vercel, desplegados y verificados.
+**39 de 44 tickets resueltos.** Diez migraciones aplicadas (`0020`–`0029`). Worker en Railway y dashboard en Vercel, desplegados y verificados el 19-ago-2026.
 
 - **Migración multi-operación completa** (tickets 01–06). Existe `operations`; Guatemala registrada (`GT`/`GTQ`/`active`); **cero `eq(<tabla>.id, 1)` en toda la base** — ningún accesor devuelve conexión o configuración sin decir de qué operación.
 - **La atribución del primer contacto** — referencia del anuncio y `ctwa_clid` se capturan y persisten. Era irreversible: no existe endpoint de Meta para recuperarlos después.
@@ -103,10 +162,10 @@ tienda en tiempo de uso y no puede desincronizarse.
 
 | Qué falta | Quién lo trae | Qué destraba |
 | -- | -- | -- |
-| **Token de administración de Shopify** | Vorare | `cierre-orden/01`, `03`, `04` — y con eso el pedido real |
-| **Token de sistema con `ads_read`** | Vorare | `panel/03` — elegir el anuncio por su nombre |
-| **Permiso `whatsapp_business_manage_events`** | Vorare | `capi/04` — verificar la conversión en Meta |
-| **Configurar a Sebastián** (`display_name`) | El dueño de la operación | Que el vendedor atienda. Hoy `sales_agent_settings` está vacía **a propósito** |
+| ~~Token de administración de Shopify~~ | ~~Vorare~~ | **llegó el 19-ago** — la tienda está conectada, en modo seco |
+| ~~Token de sistema con `ads_read`~~ | ~~Vorare~~ | **llegó el 19-ago** — la lista de anuncios está en producción |
+| **El dataset de CAPI de Guatemala** | Vorare | `capi/04`. Dos caminos: pegarlo a mano desde el Administrador de Eventos, o agregar **`whatsapp_business_management`** al usuario de sistema y volver a emitir el token |
+| **Configurar a Sebastián** (`display_name`) | El dueño de la operación | Que el vendedor atienda. Hoy está vacío **a propósito** |
 | **Cargar el catálogo** | El dueño de la operación | Que haya productos que vender. `products` = 0 filas |
 | **Migrar +57 304 5430173 a Cloud API** | Consola de Meta | `multi-op/08` y `09` — Colombia, **pospuesto por el usuario el 19-ago** |
 
@@ -118,10 +177,12 @@ https://claude.ai/code/artifact/d4014b57-11a2-400c-a63f-5a4c70bad9da
 El camino de venta está construido de punta a punta y **no se ejecuta**, por tres
 frenos independientes. Encender es un acto deliberado, no un descuido pendiente:
 
-1. **`sales_agent_settings` vacía** → toda conversación resuelve a Katherine. El
-   listón es `display_name` no vacío, no la existencia de la fila.
+1. **`display_name` vacío** → toda conversación resuelve a Katherine. El listón
+   es `display_name` no vacío, no la existencia de la fila (la fila ya existe).
 2. **Modo de escritura de tienda en seco** → se arma el pedido y no se manda.
-3. **`META_CAPI_MODE=off`** y sin token → ni una llamada a Meta.
+   `SHOPIFY_ORDER_WRITE_MODE` no existe en Railway; verificado el 19-ago:
+   `writeMode: dry_run` con la tienda ya conectada.
+3. **`META_CAPI_MODE` sin poner** y sin token → ni una llamada a Meta.
 
 **Encenderlos tiene orden**: primero catálogo y vendedor, después la tienda (y
 antes, un pedido desechable), y CAPI al final con el código de prueba de Meta.
