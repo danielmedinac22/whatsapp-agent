@@ -6,7 +6,6 @@ import {
   messages,
   agentRuns,
   desc,
-  eq,
 } from "@wa/db";
 
 async function main() {

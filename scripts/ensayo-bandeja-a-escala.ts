@@ -68,7 +68,6 @@ import {
   type Operation,
   type SalesAgentSettings,
 } from "@wa/db";
-import { db } from "../apps/web/src/lib/db";
 import {
   countSalesInboxViews,
   listConversations,
@@ -457,7 +456,7 @@ async function puntoDeDerrame(plan: readonly string[]): Promise<Derrame | null> 
   )) as unknown as Array<{ kb: number }>;
   const workMemKb = fila?.kb ?? 4096;
   return {
-    metodo: /Sort Method: (.+?)(?:  |$)/.exec(metodo)?.[1]?.trim() ?? "?",
+    metodo: /Sort Method: (.+?)(?: {2}|$)/.exec(metodo)?.[1]?.trim() ?? "?",
     usadoKb: kb,
     filas,
     workMemKb,
