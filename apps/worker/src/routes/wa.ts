@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import { z } from "zod";
-import { eq, messageMedia } from "@wa/db";
+import { eq, messageMedia, users } from "@wa/db";
 import { db } from "../db";
+import { logger } from "../lib/logger";
 import { getKapsoConnection } from "../kapso/connection";
 import { isTemplateApproved } from "../kapso/provisioning";
 import {
@@ -10,6 +11,7 @@ import {
   sanitizeParam,
   templateByName,
 } from "../kapso/templates";
+import { esIdDeUsuario } from "../lib/atribucion";
 import { normalizePhone } from "../lib/phone";
 import { enqueueOutbound } from "../jobs/outbound";
 import {
@@ -62,12 +64,59 @@ wa.get("/status", async (c) => {
   });
 });
 
+/**
+ * Quién mandó el mensaje, si el panel lo dijo.
+ *
+ * Los tres envíos manuales de acá son los únicos que tienen una persona detrás,
+ * y hasta hoy no la anotaban: `messages.sent_by_user_id` está en `null` en los
+ * 19.281 salientes de producción. La tubería ya existía —`enqueueOutbound`
+ * acepta el parámetro y lo persiste—; lo que faltaba era que alguien se lo
+ * pasara. El panel es quien sabe el valor (ticket 03); esta mitad lo recibe, lo
+ * comprueba y lo guarda, y funciona con `null` mientras tanto.
+ *
+ * Nunca hace fallar el envío, y por eso no vive en el esquema de zod: la
+ * atribución es un dato de más, el mensaje es el trabajo, y este es el camino
+ * del número que factura. `sent_by_user_id` es clave foránea a `users`, así que
+ * un identificador inventado reventaría el insert del outbox y el asesor vería
+ * «no se pudo enviar» por un campo que no tiene nada que ver con enviar. Ante
+ * cualquier duda: se envía igual, sin atribuir, y queda el aviso en el log.
+ *
+ * La consulta solo corre cuando el panel manda algo, y el envío manual son 352
+ * de los 18.712 mensajes que salieron.
+ */
+async function usuarioQueEnvia(valor: unknown): Promise<string | null> {
+  if (valor === undefined || valor === null || valor === "") return null;
+  if (!esIdDeUsuario(valor)) {
+    logger.warn(
+      { sentByUserId: valor },
+      "wa: sentByUserId con forma inválida; el mensaje sale sin atribuir",
+    );
+    return null;
+  }
+  const [user] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.id, valor))
+    .limit(1);
+  if (!user) {
+    logger.warn(
+      { sentByUserId: valor },
+      "wa: sentByUserId no corresponde a ningún usuario; el mensaje sale sin atribuir",
+    );
+    return null;
+  }
+  return user.id;
+}
+
 const sendSchema = z
   .object({
     to: z.string().min(5).optional(),
     // Legacy field from the web inbox — a Baileys JID or raw phone.
     jid: z.string().min(5).optional(),
     body: z.string().min(1).max(4096),
+    // `unknown` y no `uuid()`: ver `usuarioQueEnvia`. Un valor mal formado no
+    // puede convertir un envío en un 400.
+    sentByUserId: z.unknown().optional(),
   })
   .refine((v) => v.to || v.jid, { message: "to (wa_id) is required" });
 
@@ -82,6 +131,7 @@ wa.post("/send", async (c) => {
     body,
     source: "manual",
     dedupKey: `manual:${randomUUID()}`,
+    sentByUserId: await usuarioQueEnvia(parsed.data.sentByUserId),
   });
   // Estado que se le muestra al asesor tras encolar; el envío en sí resuelve su
   // propia operación desde la conversación (ver `jobs/outbound.ts`).
@@ -155,6 +205,7 @@ wa.post("/send-audio", async (c) => {
     dedupKey: `manual-audio:${randomUUID()}`,
     conversationId:
       typeof conversationId === "string" && conversationId ? conversationId : null,
+    sentByUserId: await usuarioQueEnvia(form?.get("sentByUserId")),
     media: { id: media.id, kind: "audio" },
   });
   return c.json({ ok: true, outboundId, mediaId: media.id });
@@ -165,6 +216,8 @@ const sendTemplateSchema = z.object({
   templateName: z.string().min(1),
   params: z.array(z.string()).default([]),
   conversationId: z.string().uuid().optional(),
+  // Ver `usuarioQueEnvia`: se comprueba en el borde, no en el esquema.
+  sentByUserId: z.unknown().optional(),
 });
 
 /**
@@ -206,6 +259,7 @@ wa.post("/send-template", async (c) => {
     source: "manual",
     dedupKey: `manual-template:${randomUUID()}`,
     conversationId: conversationId ?? null,
+    sentByUserId: await usuarioQueEnvia(parsed.data.sentByUserId),
     template: { name: templateName, params: clean },
   });
   return c.json({ ok: true, outboundId });

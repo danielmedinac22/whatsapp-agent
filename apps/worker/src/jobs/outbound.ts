@@ -19,6 +19,7 @@ import {
 import { db } from "../db";
 import { events } from "../lib/events";
 import { logger } from "../lib/logger";
+import { huellaDelSaliente } from "../inbox/saliente-conversacional";
 import {
   KapsoApiError,
   classifyKapsoError,
@@ -610,13 +611,23 @@ async function handleOutbound(payload: OutboundJob): Promise<void> {
       })
       .onConflictDoNothing({ target: messages.waId })
       .returning({ id: messages.id });
-    await db
-      .update(conversations)
-      .set({
-        lastOutboundAt: new Date(),
-        lastMessagePreview: sentBody.slice(0, 200),
-      })
-      .where(eq(conversations.id, convId));
+    // Contestar deja huella. Además de la fecha del saliente y la vista previa
+    // —que estampa cualquier saliente, igual que antes—, una **respuesta** pone
+    // el contador de sin leer en cero: hasta hoy solo lo apagaba `markRead`, o
+    // sea abrir la conversación en el panel, y contestar desde el celular
+    // dejaba el rojo puesto para siempre. Va acá, después de que Meta aceptó el
+    // mensaje, y no al encolar: un envío que muere en la cola no contestó nada.
+    // Es una sola escritura por mensaje y sin consulta previa: sale en cada
+    // saliente, que hoy son ~18.700.
+    const huella = huellaDelSaliente({
+      waId,
+      source: row.source,
+      cuerpo: sentBody,
+      ahora: new Date(),
+    });
+    if (huella) {
+      await db.update(conversations).set(huella).where(eq(conversations.id, convId));
+    }
 
     // Meta suele confirmar la entrega ANTES de que llegue este insert, y el
     // webhook no encuentra la fila que acaba de nacer. Aplicamos aquí lo que
