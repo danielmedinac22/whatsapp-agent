@@ -1,5 +1,5 @@
 import { and, eq, inArray } from "@wa/db";
-import { waTemplates } from "@wa/db";
+import { invalidateApprovedWaTemplatesCache, waTemplates } from "@wa/db";
 import { db } from "../db";
 import { logger } from "../lib/logger";
 import { KapsoApiError, createTemplate, listTemplatesByName } from "./client";
@@ -23,6 +23,11 @@ import { VORARE_TEMPLATES, toMetaDefinition } from "./templates";
 export async function ensureKapsoTemplates(
   op: Operation,
 ): Promise<void> {
+  // **Editar plantillas invalida plantillas** (PRO-15). El Inbox del panel
+  // cachea los nombres aprobados de la operación, y va al principio y no al
+  // final para que un fallo a mitad del catálogo no deje la caché mintiendo
+  // sobre lo que sí llegó a someterse.
+  invalidateApprovedWaTemplatesCache(op.id);
   const conn = await getKapsoConnection(op);
   const wabaId = conn?.businessAccountId;
   if (!wabaId) {
@@ -112,6 +117,9 @@ export async function ensureKapsoTemplates(
 export async function refreshKapsoTemplateStatuses(
   op: Operation,
 ): Promise<void> {
+  // El poll es el camino por el que una plantilla pasa a `approved`, o sea el
+  // que hace aparecer un nombre nuevo en la barra de envío del panel.
+  invalidateApprovedWaTemplatesCache(op.id);
   const conn = await getKapsoConnection(op);
   const wabaId = conn?.businessAccountId;
   if (!wabaId) return;

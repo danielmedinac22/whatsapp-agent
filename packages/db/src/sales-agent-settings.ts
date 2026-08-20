@@ -1,5 +1,8 @@
 import { and, asc, eq, isNull } from "drizzle-orm";
+import { OperationScopedCache } from "./cache";
+import { CACHE_DEL_VENDEDOR_MS } from "./caches-del-panel";
 import { getDb } from "./client";
+import type { OperationId } from "./operations";
 import type { Operation } from "./schema";
 import { salesAgentSettings, type SalesAgentSettings } from "./schema";
 
@@ -100,12 +103,48 @@ export function resolveSalesAgentSettings<T extends ScopedSalesAgentSettingsRow>
 export async function getSalesAgentSettings(
   op: Operation,
 ): Promise<SalesAgentSettings | null> {
-  const rows = await getDb()
-    .select()
-    .from(salesAgentSettings)
-    .orderBy(asc(salesAgentSettings.createdAt));
-  const row = resolveSalesAgentSettings(rows, op);
-  return row === null ? null : stampSalesAgentActivation(row);
+  return vendedorCache.recordar(op.id, async () => {
+    const rows = await getDb()
+      .select()
+      .from(salesAgentSettings)
+      .orderBy(asc(salesAgentSettings.createdAt));
+    const row = resolveSalesAgentSettings(rows, op);
+    return row === null ? null : stampSalesAgentActivation(row);
+  });
+}
+
+/**
+ * La caché de PRO-15, y la única de las cuatro que guarda un **interruptor**.
+ *
+ * Un render del Inbox leía esta fila dos veces —el marco pregunta si hay
+ * vendedor para dibujar el riel, la pantalla pregunta lo mismo para decidir si
+ * hay dos bandejas— y las dos consultas traían la misma fila con la misma
+ * distancia de por medio. Sigue siendo un solo listón (`salesAgentIsConfigured`)
+ * leído desde un solo accesor: lo que cambia es que el segundo lector encuentra
+ * lo que trajo el primero.
+ *
+ * **Cachea la fila ya estampada**, después de {@link stampSalesAgentActivation}
+ * y no antes. Guardar la fila sin estampar dejaría al proceso mirando un
+ * `activated_at` en `null` que ya no está en la base, y la bandeja de ventas
+ * vacía sin que nada falle — que es exactamente lo que el respaldo perezoso
+ * existe para impedir. Es la misma decisión que tomó la caché hermana del
+ * worker, escrita acá para que no haya que descubrirla dos veces.
+ *
+ * El TTL es el corto y no el de treinta segundos: ver {@link CACHE_DEL_VENDEDOR_MS}.
+ */
+const vendedorCache = new OperationScopedCache<SalesAgentSettings | null>(
+  CACHE_DEL_VENDEDOR_MS,
+);
+
+/**
+ * A llamar al guardar la configuración del vendedor. **Encender o apagar al
+ * vendedor cambia lo que el panel muestra en el mismo acto**, y sin esto el
+ * admin guardaría un nombre y vería la pantalla de antes.
+ *
+ * Sin argumento borra la caché entera; con una operación, solo la suya.
+ */
+export function invalidateSalesAgentSettingsCache(op?: OperationId): void {
+  vendedorCache.invalidate(op);
 }
 
 /** Lo mínimo que hace falta para decidir si a una fila le falta la fecha. */

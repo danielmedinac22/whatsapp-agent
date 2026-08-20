@@ -3,6 +3,8 @@ export * from "./client";
 export * from "./env";
 export * from "./sql-trace";
 export * from "./agent-settings";
+export * from "./cache";
+export * from "./caches-del-panel";
 export * from "./sales-agent-settings";
 export * from "./operations";
 export * from "./products";

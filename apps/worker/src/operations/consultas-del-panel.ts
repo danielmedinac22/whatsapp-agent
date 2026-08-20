@@ -81,26 +81,44 @@ export const TABLAS_CON_DUENO: readonly string[] = Object.entries(schema)
  * puede existir en las dos operaciones y eso no es un error. Pero las tres se
  * leen y se escriben por id desde el panel, así que la pertenencia hay que
  * verificarla igual — y por eso están en la lista.
+ *
+ * **`outbound_messages` entró con PRO-16**, y su ausencia era un agujero de los
+ * que esta red existe para no tener: sus filas son de una operación —a través
+ * del `to_wa_id`, que es para lo que existe `waIdOfOperation`— y las tres
+ * consultas que el panel le hace pasaban sin que nadie las mirara. Se descubrió
+ * al fusionar dos de ellas en una: la consulta nueva no aparecía en el
+ * inventario, y una consulta que la red no ve pasa en verde sin mirar nada.
+ * Su `conversation_id` **no serviría** para acotarla —está en `null` en 316 de
+ * los 352 salientes manuales de producción—, que es justo por lo que el alcance
+ * de esta tabla va por el `wa_id`.
  */
 export const TABLAS_CON_DUENO_INDIRECTO: readonly string[] = [
   "contacts",
   "messages",
   "messageMedia",
+  "outboundMessages",
 ];
 
 /**
  * Lo que cuenta como «acota por operación».
  *
- * Los cuatro ayudantes de `apps/web/src/lib/operation-scope.ts` y, además,
+ * Los **cinco** ayudantes de `apps/web/src/lib/operation-scope.ts` y, además,
  * `operationId` a secas: escribir `eq(conversations.operationId, op.id)` a mano
  * acota igual de bien, y una red que exige *una forma* en vez de *un efecto*
  * termina rechazando código correcto.
+ *
+ * Decía «los cuatro» y enumeraba cuatro, y el que faltaba era `waIdOfOperation`
+ * — el único que acota la tabla que tampoco estaba en la lista de tablas. Los
+ * dos olvidos se tapaban entre sí: sin la tabla nadie miraba esas consultas, y
+ * sin el marcador mirarlas habría dado falsos positivos. Es la forma en que una
+ * red se queda corta sin ponerse roja.
  */
 export const MARCADORES_DE_ALCANCE: readonly string[] = [
   "ofOperation",
   "rowOfOperation",
   "throughConversationOfOperation",
   "contactOfOperation",
+  "waIdOfOperation",
   "operationId",
 ];
 

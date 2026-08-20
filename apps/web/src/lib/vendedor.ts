@@ -1,7 +1,7 @@
 import {
-  eq,
+  connectionPhoneOf,
   getSalesAgentSettings,
-  kapsoConnection,
+  invalidateSalesAgentSettingsCache,
   salesAgentIsConfigured,
   salesAgentSettings,
   sql,
@@ -47,18 +47,12 @@ export async function loadVendedorScreen(): Promise<VendedorScreen> {
   const operation = await resolvePanelOperation();
   const [settings, phone] = await Promise.all([
     getSalesAgentSettings(operation),
-    connectionPhone(operation),
+    // El mismo lector que el riel del marco, y por eso cacheado igual: dos
+    // consultas a `kapso_connection` desde el panel eran dos cachés que se
+    // desincronizan la primera vez que alguien toque una (PRO-15).
+    connectionPhoneOf(operation.id),
   ]);
   return { operation, settings, phone };
-}
-
-async function connectionPhone(operation: Operation): Promise<string | null> {
-  const [row] = await db
-    .select({ phone: kapsoConnection.displayPhoneNumber })
-    .from(kapsoConnection)
-    .where(eq(kapsoConnection.operationId, operation.id))
-    .limit(1);
-  return row?.phone ?? null;
 }
 
 /**
@@ -116,4 +110,9 @@ export async function saveVendedorSettings(
           : {}),
       },
     });
+  // **Invalidar es obligación de quien escribe** (PRO-15). Esta fila es el
+  // interruptor de las dos bandejas: sin esta línea, encender al vendedor
+  // dejaría el panel dibujando el marco de antes hasta que la entrada venciera,
+  // y el admin lo leería como que el guardado no funcionó.
+  invalidateSalesAgentSettingsCache(operation.id);
 }

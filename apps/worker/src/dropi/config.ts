@@ -1,6 +1,7 @@
 import { eq, sql } from "@wa/db";
 import {
   dropiConnection,
+  invalidateAssetsBaseUrlCache,
   operations,
   type DropiConnection,
   type Operation,
@@ -90,6 +91,11 @@ export async function getDropiConnection(
 /** Invalida solo la operación tocada: la de al lado sigue siendo válida. */
 export function invalidateDropiConnectionCache(op: Operation): void {
   connectionCache.invalidate(op.id);
+  // El Inbox del panel cachea aparte la URL base de los archivos —es lo único
+  // que usa de esta fila, y la lee cruzando el país (PRO-15)—. Se cuelga del
+  // invalidador que ya existía: `upsertDropiConnection` es el único que
+  // escribe y ya pasa por acá.
+  invalidateAssetsBaseUrlCache(op.id);
 }
 
 export async function upsertDropiConnection(

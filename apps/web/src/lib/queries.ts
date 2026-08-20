@@ -2,6 +2,7 @@ import { db } from "./db";
 import {
   contacts,
   conversations,
+  dropiConnection,
   messages,
   outboundMessages,
   products,
@@ -25,11 +26,14 @@ import {
   escalationReasonFromDedupKey,
   inboxChangedSince,
   parseRecognitionOutcome,
+  plantillasAprobadasCache,
   resolveInbox,
   sinResponder,
+  urlDeArchivosCache,
   SALIENTES_CONVERSACIONALES,
 } from "@wa/db";
 import type { SQL } from "drizzle-orm";
+import { unionAll } from "drizzle-orm/pg-core";
 import type {
   EscalationFacts,
   Inbox,
@@ -277,32 +281,156 @@ export async function loadOrderFactsByContact(
 }
 
 /**
- * Las escaladas a humano que salieron hacia cada cliente.
+ * **Los salientes de la operación que el Inbox necesita, en un solo viaje.**
+ *
+ * Son dos hechos distintos leídos de la misma tabla: *cuándo fue la última vez
+ * que le contestamos a cada cliente* —lo que decide si está esperando— y *qué
+ * escaladas a humano se le avisaron*, que es lo que marca la fila. Antes eran
+ * tres consultas: las dos de `loadSinResponderIds` más una tercera que volvía a
+ * pedir las escaladas, ya filtradas por los `wa_id` que la lista iba a mostrar.
+ *
+ * **La tercera sobraba entera.** La segunda ya traía *todas* las escaladas de la
+ * operación —93 filas en producción, sin filtro por `wa_id`—, así que la lista
+ * de una conversación cualquiera ya estaba en memoria antes de que nadie la
+ * pidiera. Pedirla otra vez era pagar la distancia por filas que ya estaban acá.
+ *
+ * Las otras dos viajan juntas con un `union all` y no fusionadas en una sola
+ * consulta con `case`: cada mitad conserva su `from`, su `where` y su filtro por
+ * operación a la vista, que es lo que la red de alcance sabe leer. Una consulta
+ * que la red no puede ver pasa en verde sin mirar nada.
  *
  * **No hay tabla de escaladas.** `escalateToHuman` apaga el modo agente, encola
  * un aviso al cliente y otro al admin, y no deja fila que lo cuente; lo que
  * queda es ese aviso en `outbound_messages`, con el motivo dentro de su clave
  * de deduplicación. Leerlo de ahí reconstruye un hecho que pasó de verdad.
  *
- * `outbound_messages` no lleva operación, así que la acota `waIdOfOperation`:
- * los `wa_id` que recibe ya salen de contactos de la operación, pero el filtro
- * va **dentro del `where`** igual, que es como este repositorio trata el
- * aislamiento en todas las demás consultas. Y solo se leen los avisos al
- * cliente, nunca los del admin: esos van al teléfono del administrador —los 36
- * de producción, todos al mismo número— y contarlos en el hilo del cliente sería
- * contar dos veces la misma escalada.
- *
- * Quedan fuera las escaladas cuyo motivo no manda aviso al cliente
+ * `outbound_messages` no lleva operación, así que la acota `waIdOfOperation` en
+ * las dos mitades. Y solo se leen los avisos al cliente, nunca los del admin:
+ * esos van al teléfono del administrador —los 36 de producción, todos al mismo
+ * número— y contarlos en el hilo del cliente sería contar dos veces la misma
+ * escalada. Quedan fuera las escaladas cuyo motivo no manda aviso al cliente
  * (`manual` y `agent_request`): de esas no queda rastro fechado en ninguna
  * parte, y esta función prefiere no mostrarlas a inventarles una fecha.
+ *
+ * La última respuesta se agrupa por `to_wa_id` y **no por `conversation_id`**:
+ * esa columna está en `null` en 316 de los 352 salientes manuales de producción,
+ * así que agrupar por ella cuenta como «nadie contestó» conversaciones donde una
+ * persona sí contestó —cuatro el 20-ago-2026, con el texto de la respuesta
+ * visible en la fila—.
+ */
+export interface SalientesDelInbox {
+  /** El último saliente conversacional hacia cada cliente. */
+  respuestaPorWaId: Map<string, Date>;
+  /** Las escaladas avisadas al cliente, de la más vieja a la más nueva. */
+  escaladasPorWaId: Map<string, EscalationFacts[]>;
+}
+
+async function loadSalientesDelInbox(
+  op: Operation,
+): Promise<SalientesDelInbox> {
+  const ultimaRespuesta = db
+    .select({
+      clase: sql<string>`'respuesta'::text`.as("clase"),
+      toWaId: outboundMessages.toWaId,
+      at: sql<Date>`max(${outboundMessages.createdAt})`.as("at"),
+      dedupKey: sql<string | null>`null::text`.as("dedup_key"),
+    })
+    .from(outboundMessages)
+    .where(
+      and(
+        inArray(outboundMessages.source, [...SALIENTES_CONVERSACIONALES]),
+        waIdOfOperation(op, outboundMessages.toWaId),
+      ),
+    )
+    .groupBy(outboundMessages.toWaId);
+
+  const avisosDeEscalada = db
+    .select({
+      clase: sql<string>`'escalada'::text`.as("clase"),
+      toWaId: outboundMessages.toWaId,
+      at: outboundMessages.createdAt,
+      dedupKey: outboundMessages.dedupKey,
+    })
+    .from(outboundMessages)
+    .where(
+      and(
+        eq(outboundMessages.source, "escalation"),
+        waIdOfOperation(op, outboundMessages.toWaId),
+      ),
+    );
+
+  const filas = await unionAll(ultimaRespuesta, avisosDeEscalada);
+
+  const respuestaPorWaId = new Map<string, Date>();
+  const escaladas: AvisoDeEscalada[] = [];
+  for (const fila of filas) {
+    if (fila.clase === "respuesta") {
+      respuestaPorWaId.set(fila.toWaId, new Date(fila.at));
+      continue;
+    }
+    // El `null` es el de la mitad de arriba, que no tiene clave: no llega acá.
+    if (fila.dedupKey === null) continue;
+    escaladas.push({
+      toWaId: fila.toWaId,
+      dedupKey: fila.dedupKey,
+      createdAt: new Date(fila.at),
+    });
+  }
+  return { respuestaPorWaId, escaladasPorWaId: escaladasPorWaId(escaladas) };
+}
+
+/** Un aviso de escalada tal como quedó en `outbound_messages`. */
+interface AvisoDeEscalada {
+  toWaId: string;
+  dedupKey: string;
+  createdAt: Date;
+}
+
+/**
+ * **Qué avisos cuentan como escalada del cliente, y en qué orden van.** Pura.
+ *
+ * Está aparte porque los avisos se cargan de dos formas —todos los de la
+ * operación en el viaje del Inbox, o los de un solo cliente al abrir su hilo— y
+ * eso son dos cargas, no dos reglas. Es la misma división que
+ * `loadOrderFactsByContact` tiene con `apps/worker/src/inbox/facts.ts`, y por el
+ * mismo motivo: el día que cambie qué clave cuenta, cambia en un sitio.
+ *
+ * De la más vieja a la más nueva, que es como el hilo las narra y como
+ * {@link sinResponderEntre} espera encontrar la última al final.
+ */
+function escaladasPorWaId(
+  avisos: readonly AvisoDeEscalada[],
+): Map<string, EscalationFacts[]> {
+  const porWaId = new Map<string, EscalationFacts[]>();
+  for (const aviso of avisos) {
+    const reason = escalationReasonFromDedupKey(aviso.dedupKey);
+    // Sin motivo legible es el aviso al admin (u otra clave que no reconocemos):
+    // no es una escalada del cliente y no va a su hilo.
+    if (reason === null) continue;
+    const actuales = porWaId.get(aviso.toWaId);
+    const hecho: EscalationFacts = { at: aviso.createdAt, reason };
+    if (actuales) actuales.push(hecho);
+    else porWaId.set(aviso.toWaId, [hecho]);
+  }
+  for (const lista of porWaId.values()) {
+    lista.sort((a, b) => a.at.getTime() - b.at.getTime());
+  }
+  return porWaId;
+}
+
+/**
+ * Las escaladas avisadas a **un puñado de clientes**, para el hilo abierto.
+ *
+ * Es la otra carga de la misma regla. El Inbox no pasa por acá —sus escaladas
+ * vienen en el viaje de {@link loadSalientesDelInbox}, que ya las trae todas—;
+ * esto lo usa el contexto de venta de una conversación, donde pedir las 93 de
+ * la operación para mirar una sería traer de más por no filtrar.
  */
 async function loadEscalationsByWaId(
   op: Operation,
   waIds: readonly string[],
 ): Promise<Map<string, EscalationFacts[]>> {
-  const porWaId = new Map<string, EscalationFacts[]>();
-  if (waIds.length === 0) return porWaId;
-
+  if (waIds.length === 0) return new Map();
   const rows = await db
     .select({
       toWaId: outboundMessages.toWaId,
@@ -316,20 +444,8 @@ async function loadEscalationsByWaId(
         inArray(outboundMessages.toWaId, [...waIds]),
         waIdOfOperation(op, outboundMessages.toWaId),
       ),
-    )
-    .orderBy(asc(outboundMessages.createdAt));
-
-  for (const row of rows) {
-    const reason = escalationReasonFromDedupKey(row.dedupKey);
-    // Sin motivo legible es el aviso al admin (u otra clave que no reconocemos):
-    // no es una escalada del cliente y no va a su hilo.
-    if (reason === null) continue;
-    const actuales = porWaId.get(row.toWaId);
-    const hecho: EscalationFacts = { at: row.createdAt, reason };
-    if (actuales) actuales.push(hecho);
-    else porWaId.set(row.toWaId, [hecho]);
-  }
-  return porWaId;
+    );
+  return escaladasPorWaId(rows);
 }
 
 /**
@@ -363,6 +479,58 @@ function puedeEstarEnSQL(ahora: Date): SQL {
 }
 
 /**
+ * Los hechos de una conversación que la regla de «sin responder» mira. Es lo
+ * que `puedeEstarEnSQL` deja pasar, con el `wa_id` de su contacto pegado.
+ */
+interface CandidataSinResponder {
+  id: string;
+  waId: string | null;
+  agentMode: boolean;
+  assignedUserId: string | null;
+  lastInboundAt: Date | null;
+  lastOutboundAt: Date | null;
+  createdAt: Date;
+}
+
+/**
+ * **La regla de `sinResponder` aplicada a lo que ya se trajo. No consulta nada.**
+ *
+ * Está partida de la carga a propósito y no por gusto de simetría: los dos
+ * llamadores cargan las candidatas de forma distinta —el Inbox las trae en el
+ * mismo viaje que su lista, el contador de la barra las trae solas— y con la
+ * regla adentro de la carga, partir la carga habría partido la regla. Es la
+ * misma frase de siempre: una decisión, un sitio.
+ */
+function sinResponderEntre(
+  candidatas: readonly CandidataSinResponder[],
+  salientes: SalientesDelInbox,
+  ahora: Date,
+): Set<string> {
+  const ids = new Set<string>();
+  for (const fila of candidatas) {
+    const esperando = sinResponder(
+      {
+        lastInboundAt: fila.lastInboundAt,
+        lastConversationalOutboundAt: fila.waId
+          ? salientes.respuestaPorWaId.get(fila.waId) ?? null
+          : null,
+        agentMode: fila.agentMode,
+        assignedUserId: fila.assignedUserId,
+        // La regla compara contra la escalada más reciente, que es la última de
+        // la lista porque `loadSalientesDelInbox` las deja en orden.
+        lastEscalationAt: fila.waId
+          ? salientes.escaladasPorWaId.get(fila.waId)?.at(-1)?.at ?? null
+          : null,
+        lastActivityAt: actividadDe(fila),
+      },
+      ahora,
+    );
+    if (esperando) ids.add(fila.id);
+  }
+  return ids;
+}
+
+/**
  * **Qué conversaciones de la operación están sin responder**, todas, no las que
  * se ven.
  *
@@ -373,21 +541,20 @@ function puedeEstarEnSQL(ahora: Date): SQL {
  * en el puesto 668. Contando sobre lo cargado, la tarjeta del Inbox decía 0
  * mientras 35 clientes esperaban respuesta.
  *
- * La regla es de `@wa/db` y acá solo se cargan los hechos: tres consultas —las
- * conversaciones con su contacto, la última respuesta por cliente y la última
- * escalada por cliente—, ninguna por fila.
+ * La regla es de `@wa/db` y acá solo se cargan los hechos: dos consultas —las
+ * conversaciones con su contacto, y los salientes de la operación—, ninguna por
+ * fila. Eran tres hasta PRO-16; ver {@link loadSalientesDelInbox}.
  *
- * La última respuesta se agrupa por `to_wa_id` y **no por `conversation_id`**:
- * esa columna está en `null` en 316 de los 352 salientes manuales de producción,
- * así que agrupar por ella cuenta como «nadie contestó» conversaciones donde una
- * persona sí contestó —cuatro el 20-ago-2026, con el texto de la respuesta
- * visible en la fila—.
+ * **La usa el contador de la barra lateral, no el Inbox.** `listConversations`
+ * no llama acá porque sus candidatas vienen en el mismo viaje que su lista: la
+ * regla que aplica es la misma —{@link sinResponderEntre}—, lo que cambia es de
+ * dónde salieron las filas.
  */
 async function loadSinResponderIds(
   op: Operation,
   ahora: Date,
 ): Promise<Set<string>> {
-  const [filas, respuestas, escaladas] = await Promise.all([
+  const [candidatas, salientes] = await Promise.all([
     db
       .select({
         id: conversations.id,
@@ -400,69 +567,15 @@ async function loadSinResponderIds(
       })
       .from(conversations)
       .innerJoin(contacts, eq(conversations.contactId, contacts.id))
-      .where(and(ofOperation(op, conversations.operationId), puedeEstarEnSQL(ahora))),
-    db
-      .select({
-        toWaId: outboundMessages.toWaId,
-        ultima: sql<Date>`max(${outboundMessages.createdAt})`,
-      })
-      .from(outboundMessages)
       .where(
         and(
-          inArray(outboundMessages.source, [...SALIENTES_CONVERSACIONALES]),
-          waIdOfOperation(op, outboundMessages.toWaId),
-        ),
-      )
-      .groupBy(outboundMessages.toWaId),
-    db
-      .select({
-        toWaId: outboundMessages.toWaId,
-        dedupKey: outboundMessages.dedupKey,
-        createdAt: outboundMessages.createdAt,
-      })
-      .from(outboundMessages)
-      .where(
-        and(
-          eq(outboundMessages.source, "escalation"),
-          waIdOfOperation(op, outboundMessages.toWaId),
+          ofOperation(op, conversations.operationId),
+          puedeEstarEnSQL(ahora),
         ),
       ),
+    loadSalientesDelInbox(op),
   ]);
-
-  const respuestaPorWaId = new Map(
-    respuestas.map((r) => [r.toWaId, new Date(r.ultima)]),
-  );
-  // La misma lectura que `loadEscalationsByWaId`: solo el aviso al cliente, y
-  // solo el más reciente, que es lo único que la regla compara.
-  const escaladaPorWaId = new Map<string, Date>();
-  for (const fila of escaladas) {
-    if (escalationReasonFromDedupKey(fila.dedupKey) === null) continue;
-    const actual = escaladaPorWaId.get(fila.toWaId);
-    if (!actual || fila.createdAt > actual) {
-      escaladaPorWaId.set(fila.toWaId, fila.createdAt);
-    }
-  }
-
-  const ids = new Set<string>();
-  for (const fila of filas) {
-    const esperando = sinResponder(
-      {
-        lastInboundAt: fila.lastInboundAt,
-        lastConversationalOutboundAt: fila.waId
-          ? respuestaPorWaId.get(fila.waId) ?? null
-          : null,
-        agentMode: fila.agentMode,
-        assignedUserId: fila.assignedUserId,
-        lastEscalationAt: fila.waId
-          ? escaladaPorWaId.get(fila.waId) ?? null
-          : null,
-        lastActivityAt: actividadDe(fila),
-      },
-      ahora,
-    );
-    if (esperando) ids.add(fila.id);
-  }
-  return ids;
+  return sinResponderEntre(candidatas, salientes, ahora);
 }
 
 /**
@@ -633,72 +746,127 @@ export async function listConversations(
         ? sql`false`
         : inArray(conversations.id, deLaBandeja.slice(0, CORTE_DE_LISTA));
 
-  // Las dos en paralelo: la lista no depende de quién está sin responder, y
+  /**
+   * **Las 200 del corte, como subconsulta de ids y no como consulta aparte.**
+   *
+   * El `LIMIT` tiene que quedarse en SQL: sin él, «traeme el corte y además las
+   * que puedan estar sin responder» se convierte en traer la operación entera
+   * —1.725 filas con su contacto— para tirar 1.500 en memoria. Lo que sube en
+   * bytes es peor que lo que baja en viajes.
+   *
+   * No lleva el `leftJoin` de usuarios que sí lleva la consulta de afuera, y eso
+   * no cambia qué ids trae: `users.id` es clave primaria, así que ese join
+   * empareja como mucho una fila y no puede multiplicar ni perder ninguna.
+   */
+  const delCorte = db
+    .select({ id: conversations.id })
+    .from(conversations)
+    .innerJoin(contacts, eq(conversations.contactId, contacts.id))
+    .where(and(ofOperation(op, conversations.operationId), alcance))
+    .orderBy(desc(lastActivityAt))
+    .limit(CORTE_DE_LISTA)
+    .as("del_corte");
+
+  const estaEnElCorte = sql<boolean>`${delCorte.id} is not null`;
+  const puedeEstarSinResponder = puedeEstarEnSQL(ahora);
+  // La conversación anclada se pide **dentro de esta misma consulta**, y no
+  // aparte: el salto desde Pedidos trae un id que muchas veces ya está en la
+  // lista, y cuando no está era un viaje entero por una fila. El `and` con la
+  // operación es el mismo de siempre —lo pone el `where` de abajo—, así que un
+  // id de otro país sigue sin poder colarse arriba de la lista.
+  const esLaAnclada = pinnedId
+    ? eq(conversations.id, pinnedId)
+    : undefined;
+
+  // **Un viaje para las tres listas de conversaciones que el Inbox necesita.**
+  //
+  // Eran tres consultas con la misma forma: el corte, las candidatas a estar sin
+  // responder —que se calculan sobre TODAS y no sobre las 200, o el número
+  // miente— y las rezagadas, que son las candidatas que quedaron fuera del corte
+  // por viejas y que la lista tiene que mostrar igual. Las tres leen
+  // `conversations` con su contacto y su asignado; lo único que las distinguía
+  // era el `where`. Ahora el `where` es la unión de los tres y cada fila dice a
+  // cuál pertenece.
+  //
+  // Y va en paralelo con los salientes: la lista no depende de quién contestó, y
   // encadenarlas le sumaría un viaje entero a la pantalla que más se abre.
-  const [rows, sinResponderDeLaOperacion] = await Promise.all([
+  const [traidas, salientes] = await Promise.all([
     db
-      .select(selection)
+      .select({
+        ...selection,
+        estaEnElCorte,
+        puedeEstarSinResponder,
+      })
       .from(conversations)
       .innerJoin(contacts, eq(conversations.contactId, contacts.id))
       .leftJoin(users, eq(users.id, conversations.assignedUserId))
-      .where(and(ofOperation(op, conversations.operationId), alcance))
-      .orderBy(desc(lastActivityAt))
-      .limit(CORTE_DE_LISTA),
-    loadSinResponderIds(op, ahora),
+      .leftJoin(delCorte, eq(delCorte.id, conversations.id))
+      .where(
+        and(
+          ofOperation(op, conversations.operationId),
+          or(estaEnElCorte, puedeEstarSinResponder, esLaAnclada),
+        ),
+      )
+      .orderBy(desc(lastActivityAt)),
+    loadSalientesDelInbox(op),
   ]);
+
+  /** La fila como la lista la devuelve, sin las banderas que solo sirvieron para traerla. */
+  const sinBanderas = ({
+    estaEnElCorte: _corte,
+    puedeEstarSinResponder: _candidata,
+    ...fila
+  }: (typeof traidas)[number]) => fila;
+
+  const sinResponderDeLaOperacion = sinResponderEntre(
+    traidas
+      .filter((r) => r.puedeEstarSinResponder)
+      .map((r) => ({
+        id: r.conversation.id,
+        waId: r.contact.waId,
+        agentMode: r.contact.agentMode,
+        assignedUserId: r.conversation.assignedUserId,
+        lastInboundAt: r.conversation.lastInboundAt,
+        lastOutboundAt: r.conversation.lastOutboundAt,
+        createdAt: r.conversation.createdAt,
+      })),
+    salientes,
+    ahora,
+  );
 
   // Las que están esperando respuesta y quedaron fuera del corte por viejas.
   // Con bandeja se acotan a la bandeja: una conversación de operaciones no
   // aparece en la de ventas por estar sin responder.
+  //
+  // La unión **no se aplica al buscar**: buscando, la lista es el resultado de
+  // la búsqueda y nada más.
   const deLaBandejaSet = deLaBandeja === null ? null : new Set(deLaBandeja);
-  const yaEstan = new Set(rows.map((r) => r.conversation.id));
-  const rezagadas = term
-    ? []
-    : [...sinResponderDeLaOperacion].filter(
-        (id) =>
-          !yaEstan.has(id) && (deLaBandejaSet === null || deLaBandejaSet.has(id)),
-      );
-  if (rezagadas.length > 0) {
-    const extra = await db
-      .select(selection)
-      .from(conversations)
-      .innerJoin(contacts, eq(conversations.contactId, contacts.id))
-      .leftJoin(users, eq(users.id, conversations.assignedUserId))
-      .where(
-        and(
-          ofOperation(op, conversations.operationId),
-          inArray(conversations.id, rezagadas),
-        ),
-      );
-    rows.push(...extra);
-    // El orden lo pone la actividad, igual que el `ORDER BY` de arriba: las
-    // rezagadas son viejas y caen al final solas, pero ordenar acá deja de
-    // depender de eso.
-    rows.sort(
-      (a, b) =>
-        actividadDe(b.conversation).getTime() -
-        actividadDe(a.conversation).getTime(),
-    );
+  const muestra = new Set<string>();
+  for (const fila of traidas) {
+    const id = fila.conversation.id;
+    if (fila.estaEnElCorte) muestra.add(id);
+    else if (
+      !term &&
+      sinResponderDeLaOperacion.has(id) &&
+      (deLaBandejaSet === null || deLaBandejaSet.has(id))
+    ) {
+      muestra.add(id);
+    }
   }
 
-  // La conversación anclada también se verifica: el salto desde Pedidos trae un
-  // id, y un id de otro país no puede colarse arriba de la lista.
-  if (pinnedId && !rows.some((r) => r.conversation.id === pinnedId)) {
-    const [pinned] = await db
-      .select(selection)
-      .from(conversations)
-      .innerJoin(contacts, eq(conversations.contactId, contacts.id))
-      .leftJoin(users, eq(users.id, conversations.assignedUserId))
-      .where(
-        rowOfOperation(
-          op,
-          conversations.id,
-          pinnedId,
-          conversations.operationId,
-        ),
-      )
-      .limit(1);
-    if (pinned) rows.unshift(pinned);
+  // El orden lo pone la actividad, que es el `ORDER BY` con el que vinieron: las
+  // rezagadas son viejas y caen al final solas. Filtrar conserva ese orden, así
+  // que acá no hay que volver a ordenar nada.
+  const rows = traidas
+    .filter((r) => muestra.has(r.conversation.id))
+    .map(sinBanderas);
+
+  // La anclada va arriba de todo, venga de donde venga: quien la pidió por id
+  // tiene derecho a verla aunque quede fuera del corte, del filtro o de la
+  // bandeja. Ya vino en el mismo viaje; acá solo se la pone en su sitio.
+  if (pinnedId && !muestra.has(pinnedId)) {
+    const anclada = traidas.find((r) => r.conversation.id === pinnedId);
+    if (anclada) rows.unshift(sinBanderas(anclada));
   }
 
   const contactIds = rows.map((r) => r.contact.id);
@@ -713,20 +881,18 @@ export async function listConversations(
     }));
   }
 
-  // Los cuatro viajes que faltan van juntos: ninguno depende del otro, y en
-  // fila india cada uno le suma su ida y vuelta a la carga del Inbox.
+  // Los viajes que faltan van juntos: ninguno depende del otro, y en fila india
+  // cada uno le suma su ida y vuelta a la carga del Inbox.
   //
   // La bandeja de cada fila solo se deriva cuando hay bandeja: sin vendedor
   // configurado la pantalla no la muestra, y cobrarle una consulta a Katherine
   // por un dato que no se dibuja es la definición de regresión de rendimiento.
   //
-  // **Las escaladas, en cambio, se cargan siempre.** Es la consulta que el
-  // comentario anterior decidió no cobrarle: son 93 filas leídas por un índice
-  // sobre `to_wa_id`, y a cambio Katherine ve marcadas las conversaciones en las
-  // que un agente pidió expresamente que mirara una persona. Sin esto no las ve,
-  // porque `resolveRowMark` solo corría con bandeja y sin vendedor no hay
-  // bandeja.
-  const [dropiRows, shopifyRows, pedidos, escaladas] = await Promise.all([
+  // **Las escaladas ya no están acá y siguen cargándose siempre**: vinieron en
+  // el viaje de los salientes, que se hace con bandeja o sin ella. Es lo que
+  // hace que Katherine vea marcadas las conversaciones en las que un agente
+  // pidió expresamente que mirara una persona, y desde PRO-16 sale gratis.
+  const [dropiRows, shopifyRows, pedidos] = await Promise.all([
     // Ordenados para que al colapsar a un resumen por contacto gane el más
     // reciente.
     db
@@ -758,10 +924,6 @@ export async function listConversations(
       )
       .orderBy(desc(shopifyOrders.receivedAt)),
     bandeja === undefined ? null : loadOrderFactsByContact(op, contactIds),
-    loadEscalationsByWaId(
-      op,
-      rows.map((r) => r.contact.waId).filter((w): w is string => w !== null),
-    ),
   ]);
 
   const byContact = new Map<string, DropiSummary>();
@@ -813,7 +975,10 @@ export async function listConversations(
                 r.conversation.createdAt,
               ),
             ).inbox,
-      escalations: (r.contact.waId ? escaladas.get(r.contact.waId) : null) ?? [],
+      escalations:
+        (r.contact.waId
+          ? salientes.escaladasPorWaId.get(r.contact.waId)
+          : null) ?? [],
     },
   }));
 }
@@ -1026,16 +1191,50 @@ export async function setAssignment(
 export async function listApprovedWaTemplates(
   op: Operation,
 ): Promise<string[]> {
-  const rows = await db
-    .select({ name: waTemplates.name })
-    .from(waTemplates)
-    .where(
-      and(
-        ofOperation(op, waTemplates.operationId),
-        eq(waTemplates.status, "approved"),
-      ),
-    );
-  return rows.map((r) => r.name);
+  // **Cacheada desde PRO-15.** Es una de las cuatro lecturas que el Inbox pagaba
+  // en cada render para traer lo mismo: las plantillas las aprueba Meta y el
+  // catálogo se mueve una vez al mes. La invalida quien las escribe —
+  // `ensureKapsoTemplates` y `refreshKapsoTemplateStatuses`, en el worker—, y lo
+  // que acota el desfase entre procesos es el TTL. La consulta se queda acá
+  // adentro, con su filtro por operación a la vista de la red de alcance.
+  return plantillasAprobadasCache.recordar(op.id, async () => {
+    const rows = await db
+      .select({ name: waTemplates.name })
+      .from(waTemplates)
+      .where(
+        and(
+          ofOperation(op, waTemplates.operationId),
+          eq(waTemplates.status, "approved"),
+        ),
+      );
+    return rows.map((r) => r.name);
+  });
+}
+
+/**
+ * **De dónde cuelgan los PDF de las guías de esta operación**, ya sin la barra
+ * final.
+ *
+ * Vivía suelta dentro de `inbox/page.tsx` y sube acá por dos motivos. El
+ * primero es la red de alcance: la red lee `queries.ts`, así que una consulta a
+ * `dropi_connection` escrita en la pantalla es una consulta que nadie vigila —y
+ * esta es justamente la que, leída por `id = 1`, le habría puesto el CDN
+ * guatemalteco a las guías colombianas. El segundo es que hace falta un sitio
+ * donde poner la caché de PRO-15: la URL la escribe la pantalla de Conexión, o
+ * sea una vez al mes, y se leía en cada render del Inbox.
+ *
+ * Normaliza acá y no en la pantalla porque normalizar dos veces el mismo dato es
+ * cómo se separan: quien lo lea recibe la forma con la que se usa.
+ */
+export async function getAssetsBaseUrl(op: Operation): Promise<string> {
+  return urlDeArchivosCache.recordar(op.id, async () => {
+    const [row] = await db
+      .select({ assetsBaseUrl: dropiConnection.assetsBaseUrl })
+      .from(dropiConnection)
+      .where(ofOperation(op, dropiConnection.operationId))
+      .limit(1);
+    return (row?.assetsBaseUrl ?? "").replace(/\/$/, "");
+  });
 }
 
 /** Una conversación **de esta operación**. La de otra no existe para el panel. */
