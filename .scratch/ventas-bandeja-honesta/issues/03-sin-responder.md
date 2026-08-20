@@ -43,7 +43,8 @@ Lo que cuesta cada definición, medido sobre las 1.759 conversaciones:
 
 Una conversación entra si:
 
-- el **último mensaje es entrante** (la pelota es nuestra), **y**
+- el **último mensaje es entrante** comparado contra el último saliente
+  **conversacional**, no contra cualquiera — ver la CORRECCIÓN al final, **y**
 - el agente **no la lleva** (`agent_mode` en `false`), **y**
 - hubo actividad en los **últimos 30 días**, **y**
 - **no está asignada** a nadie.
@@ -154,6 +155,55 @@ La barra lateral **corta alrededor de los 14–16 caracteres** — hoy se ve
 - [ ] Ningún nombre nuevo se corta en la barra.
 - [ ] `pnpm -r typecheck` limpio y `pnpm --filter @wa/worker test` en verde.
 
+## CORRECCIÓN del 20-ago-2026 — leé esto antes de escribir la consulta
+
+**El ticket decía que «la pelota es nuestra» se mide contra el último saliente.
+Es incorrecto, y se corrigió con el número en la mano al verificar el 02.**
+
+Dos cosas que el ticket daba por ciertas y no lo son:
+
+1. **`last_outbound_at` no está rota.** Los 855 desfases son **todos anteriores
+   al 28-jul-2026**; agosto va con 569 conversaciones y **0 nulos**. Ya se
+   arregló sola. Pero eso no la vuelve la fuente para esto — ver el punto 2.
+
+2. **Un saliente automático no es una respuesta.** El ticket comparaba el último
+   entrante contra **todos** los salientes, así que una notificación logística
+   contaba como «ya contestamos». Es exactamente lo que el árbol de diseño
+   descartó para `unread_count` (decisión Q8: *«convertiría cada notificación
+   logística en un "alguien leyó esto", que es falso»*), y se coló acá por leerlo
+   desde `messages`, donde el tipo de saliente no se distingue.
+
+**La regla correcta:** el último entrante se compara contra el último saliente
+**conversacional** — `outbound_messages` con `source in ('agent','manual')`, que
+es la misma definición que el 02 dejó en
+`apps/worker/src/inbox/saliente-conversacional.ts`. **No la reimplementes: usala.**
+
+Medido contra producción el 20-ago-2026, con la regla completa (agente apagado ·
+30 días · no asignada):
+
+| Definición | «Sin responder» |
+| -- | --: |
+| Contra **todos** los salientes (lo que decía el ticket) | 20 |
+| **Contra el último saliente conversacional** ← esta | **39** |
+| Base: agente apagado, 30 días, no asignada, con entrante | 44 |
+
+**Los 19 de diferencia son todos notificaciones, verificado uno por uno.** Cinco
+son `dropi_status` y dos `confirmation_ack`; los otros catorce salieron por una
+puerta que no dejó fila en `outbound_messages` y **ninguno es `from_agent`** —
+son del mismo tipo: *«Tu pedido ha sido confirmado»*, *«Te enviaremos la
+actualización de tu envío»*, *«Estamos pendientes para que recibas tu pedido lo
+antes posible»*. Ese último es, textualmente, la vista previa de `El_angel777` en
+la captura que originó todo este lote: un cliente que escribió y solo recibió un
+robot.
+
+**Es decir: el número sube de 20 a 39, y sube bien.** Los 19 que entran son
+clientes a los que nadie contestó.
+
+**Ojo con las 14 sin fila en el outbox:** son históricas, de antes de que el
+outbox cubriera todo. Al calcular, la ausencia de un saliente conversacional
+**cuenta como «no contestamos»** —que es lo correcto y lo conservador—, pero
+dejalo dicho en el código para que nadie lo lea como un bug.
+
 ## No-regresión
 
 Es solo lectura: ninguna de estas reglas escribe nada. Lo que hay que cuidar es
@@ -161,9 +211,6 @@ Es solo lectura: ninguna de estas reglas escribe nada. Lo que hay que cuidar es
 abre todo el día. Medí el tiempo de carga del Inbox antes y después contra
 producción, con las 1.759 conversaciones reales.
 
-Y la trampa de verificación: **los números de este ticket no cierran hasta que el
-02 esté desplegado.** Antes de eso, «el último mensaje es entrante» calculado
-desde `last_outbound_at` da 85 y calculado desde `messages` da 68 — la diferencia
-son las 536 conversaciones cuya columna del saliente está en `null`. Mientras el
-02 no esté, **calculalo desde `messages`** y dejá dicho en el código que la
-columna es la fuente correcta una vez arreglada.
+El 02 **ya está mergeado y desplegado**, así que tus números cierran desde el
+primer día: `outbound_messages.source` es la fuente y está completa desde el
+28-jul.
