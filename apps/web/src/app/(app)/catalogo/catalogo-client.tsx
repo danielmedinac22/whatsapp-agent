@@ -887,9 +887,10 @@ function Anuncios({
 }) {
   const [adId, setAdId] = useState("");
   const [busy, setBusy] = useState(false);
+  const anuncios = useAnunciosDeMeta();
 
-  async function agregar() {
-    const id = adId.trim();
+  async function agregar(desde?: string) {
+    const id = (desde ?? adId).trim();
     if (!id) return;
     setBusy(true);
     onError(null);
@@ -926,6 +927,16 @@ function Anuncios({
         Anuncios que apuntan acá · {row.ads.length}
       </h3>
 
+      {anuncios?.account === "connected" ? (
+        <ElegirAnuncio
+          anuncios={anuncios.ads}
+          yaRegistrados={row.ads.map((a) => a.adId)}
+          truncado={anuncios.truncated}
+          busy={busy}
+          onElegir={(id) => agregar(id)}
+        />
+      ) : null}
+
       <div className="flex gap-1.5">
         <input
           className="app-input"
@@ -936,12 +947,16 @@ function Anuncios({
             if (e.key === "Enter") agregar();
           }}
         />
-        <button className="app-button shrink-0" onClick={agregar} disabled={busy}>
+        <button
+          className="app-button shrink-0"
+          onClick={() => agregar()}
+          disabled={busy}
+        >
           Agregar
         </button>
       </div>
 
-      <CuentaPublicitariaSinConectar />
+      {anuncios?.account !== "connected" && <CuentaPublicitariaSinConectar />}
 
       {row.ads.length === 0 ? (
         <div className="rounded-md border border-[rgba(248,113,113,0.35)] bg-[rgba(248,113,113,0.08)] px-2.5 py-2">
@@ -1245,6 +1260,152 @@ function Archivos({
         )}
       </button>
     </section>
+  );
+}
+
+/**
+ * La lista de anuncios de Meta, leída una vez por sesión de pantalla.
+ *
+ * La caché es de módulo y no de componente porque la ficha se monta y se
+ * desmonta cada vez que el admin cambia de producto, y registrar anuncios en
+ * varios productos seguidos es justamente el trabajo recurrente que el ticket
+ * quiere que dure segundos. Con caché por componente, cada cambio de producto
+ * pagaría una vuelta entera a la Graph API.
+ *
+ * Un fallo devuelve `null` y no lanza: sin lista, la ficha muestra el campo a
+ * mano — el respaldo permanente — en vez de romper la pantalla de catálogo.
+ */
+let anunciosPromise: Promise<AdsRead | null> | null = null;
+
+type AdsRead =
+  | { account: "not_configured" }
+  | { account: "no_token" }
+  | { account: "unreachable"; adAccountId: string; error: string }
+  | { account: "connected"; adAccountId: string; ads: AnuncioDeMeta[]; truncated: boolean };
+
+type AnuncioDeMeta = {
+  id: string;
+  name: string;
+  status: string;
+  campaignName: string | null;
+};
+
+function useAnunciosDeMeta(): AdsRead | null {
+  const [read, setRead] = useState<AdsRead | null>(null);
+  useEffect(() => {
+    let alive = true;
+    anunciosPromise ??= fetch("/api/meta/ads", { cache: "no-store" })
+      .then((r) => (r.ok ? (r.json() as Promise<AdsRead>) : null))
+      .catch(() => null);
+    anunciosPromise.then((v) => {
+      if (alive) setRead(v);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return read;
+}
+
+/**
+ * Elegir el anuncio por su nombre.
+ *
+ * **Se busca por nombre de anuncio y de campaña a la vez**, y eso no es
+ * generosidad del buscador: de 200 anuncios de la cuenta, 92 comparten nombre
+ * —«VIDEO 1» aparece 23 veces— así que el nombre del anuncio solo no distingue
+ * nada. Lo que identifica es la campaña, que es donde vive el producto y el
+ * país (`DHT WHATSAPP SEBAS CBO GTM 12 08 2026`).
+ *
+ * **Los ya registrados no desaparecen de la lista: se marcan.** Desaparecer
+ * haría que el admin busque un anuncio, no lo encuentre y crea que Meta no lo
+ * devolvió — cuando lo que pasa es que ya está hecho.
+ *
+ * El campo a mano sigue abajo y no se toca. Es la regla del nivel 3: «F no
+ * reemplaza a las otras, las envuelve», y es el camino que queda el día que el
+ * token se revoque.
+ */
+function ElegirAnuncio({
+  anuncios,
+  yaRegistrados,
+  truncado,
+  busy,
+  onElegir,
+}: {
+  anuncios: AnuncioDeMeta[];
+  yaRegistrados: string[];
+  truncado: boolean;
+  busy: boolean;
+  onElegir: (adId: string) => void;
+}) {
+  const [q, setQ] = useState("");
+  const registrados = useMemo(() => new Set(yaRegistrados), [yaRegistrados]);
+  const termino = q.trim().toLowerCase();
+  const encontrados = useMemo(() => {
+    if (!termino) return anuncios.slice(0, 8);
+    return anuncios
+      .filter(
+        (a) =>
+          a.name.toLowerCase().includes(termino) ||
+          (a.campaignName ?? "").toLowerCase().includes(termino) ||
+          a.id.includes(termino),
+      )
+      .slice(0, 8);
+  }, [anuncios, termino]);
+
+  return (
+    <div className="space-y-1.5">
+      <input
+        className="app-input w-full"
+        placeholder={`Buscar entre ${anuncios.length} anuncios de Meta…`}
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        spellCheck={false}
+      />
+      {encontrados.length === 0 ? (
+        <p className="app-muted text-[11px]">
+          Ningún anuncio coincide{truncado ? " entre los 500 leídos" : ""}. Si
+          es reciente, puede tardar unos minutos en aparecer — mientras tanto se
+          pega el ID abajo.
+        </p>
+      ) : (
+        <div className="space-y-0.5">
+          {encontrados.map((a) => {
+            const ya = registrados.has(a.id);
+            return (
+              <button
+                key={a.id}
+                type="button"
+                disabled={busy || ya}
+                onClick={() => onElegir(a.id)}
+                className={`flex w-full items-baseline gap-2 rounded-md border px-2 py-1.5 text-left transition ${
+                  ya
+                    ? "cursor-default border-[var(--color-border)] bg-[rgba(18,35,48,0.35)] opacity-60"
+                    : "border-[var(--color-border)] bg-[rgba(18,35,48,0.6)] hover:border-[var(--color-accent)]"
+                }`}
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[12px] font-semibold text-[var(--color-text)]">
+                    {a.name}
+                  </span>
+                  <span className="app-muted block truncate text-[11px]">
+                    {a.campaignName ?? "sin campaña"}
+                  </span>
+                </span>
+                <span
+                  className={`shrink-0 text-[10px] uppercase ${
+                    a.status === "ACTIVE"
+                      ? "text-[var(--color-success)]"
+                      : "text-[var(--color-text-soft)]"
+                  }`}
+                >
+                  {ya ? "ya registrado" : a.status === "ACTIVE" ? "activo" : "pausado"}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 

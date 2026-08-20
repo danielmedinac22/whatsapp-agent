@@ -19,6 +19,7 @@ import {
   type SalesOrderJob,
 } from "../jobs/sales-order";
 import { getShopifyConnection, verifyStoreConnection } from "./admin";
+import { storeCredential } from "./token";
 import { REQUESTED_SCOPES, resolveStoreCapabilities } from "./scopes";
 import { storeWriteMode } from "./write-mode";
 
@@ -42,7 +43,12 @@ storeClosings.get("/store/status", async (c) => {
   const conn = await getShopifyConnection(op);
   const writeMode = storeWriteMode();
 
-  if (!conn?.shopDomain || !conn.adminAccessToken) {
+  // **La pregunta es si hay credencial, no si hay columna de token.** Con una
+  // app del Dev Dashboard `admin_access_token` está vacía a propósito y la
+  // tienda está perfectamente conectada: preguntar por la columna hacía que
+  // esta pantalla dijera «tienda no conectada» sobre una tienda que el catálogo
+  // estaba leyendo bien en la pantalla de al lado.
+  if (!conn || storeCredential(conn).kind === "none") {
     return c.json({
       store: "not_connected" as const,
       writeMode,

@@ -6,6 +6,7 @@ import {
   getSingleActiveOperation,
 } from "../operations";
 import { logger } from "../lib/logger";
+import { storeCredential } from "../shopify/token";
 import {
   extractProductIdsFromOrder,
   getProductsByIds,
@@ -73,7 +74,11 @@ export async function buildShopifyContextBlock(
   if (!op) return null;
 
   const conn = await getShopifyConnection(op);
-  if (!conn?.shopDomain || !conn?.adminAccessToken) return null;
+  // Igual que en el resto: lo que decide es **si hay credencial**. Preguntar
+  // por `admin_access_token` dejaba al vendedor conversando sin la ficha del
+  // producto contra una tienda conectada con el modelo nuevo — y sin error, que
+  // es el modo de fallar más caro de este archivo.
+  if (!conn || storeCredential(conn).kind === "none") return null;
 
   const since = new Date(Date.now() - ORDER_LOOKBACK_DAYS * 24 * 60 * 60_000);
 

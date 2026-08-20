@@ -7,9 +7,28 @@ type ConnectionState = {
   shopDomain: string | null;
   apiVersion: string | null;
   hasToken: boolean;
+  /**
+   * Con qué clase de credencial está conectada la tienda. **Nunca vuelve el
+   * secreto**, solo su forma — que es lo único que la pantalla necesita para
+   * saber qué formulario mostrar y qué decir en el detalle.
+   */
+  credentialKind: CredentialKind;
+  /** El client id **sí** vuelve: no es secreto y es lo que identifica la app. */
+  clientId: string | null;
   connectedAt: string | null;
   updatedAt: string | null;
 } | null;
+
+/**
+ * Las dos formas vivas de credencial de Shopify, y la ausencia.
+ *
+ * No es una preferencia del usuario: **la decide la tienda**. Una tienda vieja
+ * emite un `shpat_` fijo; la de Guatemala ya no emite ninguno y solo soporta el
+ * modelo del Dev Dashboard, donde se guardan client id y secret y el sistema
+ * acuña un token que dura 24 horas. Por eso las dos siguen existiendo en la
+ * pantalla: quitar la vieja dejaría sin conectar a una tienda que funciona.
+ */
+type CredentialKind = "static" | "client_credentials" | "none";
 
 type Capability = {
   capability: string;
@@ -60,6 +79,14 @@ export function ShopifyPanel() {
   const [loaded, setLoaded] = useState(false);
   const [domain, setDomain] = useState("");
   const [token, setToken] = useState("");
+  const [clientId, setClientId] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
+  // El modelo nuevo por defecto: es el único que soporta una tienda creada hoy,
+  // y ofrecer primero el `shpat_` mandaría al admin a buscar en el Dev Dashboard
+  // un token que ya no existe.
+  const [credKind, setCredKind] = useState<Exclude<CredentialKind, "none">>(
+    "client_credentials",
+  );
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(
@@ -75,6 +102,10 @@ export function ShopifyPanel() {
       const j = (await conn.json()) as ConnectionState;
       setSnap(j);
       if (j?.shopDomain) setDomain(j.shopDomain);
+      if (j?.clientId) setClientId(j.clientId);
+      if (j?.credentialKind && j.credentialKind !== "none") {
+        setCredKind(j.credentialKind);
+      }
     }
     if (st.ok) setStatus((await st.json()) as StoreStatus);
   }, []);
@@ -100,10 +131,15 @@ export function ShopifyPanel() {
       const r = await fetch("/api/shopify/connection", {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          shopDomain: domain.trim(),
-          adminAccessToken: token.trim(),
-        }),
+        body: JSON.stringify(
+          credKind === "static"
+            ? { shopDomain: domain.trim(), adminAccessToken: token.trim() }
+            : {
+                shopDomain: domain.trim(),
+                clientId: clientId.trim(),
+                clientSecret: clientSecret.trim(),
+              },
+        ),
       });
       const j = (await r.json()) as { ok?: boolean; shopName?: string; error?: string };
       if (!r.ok || !j.ok) {
@@ -115,6 +151,7 @@ export function ShopifyPanel() {
       }
       setMsg({ kind: "ok", text: `conectado a "${j.shopName ?? domain}"` });
       setToken("");
+      setClientSecret("");
       setEditing(false);
       await refresh();
     } catch (err) {
@@ -142,6 +179,19 @@ export function ShopifyPanel() {
   };
 
   const connected = Boolean(snap?.hasToken);
+  /**
+   * **Siempre hace falta la credencial entera, también al editar.**
+   *
+   * El formulario decía «déjalo vacío para mantener el actual» y era mentira:
+   * el worker rechaza una conexión sin credencial y devuelve `400`. Guardar
+   * medio par —client id nuevo con el secret viejo— es peor todavía: se
+   * guardaría una credencial que no acuña nada, y el fallo aparecería en el
+   * primer cierre, no acá.
+   */
+  const credencialCompleta =
+    credKind === "static"
+      ? token.trim().length > 0
+      : clientId.trim().length > 0 && clientSecret.trim().length > 0;
 
   return (
     <div className="app-card w-full max-w-5xl p-4">
@@ -173,7 +223,20 @@ export function ShopifyPanel() {
                   </p>
                   <div className="mt-2 grid gap-x-6 gap-y-1 text-xs text-[var(--color-text-dim)] sm:grid-cols-2">
                     <DetailRow label="API version" value={snap?.apiVersion ?? "—"} />
-                    <DetailRow label="Token" value="•••••• guardado" />
+                    <DetailRow
+                      label="Credencial"
+                      value={
+                        snap?.credentialKind === "client_credentials"
+                          ? `app del Dev Dashboard · ${snap.clientId ?? "sin id"}`
+                          : "token de app privada · •••••• guardado"
+                      }
+                    />
+                    {snap?.credentialKind === "client_credentials" && (
+                      <DetailRow
+                        label="Token"
+                        value="se acuña solo · dura 24 h"
+                      />
+                    )}
                     {snap?.connectedAt && (
                       <DetailRow
                         label="Conectado el"
@@ -250,29 +313,64 @@ export function ShopifyPanel() {
                   spellCheck={false}
                 />
               </label>
-              <label className="space-y-1 text-sm">
-                <span className="text-[11px] uppercase text-[var(--color-text-soft)]">
-                  Admin API access token
-                  {connected && (
-                    <span className="ml-2 text-[var(--color-text-dim)]">
-                      (déjalo vacío para mantener el actual)
+              {credKind === "static" ? (
+                <label className="space-y-1 text-sm">
+                  <span className="text-[11px] uppercase text-[var(--color-text-soft)]">
+                    Admin API access token
+                  </span>
+                  <input
+                    className="app-input w-full"
+                    placeholder="shpat_..."
+                    type="password"
+                    value={token}
+                    onChange={(e) => setToken(e.target.value)}
+                    name="shopify-admin-token"
+                    autoComplete="new-password"
+                    data-1p-ignore
+                    data-lpignore="true"
+                    spellCheck={false}
+                  />
+                </label>
+              ) : (
+                <>
+                  <label className="space-y-1 text-sm">
+                    <span className="text-[11px] uppercase text-[var(--color-text-soft)]">
+                      Client ID
                     </span>
-                  )}
-                </span>
-                <input
-                  className="app-input w-full"
-                  placeholder="shpat_..."
-                  type="password"
-                  value={token}
-                  onChange={(e) => setToken(e.target.value)}
-                  name="shopify-admin-token"
-                  autoComplete="new-password"
-                  data-1p-ignore
-                  data-lpignore="true"
-                  spellCheck={false}
-                />
-              </label>
+                    <input
+                      className="app-input w-full"
+                      placeholder="55da1fc1b0b8..."
+                      value={clientId}
+                      onChange={(e) => setClientId(e.target.value)}
+                      name="shopify-client-id"
+                      autoComplete="off"
+                      data-1p-ignore
+                      data-lpignore="true"
+                      spellCheck={false}
+                    />
+                  </label>
+                  <label className="space-y-1 text-sm">
+                    <span className="text-[11px] uppercase text-[var(--color-text-soft)]">
+                      Client secret
+                    </span>
+                    <input
+                      className="app-input w-full"
+                      placeholder="shpss_..."
+                      type="password"
+                      value={clientSecret}
+                      onChange={(e) => setClientSecret(e.target.value)}
+                      name="shopify-client-secret"
+                      autoComplete="new-password"
+                      data-1p-ignore
+                      data-lpignore="true"
+                      spellCheck={false}
+                    />
+                  </label>
+                </>
+              )}
             </div>
+
+            <ElegirCredencial value={credKind} onChange={setCredKind} />
 
             <ScopesHelp />
 
@@ -281,7 +379,7 @@ export function ShopifyPanel() {
             <div className="flex flex-wrap gap-3">
               <button
                 onClick={save}
-                disabled={busy || !domain || (!connected && !token)}
+                disabled={busy || !domain || !credencialCompleta}
                 className="app-button"
               >
                 {busy ? "Verificando…" : connected ? "Actualizar" : "Conectar"}
@@ -291,6 +389,8 @@ export function ShopifyPanel() {
                   onClick={() => {
                     setEditing(false);
                     setToken("");
+                    setClientSecret("");
+                    setClientId(snap?.clientId ?? "");
                     setDomain(snap?.shopDomain ?? "");
                     setMsg(null);
                   }}
@@ -349,9 +449,10 @@ function NotConnected() {
             </li>
           </ul>
           <p className="text-sm leading-6 text-[var(--color-text-dim)]">
-            Para conectarla hace falta un token de administración de Shopify.
-            Pégalo aquí abajo y se verifica <span className="italic">leyendo</span>,
-            sin escribir nada.
+            Para conectarla hacen falta las credenciales de la app de Shopify —
+            el client id y el secret del Dev Dashboard, o un token fijo si la
+            tienda es de las viejas. Pégalas aquí abajo y se verifican{" "}
+            <span className="italic">leyendo</span>, sin escribir nada.
           </p>
         </div>
       </div>
@@ -385,6 +486,54 @@ function WriteModeBadge({ mode }: { mode: WriteMode }) {
           : "Un cierre crea el pedido de verdad en tu tienda."}
       </span>
     </div>
+  );
+}
+
+/**
+ * Elegir con qué se conecta la tienda.
+ *
+ * Está **debajo** de los campos y no arriba a propósito: el caso abrumadoramente
+ * más común es el modelo nuevo, que ya viene elegido, y poner primero una
+ * pregunta que casi nadie tiene que contestar convierte conectar una tienda en
+ * un examen. Quien tiene una tienda vieja va a buscar el otro camino; quien no,
+ * ni lo mira.
+ */
+function ElegirCredencial({
+  value,
+  onChange,
+}: {
+  value: "static" | "client_credentials";
+  onChange: (v: "static" | "client_credentials") => void;
+}) {
+  return (
+    <p className="text-[11px] leading-relaxed text-[var(--color-text-dim)]">
+      {value === "client_credentials" ? (
+        <>
+          La app se creó en el <strong>Dev Dashboard</strong>: el token de
+          administración no es fijo, se pide con el client id y el secret y se
+          renueva solo cada 24 horas.{" "}
+          <button
+            type="button"
+            className="underline underline-offset-2 hover:text-[var(--color-text)]"
+            onClick={() => onChange("static")}
+          >
+            Tengo un token fijo (shpat_)
+          </button>
+        </>
+      ) : (
+        <>
+          Token fijo de <strong>app privada</strong>: se pega una vez y no vence.
+          Las tiendas creadas desde 2025 ya no emiten ninguno.{" "}
+          <button
+            type="button"
+            className="underline underline-offset-2 hover:text-[var(--color-text)]"
+            onClick={() => onChange("client_credentials")}
+          >
+            Tengo client id y secret
+          </button>
+        </>
+      )}
+    </p>
   );
 }
 

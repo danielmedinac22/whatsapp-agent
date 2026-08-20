@@ -16,6 +16,8 @@ function operacion(id: string, countryCode: string, currency: string): Operation
     // Columna de la `0023`. Nada de este archivo la mira: está porque una fila
     // de `operations` ahora la tiene, y el tipado estricto no deja fingir que no.
     capiDatasetId: null,
+    // Columna de la `0029`, por lo mismo que la de arriba: la fila la tiene.
+    metaAdAccountId: null,
     createdAt: new Date(0),
     updatedAt: new Date(0),
   };

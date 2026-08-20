@@ -4,13 +4,13 @@
 
 **Blocked by:** 02
 
-**Status:** abierto — los archivos enviables entraron con la `0025` (mergeado y desplegado). Falta **solo** la lista de anuncios leída de Meta, que espera un token con `ads_read` sobre `act_2042265076620189` que trae Vorare
+**Status:** la mitad de Meta está **cerrada** (19-ago-2026: llegó el token con `ads_read` y la lista está en producción). Quedan abiertos los dos criterios de archivo, que no dependen de este ticket sino de que el vendedor esté encendido
 
 - [x] El admin pega un identificador de anuncio en un solo campo y lo asocia a uno o varios productos.
 - [x] Un mismo anuncio puede quedar asociado a varios productos, y se ve claramente a cuáles.
 - [ ] El admin marca por archivo si es enviable, y solo esos llegan al cliente. *(el interruptor, el conteo y la lectura que filtra, sí — migración `0025`; **el envío todavía no existe**: es `ventas-conversacion/03`)*
 - [ ] Un archivo desmarcado deja de enviarse desde la siguiente conversación. *(verificado en la lectura, sin caché; de punta a punta no se puede ver hasta que haya envío)*
-- [ ] **La interacción de registrar un anuncio nuevo es de segundos, no de minutos** *(el campo a mano lo cumple; elegir por nombre de la lista de Meta espera la credencial)* — es la que determina cuánto soporte recurrente genera el módulo después de entregado.
+- [x] **La interacción de registrar un anuncio nuevo es de segundos, no de minutos** *(llegó el token: el anuncio se elige por su nombre de la lista de Meta, con el campo a mano como respaldo)* — es la que determina cuánto soporte recurrente genera el módulo después de entregado.
 
 ## Answer — el alcance sin la credencial de Meta (18-ago-2026)
 
@@ -210,3 +210,57 @@ Dos cosas, ninguna de esquema:
 2. **El envío de los archivos**, que es `ventas-conversacion/03`. La lectura que
    ese ticket necesita ya está hecha y probada; lo que falta es mandar el archivo
    y registrarlo en el hilo.
+
+---
+
+## Answer — llegó el token, y el anuncio ya se elige por su nombre (19-ago-2026)
+
+**La mitad de Meta está cerrada.** El token de usuario de sistema con `ads_read`
+sobre `act_2042265076620189` llegó, está cargado en Railway
+(`META_ADS_SYSTEM_USER_TOKEN`) y la lista se lee en producción.
+
+### La forma decidida, funcionando
+
+En la ficha de un producto hay un buscador que filtra **por nombre de anuncio y
+por nombre de campaña a la vez**, con el estado (activo/pausado) a la vista y los
+ya registrados marcados en vez de escondidos — desaparecer haría que el admin
+busque un anuncio, no lo encuentre, y crea que Meta no lo devolvió.
+
+**El campo a mano sigue abajo y no se tocó.** Es la regla del nivel 3 —«F no
+reemplaza a las otras, las envuelve»— y es el camino que queda el día que
+revoquen el token. La pantalla de «cuenta sin conectar» tampoco desapareció:
+ahora aparece solo cuando de verdad no hay cuenta.
+
+### El defecto que solo se vio ejecutando
+
+La cuenta tiene **905 anuncios y 24 activos** (medido, no estimado). Con una sola
+pasada con tope, el recorte pasaba **antes** del orden: un anuncio recién lanzado
+podía caer en la posición 700 y la pantalla habría dicho «ningún anuncio
+coincide» sobre el anuncio que la persona acaba de crear — que es literalmente el
+caso para el que existe la lista.
+
+Ahora son dos pasadas: **los activos filtrados por Meta primero, completos**, y
+después el resto hasta el tope. Así el recorte solo se lleva pausados viejos. En
+producción: 500 leídos, truncado, **24 activos, todos presentes y primeros**,
+incluida la campaña `BERBERINE WHATSAPP CBO GTM 19 08 2026`, creada ese mismo
+día.
+
+### La cuenta publicitaria es por operación, no una constante
+
+`operations.meta_ad_account_id` (migración `0029`), configurable en Conexión →
+Meta. Elegir un anuncio colombiano de la lista de Guatemala es exactamente el
+error que la migración multi-operación salió a borrar.
+
+### Por qué el ticket no se cierra entero
+
+Los dos criterios de archivo (`el admin marca por archivo si es enviable` y `un
+archivo desmarcado deja de enviarse`) siguen sin marcar, y **no por esta ola**:
+lo que decide qué sale está construido y probado, pero comprobar que «solo esos
+llegan al cliente» pide una conversación real con el vendedor encendido, y
+`sales_agent_settings.display_name` sigue vacío a propósito.
+
+Y sigue en pie la trampa del nivel 3, que este ticket no puede resolver: **F
+resuelve registrar, no reconocer.** La señal de «llegaron N clics de anuncio»
+sigue siendo lo primero que se ve en `/catalogo`, y con `ad_id` = 0 sigue
+diciendo que registrar acá no sirve de nada hasta que la pauta apunte al número
+que escucha el panel.

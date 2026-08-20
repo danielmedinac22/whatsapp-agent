@@ -10,6 +10,7 @@ import {
   verifyStoreConnection,
 } from "../shopify/admin";
 import { resolveStoreCapabilities } from "../shopify/scopes";
+import { storeCredential } from "../shopify/token";
 
 export const shopifyConn = new Hono();
 
@@ -27,10 +28,16 @@ shopifyConn.get("/connection", async (c) => {
   const row = await getShopifyConnection(await panelOperation(c));
   if (!row) return c.json(null);
   // Never return the raw token to the browser; just signal it's set.
+  // Nunca vuelve al navegador ni el token ni el secret: solo **qué clase** de
+  // credencial hay, que es lo único que la pantalla necesita para saber qué
+  // formulario mostrar.
+  const cred = storeCredential(row);
   return c.json({
     shopDomain: row.shopDomain,
     apiVersion: row.apiVersion,
-    hasToken: Boolean(row.adminAccessToken),
+    hasToken: cred.kind !== "none",
+    credentialKind: cred.kind,
+    clientId: row.clientId,
     connectedAt: row.connectedAt,
     updatedAt: row.updatedAt,
   });
@@ -47,11 +54,16 @@ shopifyConn.put("/connection", async (c) => {
   // no-regresión — guardar esta conexión le da al sistema capacidad de crear
   // pedidos en una tienda viva, y la primera escritura la decide una persona
   // encendiendo el interruptor de modo seco, no este formulario.
-  const verified = await verifyStoreConnection({
+  const credential = {
     shopDomain: v.shopDomain,
-    adminAccessToken: v.adminAccessToken,
-    apiVersion,
-  });
+    adminAccessToken: v.adminAccessToken ?? null,
+    clientId: v.clientId ?? null,
+    clientSecret: v.clientSecret ?? null,
+  };
+  // La credencial nueva se estrena acuñando y leyendo: con el par del Dev
+  // Dashboard, verificar prueba además que el grant funciona — que es la mitad
+  // que un token fijo no tiene y la que se va a repetir cada 24 horas.
+  const verified = await verifyStoreConnection({ ...credential, apiVersion });
   if (!verified.ok) {
     return c.json({ error: `no se pudo conectar: ${verified.error}` }, 400);
   }
@@ -64,8 +76,7 @@ shopifyConn.put("/connection", async (c) => {
   const now = new Date();
   const values = {
     operationId: op.id,
-    shopDomain: v.shopDomain,
-    adminAccessToken: v.adminAccessToken,
+    ...credential,
     apiVersion,
     connectedAt: now,
     updatedAt: now,

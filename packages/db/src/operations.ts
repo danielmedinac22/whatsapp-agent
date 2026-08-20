@@ -314,3 +314,39 @@ export async function resolveOperationForContact(
   }
   return requireSoleActiveOperation();
 }
+
+/**
+ * Los dos identificadores de Meta de una operación: a qué cuenta publicitaria
+ * se le leen los anuncios y a qué dataset se le reportan las conversiones.
+ *
+ * Van juntos en un solo accesor porque son la misma pantalla y el mismo acto —
+ * «conectar Meta para este país»— y porque separarlos invita a la asimetría que
+ * este proyecto ya pagó: dos formas de guardar configuración de la misma
+ * operación se desincronizan en cuanto una se toque.
+ *
+ * **Vaciar un campo es una operación legítima y explícita**, no un descuido:
+ * `null` guarda `null` y apaga la lectura o el reporte. Por eso el tipo pide
+ * los dos valores en vez de aceptar parciales — un `undefined` que a veces
+ * borra y a veces conserva es cómo se pierde un dataset sin que nadie lo note.
+ */
+export async function setOperationMetaConfig(
+  operationId: OperationId,
+  config: { metaAdAccountId: string | null; capiDatasetId: string | null },
+): Promise<Operation> {
+  const clean = (v: string | null) => {
+    const t = v?.trim();
+    return t ? t : null;
+  };
+  const [row] = await getDb()
+    .update(operations)
+    .set({
+      metaAdAccountId: clean(config.metaAdAccountId),
+      capiDatasetId: clean(config.capiDatasetId),
+      updatedAt: new Date(),
+    })
+    .where(eq(operations.id, operationId))
+    .returning();
+  invalidateOperationsCache();
+  if (!row) throw new Error(`la operación ${operationId} no existe`);
+  return row;
+}

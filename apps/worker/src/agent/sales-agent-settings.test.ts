@@ -17,6 +17,8 @@ function operacion(id: string, countryCode: string, currency: string): Operation
     // Lo agregó la 0023: el destino de conversiones de la operación. Nulo en el
     // fixture porque nada de este módulo lo mira.
     capiDatasetId: null,
+    // Columna de la `0029`, por lo mismo que la de arriba: la fila la tiene.
+    metaAdAccountId: null,
     createdAt: new Date(0),
     updatedAt: new Date(0),
   };

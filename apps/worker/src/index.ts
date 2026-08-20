@@ -18,6 +18,7 @@ import { events } from "./routes/events";
 import { agent } from "./routes/agent";
 import { shopify } from "./routes/shopify";
 import { shopifyConn } from "./routes/shopify-connection";
+import { metaAds } from "./meta/ads-routes";
 import { catalogStore } from "./shopify/catalog-routes";
 import { storeClosings } from "./shopify/closing-routes";
 import { capiReporting } from "./capi/reporting-routes";
@@ -85,6 +86,7 @@ app.route("/api/tienda", storeClosings);
 // Si el reporte de conversiones a Meta está funcionando, y qué quedó sin
 // resolver. Sin esta pantalla, que no se envíe nada se descubre en un mes.
 app.route("/api/capi", capiReporting);
+app.route("/api/meta", metaAds);
 app.route("/api/dropi", dropi);
 app.route("/api/kapso", kapsoAdmin);
 

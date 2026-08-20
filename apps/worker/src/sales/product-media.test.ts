@@ -41,6 +41,8 @@ function operacion(id: string, countryCode: string, currency: string): Operation
     currency,
     status: "active",
     capiDatasetId: null,
+    // Columna de la `0029`, por lo mismo que la de arriba: la fila la tiene.
+    metaAdAccountId: null,
     createdAt: new Date(0),
     updatedAt: new Date(0),
   };
