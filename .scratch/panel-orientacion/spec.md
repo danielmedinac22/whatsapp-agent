@@ -98,16 +98,180 @@ viejas, y las pinta todas igual.
 dos estados ocupa tres líneas. Se eligió legibilidad sobre densidad, coherente
 con los otros dos veredictos.
 
-### La decisión que queda abierta
+### Las cuatro decisiones del 20-ago-2026, por la tarde
 
-**Si el panel conserva modo oscuro o se compromete con el claro.** No la resolvió
-ninguna ronda y **hay que resolverla antes de escribir CSS**, porque cambia el
-tamaño del trabajo: con modo oscuro cada token necesita su pareja y cada decisión
-de contraste se toma dos veces.
+Las tomó el dueño del producto sobre medidas, no sobre opiniones. Cierran lo que
+quedaba abierto y corrigen dos valores del nivel 1 que no sobrevivieron al
+contraste.
+
+**1. El panel se compromete con el claro. No hay modo oscuro** (PRO-25). Un juego
+de tokens, cada color elegido y verificado una vez. Pesó la medida: `apps/web`
+tiene 381 colores escritos a mano, 259 clases de Tailwind y 122 `rgba()`. Con dos
+modos son 762 decisiones de contraste en vez de 381, y la sombra suave que separa
+superficies en claro no se ve sobre fondo oscuro, así que el segundo modo pedía
+un mecanismo propio.
+
+Si algún día hace falta el oscuro, lo que hay que hacer está acotado y es esto:
+darle pareja a cada token de este contrato, e inventar qué separa dos superficies
+cuando la sombra no sirve. Ningún componente debería necesitar cambios si nadie
+escribe colores fuera de los tokens, que es justo lo que PRO-26 viene a garantizar.
+
+**2. Los dos tintes de operación se oscurecen.** Medido contra las superficies de
+este spec, el violeta `#a78bfa` de Guatemala da 2,51:1 sobre el fondo y 2,30:1
+sobre el riel; el azul `#38bdf8` de Colombia da 1,97:1 y 1,81:1. AA pide 4,5:1
+para texto y 3:1 para componentes, así que fallaban las dos cosas. Los valores
+nuevos están en el contrato de abajo y conservan violeta y azul, que es lo que
+hace que las dos operaciones se distingan de un vistazo.
+
+**3. El tono «suave» (`#84978d`) deja de ser color de texto.** Da 2,85:1 sobre el
+fondo y 3,09:1 sobre tarjeta. Queda para líneas, iconos y separadores. Los 79
+textos que hoy lo usan pasan a «tenue» (`#5b6f66`), que sí llega a AA con 4,95:1
+sobre el fondo y 4,54:1 sobre el riel.
+
+**4. Los cinco pares de estado del nivel 1 pasan AA sin tocarlos**, entre 5,25:1
+y 6,33:1. No hay nada que rederivar ahí. Está medido para que nadie lo vuelva a
+dudar.
 
 ### Los prototipos, como referencia visual
 
 No se integran. Están archivados en los comentarios de PRO-19, PRO-21 y PRO-22.
+
+## El contrato de nombres
+
+Los tres tickets de implementación corren **a la vez**, en worktrees separados, y
+solo PRO-26 escribe `globals.css`. Para que eso no reviente al mergear, los
+nombres de tokens, de clases y del componente compartido están fijados acá antes
+de que exista una línea de código. Es el mismo recurso global que el número de
+migración: lo reparte la sesión que coordina, no lo inventa cada worktree.
+
+**Si algo de este contrato le queda mal a un ticket, se avisa. No se cambia por
+cuenta propia:** los otros dos worktrees ya están escribiendo contra él.
+
+### Tokens
+
+Los nombres de mucho tráfico se conservan y solo cambia el valor. Los que cambian
+de nombre lo hacen porque cambió su significado, y así ningún uso viejo sobrevive
+por descuido.
+
+| token | valor | notas |
+| -- | -- | -- |
+| `--color-bg` | `#f4f6f5` | fondo de la aplicación |
+| `--color-surface` | `#f9fbfa` | superficie de pantalla. Antes `--color-bg-soft` |
+| `--color-card` | `#ffffff` | tarjeta. Antes `--color-panel` |
+| `--color-rail` | `#e8edeb` | riel de operaciones. Nuevo |
+| `--color-menu` | `#eef1f0` | columna de módulos. Nuevo |
+| `--color-hover` | `#e9efec` | realce al pasar por encima. Nuevo |
+| `--color-text` | `#12201b` | 252 usos, no se renombra |
+| `--color-text-strong` | `#08120e` | nuevo |
+| `--color-text-dim` | `#5b6f66` | «tenue». Sus 109 usos más los 79 que emigran de `text-soft` |
+| `--color-text-soft` | `#84978d` | «suave». **No es color de texto** (2,85:1). Líneas, iconos, separadores |
+| `--color-border` | `#e5ebe8` | línea suave, la de por defecto. 74 usos |
+| `--color-border-strong` | `#d8e0dc` | línea, para énfasis. 9 usos |
+| `--color-ink` | `#0f766e` | tinta. **Reemplaza `--color-accent`**, que se retira con el menta |
+| `--color-ink-soft` | `#dbe8e4` | |
+| `--color-ink-wash` | `#eef5f3` | |
+| `--color-danger` | `#a52020` | el texto de «escalada». Conserva el nombre, 15 usos |
+| `--color-warn` | `#8a5a08` | el texto de «sin responder». Antes `--color-highlight` |
+| `--color-bubble-out` | `#dbe8e4` | la burbuja nuestra. Deja de ser degradado |
+| `--color-bubble-in` | `#ffffff` | la burbuja del cliente, con `--color-border` |
+| `--shadow-panel` | `0 1px 2px rgba(18,32,27,.05), 0 6px 18px -12px rgba(18,32,27,.22)` | la sombra que separa superficies |
+
+Los cinco pares de estado, como tokens propios porque los usan dos tickets:
+
+| token | fondo | texto | contraste |
+| -- | -- | -- | -- |
+| `--state-espera-*` | `#fdf0d8` | `#8a5a08` | 5,25:1 |
+| `--state-auto-*` | `#d8f0e8` | `#0b5f52` | 6,33:1 |
+| `--state-escalada-*` | `#fde0e0` | `#a52020` | 5,98:1 |
+| `--state-novedad-*` | `#eae4fd` | `#5a41a8` | 6,17:1 |
+| `--state-sinprod-*` | `#e6ecf0` | `#41586a` | 6,23:1 |
+
+Cada uno con sufijo `-bg` y `-fg`, por ejemplo `--state-espera-bg`.
+
+**Se retiran** `--color-accent`, `--color-accent-strong`, `--color-accent-hover`,
+`--color-highlight`, `--color-bg-soft`, `--color-panel`, `--color-panel-2` y
+`--color-panel-3`. Ninguno debe quedar en el árbol.
+
+`--font-body` y `--font-display` se quedan con el mismo valor y no se toca la
+familia. El veredicto del nivel 1 fue que faltaba escala, no una segunda familia.
+
+### Los tintes de operación
+
+En `packages/shared/src/operation-framing.ts`, que **también lo importa el
+worker**, así que el cambio es de valores y no de firma.
+
+| | hoy | nuevo | contraste sobre el riel |
+| -- | -- | -- | -- |
+| `GT` | `#a78bfa` | `#6d28d9` | 6,00:1 |
+| `CO` | `#38bdf8` | `#0369a1` | 5,01:1 |
+
+Los cuatro de repuesto pasan a `#be185d`, `#92400e`, `#166534` y `#334155`. Los
+cuatro llegan a AA sobre el riel, que es la superficie más oscura y por eso la
+que manda. `line`, `soft` y `faint` siguen saliendo del mismo `withAlpha`.
+
+### Clases
+
+| clase | qué es | valores |
+| -- | -- | -- |
+| `.app-context` | línea de contexto de página, sobre el `h1` | 10,5px · 700 · `letter-spacing: .11em` · versalitas · `--color-ink` |
+| `.app-title` | título de pantalla | 34px · 700 · `letter-spacing: -.03em` |
+| `.app-section` | encabezado de sección dentro de una pantalla | 16px · 600 · `--color-text-strong` |
+| `.app-label` | etiqueta de campo, para `dt` y `legend` | igual que `.app-context` pero en `--color-text-dim` |
+| `.state-chip` | base de las etiquetas de estado de la fila | 9,5px · 800 · `letter-spacing: .06em` · versalitas · `border-radius: 5px` |
+
+Los cinco modificadores: `.state-chip--espera`, `--auto`, `--escalada`,
+`--novedad`, `--sin-producto`.
+
+**`.app-eyebrow` desaparece.** Es la clase que hacía dos trabajos, y este es el
+reparto de sus ocho usos actuales:
+
+| dónde | pasa a |
+| -- | -- |
+| `catalogo/page.tsx:19` y `reporte-meta/page.tsx:36` | `.app-context` |
+| `catalogo-client.tsx:711, 924, 1125` (son `h3`) | `.app-section` |
+| `reporte-client.tsx:121, 136, 164` (son `dt` y `span`) | `.app-label` |
+
+### El componente compartido
+
+`apps/web/src/app/(app)/context-line.tsx`, **lo crea PRO-27 y lo importa PRO-28**:
+
+```tsx
+export function ContextLine({
+  op,
+  pantalla,
+}: {
+  op: { name: string; countryCode: string };
+  pantalla: string;
+}): React.ReactElement
+```
+
+Dibuja `<p className="app-context">` con la bandera del país, el nombre de la
+operación y la pantalla, separados por `·`. La bandera sale del mismo mecanismo
+del riel (`.op-flag` en `operation-rail.tsx`), no de un emoji nuevo.
+
+### Quién es dueño de qué archivo
+
+Un archivo tiene un solo dueño en esta tanda. Es la regla que hace posible correr
+los tres a la vez.
+
+| PRO-26 · el sistema y la configuración | PRO-27 · siete pantallas y Pedidos | PRO-28 · el Inbox entero |
+| -- | -- | -- |
+| `app/globals.css` | `context-line.tsx` (lo crea) | `inbox/page.tsx` |
+| `(app)/layout.tsx` | `agent/page.tsx` | `inbox/inbox-client.tsx` |
+| `(app)/operation-rail.tsx` | `catalogo/page.tsx` | `inbox/loading.tsx` |
+| `(app)/choose-operation.tsx` | `connection/page.tsx` | `inbox/voice-recorder.tsx` |
+| `(app)/connection-indicator.tsx` | `reporte-meta/page.tsx` | los 4 `inbox/*.test.tsx` |
+| `shared/operation-framing.ts` | `templates/page.tsx` | |
+| `agent/`, `connection/`, `templates/`, `vendedor/`, `catalogo/`, `reporte-meta/` salvo sus `page.tsx` | `vendedor/page.tsx` | |
+| `login/page.tsx` | `orders/` completo | |
+
+El `h1` del Inbox vive en `inbox-client.tsx:760` y no en su `page.tsx`, así que
+la línea de contexto del Inbox la pone PRO-28 y no PRO-27. Por eso PRO-28 es
+dueño también de `inbox/page.tsx`: ahí es donde hay que pasarle el nombre y el
+país de la operación al cliente, que hoy solo recibe `operationId`.
+
+Este `spec.md` lo edita **solo la sesión que coordina**. Tres worktrees tocándolo
+es un conflicto de merge garantizado.
 
 ## Problem Statement
 
@@ -161,9 +325,9 @@ Rondas de prototipos, no de conversación. El árbol baja en este orden, y cada 
 
 **El sistema visual sí se toca, y esa es la diferencia con el spec anterior.** [Pulido de interfaz](../ventas-pulido-ui/spec.md) puso «cambiar el sistema visual del panel» y «rediseñar las pantallas existentes» fuera de alcance porque su pregunta era otra: cómo se manifiesta la operación activa en pantallas que todavía no existían. Este spec recoge justo eso, porque el problema que reporta el usuario no se arregla dentro del sistema actual.
 
-**La identidad se conserva.** Fondo oscuro, familia de azules profundos, acento menta. Lo que se agrega es jerarquía, no una paleta nueva. Una variante puede proponer lo contrario, pero tiene que ganárselo contra las demás.
+**La identidad se conserva.** ~~Fondo oscuro, familia de azules profundos, acento menta.~~ **El nivel 1 decidió lo contrario y esta viñeta quedó vieja.** El panel pasa a fondo claro y el acento menta se retira. Lo que sigue en pie es el resto de la frase: lo que se agrega es jerarquía. La variante Claro se lo ganó contra las demás, que es exactamente lo que esta viñeta dejaba abierto.
 
-**Segunda tipografía para títulos.** Hoy `--font-display` y `--font-body` son el mismo valor, así que existe la variable y no la distinción. La ronda del nivel 1 decide qué familia entra y en qué niveles manda.
+**Segunda tipografía para títulos.** ~~La ronda del nivel 1 decide qué familia entra.~~ **Decidió que ninguna.** El problema no era que faltara una familia, era que no había escala. `--font-display` y `--font-body` se quedan con el mismo valor.
 
 **Los estados de la fila se codifican en más de un canal.** Color solo no alcanza: hay cinco estados que pueden coincidir en una misma fila. Forma, posición y peso también cargan significado, y ninguna variante puede depender solo del matiz.
 
