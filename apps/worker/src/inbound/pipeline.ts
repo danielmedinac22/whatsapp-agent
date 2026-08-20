@@ -18,7 +18,11 @@ import { markNovedadCustomerReply } from "../dropi/novedad-reply";
 import { fetchKapsoMedia, markRead } from "../kapso/client";
 import { resolveInboundOperation } from "../kapso/connection";
 import type { ParsedAdReferral, ParsedInboundMessage } from "../kapso/inbound";
-import { resolveInbox, type InboxDecision } from "@wa/db";
+import {
+  resolveInbox,
+  type InboxDecision,
+  type SalesAgentSettings,
+} from "@wa/db";
 import { loadOrderFacts } from "../inbox/facts";
 import type { OperationId } from "../operations";
 import { decideAdAttribution } from "../sales/attribution";
@@ -157,12 +161,17 @@ async function attributeProduct(input: {
 }
 
 /**
- * Si la operación que recibió el mensaje tiene vendedor configurado.
+ * La configuración del vendedor de la operación que recibió el mensaje.
  *
- * Es el único interruptor de no-regresión del camino de ventas —el riesgo R8—, y
- * el listón es el que ya usaba el dueño: nombre visible no vacío, no la
- * existencia de la fila. Con `sales_agent_settings` vacía, que es producción
- * hoy, la respuesta es siempre `false` y nada de lo nuevo se enciende.
+ * De ella salen las dos cosas que el camino de ventas necesita: si hay vendedor
+ * —el listón único, `salesAgentIsConfigured`: nombre visible no vacío, no la
+ * existencia de la fila— y **cuándo se encendió**, que es la línea de corte de
+ * la bandeja. Se lee una sola vez por mensaje y se pasa hecha; la lectura está
+ * cacheada por operación.
+ *
+ * Es el único interruptor de no-regresión del camino de ventas —el riesgo R8—.
+ * Con `sales_agent_settings` a medio llenar, que es producción hoy, la respuesta
+ * es siempre «no hay vendedor» y nada de lo nuevo se enciende.
  *
  * **Nunca lanza, y eso es la mitad del sentido de esta función.** Se pregunta
  * *antes* de crear el contacto, así que un error aquí sin atrapar se llevaría el
@@ -170,18 +179,18 @@ async function attributeProduct(input: {
  * contrario. Si la lectura falla, el contacto nace apagado, que es el
  * comportamiento de siempre.
  */
-async function salesAgentConfiguredFor(
+async function readSalesAgentSettings(
   operationId: OperationId | null,
-): Promise<boolean> {
-  if (!operationId) return false;
+): Promise<SalesAgentSettings | null> {
+  if (!operationId) return null;
   try {
-    return salesAgentIsConfigured(await getSalesAgentSettings(operationId));
+    return await getSalesAgentSettings(operationId);
   } catch (err) {
     logger.error(
       { err: String(err), operationId },
       "ventas: no se pudo leer la configuración del vendedor; el contacto nuevo nace apagado",
     );
-    return false;
+    return null;
   }
 }
 
@@ -203,6 +212,10 @@ async function resolveOwner(input: {
   contactId: string;
   salesAgentConfigured: boolean;
   lastAdClickAt: Date | null;
+  /** `sales_agent_settings.activated_at` de la operación. */
+  salesActivatedAt: Date | null;
+  /** Cuándo nació esta conversación: la mitad de la línea de corte. */
+  bornAt: Date;
 }): Promise<{ owner: ConversationOwner; inbox: InboxDecision | null }> {
   if (!input.salesAgentConfigured) {
     return {
@@ -210,10 +223,13 @@ async function resolveOwner(input: {
       inbox: null,
     };
   }
-  const inbox = resolveInbox({
-    lastAdClickAt: input.lastAdClickAt,
-    orders: await loadOrderFacts(input.contactId),
-  });
+  const inbox = resolveInbox(
+    {
+      lastAdClickAt: input.lastAdClickAt,
+      orders: await loadOrderFacts(input.contactId),
+    },
+    { activatedAt: input.salesActivatedAt, bornAt: input.bornAt },
+  );
   return {
     owner: resolveConversationOwner({
       salesAgentConfigured: true,
@@ -269,9 +285,8 @@ export async function handleInbound(parsed: ParsedInboundMessage): Promise<void>
   // apagó al agente no lo vea volver. La lectura es la misma, cacheada por
   // operación, que el dueño de la conversación hacía más abajo; ahora se hace
   // una sola vez y se pasa hecha.
-  const salesAgentConfigured = await salesAgentConfiguredFor(
-    decision?.operationId ?? null,
-  );
+  const seller = await readSalesAgentSettings(decision?.operationId ?? null);
+  const salesAgentConfigured = salesAgentIsConfigured(seller);
 
   const contact = await upsertContactByWaId(
     parsed.from,
@@ -415,6 +430,8 @@ export async function handleInbound(parsed: ParsedInboundMessage): Promise<void>
     contactId: contact.id,
     salesAgentConfigured,
     lastAdClickAt: attribution.effective.adReferralAt,
+    salesActivatedAt: seller?.activatedAt ?? null,
+    bornAt: conv.createdAt,
   }).catch((err): null => {
     logger.error(
       { err: String(err), conversationId: conv.id },

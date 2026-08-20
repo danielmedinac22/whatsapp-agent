@@ -72,6 +72,19 @@ const PEDIDO_EN_CURSO: OrderFacts = {
 
 const SIN_PEDIDOS: readonly OrderFacts[] = [];
 
+/**
+ * Cuándo se encendió el vendedor de esta operación, y cuándo nació la
+ * conversación: la línea de corte que el pipeline le pasa al ruteo.
+ *
+ * Las dos fechas son anteriores a `AHORA` y posteriores entre sí en el orden
+ * que corresponde —primero se enciende el vendedor, después llega el lead—,
+ * que es el caso normal de una operación con vendedor. Sin corte no habría
+ * bandeja de ventas y las cuatro combinaciones darían todas `confirmacion`,
+ * que es exactamente lo que prueba el bloque de más abajo.
+ */
+const ENCENDIDO = new Date("2026-06-01T10:00:00.000Z");
+const NACIMIENTO = new Date("2026-07-16T10:00:00.000Z");
+
 /** Lo que hace el pipeline con un mensaje entrante, encadenado tal cual. */
 function ingesta(input: {
   referencia: boolean;
@@ -84,10 +97,16 @@ function ingesta(input: {
     referral: input.referencia ? REFERENCIA : null,
     receivedAt: AHORA,
   });
-  const inbox = resolveInbox({
-    lastAdClickAt: attribution.effective.adReferralAt,
-    orders: input.pedidos,
-  });
+  const inbox = resolveInbox(
+    {
+      lastAdClickAt: attribution.effective.adReferralAt,
+      orders: input.pedidos,
+    },
+    {
+      activatedAt: input.vendedor ? ENCENDIDO : null,
+      bornAt: NACIMIENTO,
+    },
+  );
   const owner = input.vendedor
     ? resolveConversationOwner({
         salesAgentConfigured: true,
@@ -104,7 +123,7 @@ describe("las cuatro combinaciones · con vendedor configurado", () => {
       pedidos: SIN_PEDIDOS,
       vendedor: true,
     });
-    expect(inbox).toEqual({ inbox: "ventas", rule: "no_order" });
+    expect(inbox).toEqual({ inbox: "ventas", rule: "born_after_activation" });
     expect(owner.agent).toBe("ventas");
   });
 
@@ -135,13 +154,33 @@ describe("las cuatro combinaciones · con vendedor configurado", () => {
   });
 
   it("sin referencia y sin pedido entra como lead de venta", () => {
+    // Entra **porque nació después de encender al vendedor**, no por no tener
+    // pedido: la conversación más vieja que el corte y sin pedido es de
+    // Katherine, y es el caso de las 110 de Guatemala.
     const { inbox, owner } = ingesta({
       referencia: false,
       pedidos: SIN_PEDIDOS,
       vendedor: true,
     });
-    expect(inbox).toEqual({ inbox: "ventas", rule: "no_order" });
+    expect(inbox).toEqual({ inbox: "ventas", rule: "born_after_activation" });
     expect(owner.agent).toBe("ventas");
+  });
+
+  it("y la misma conversación, si nació antes de encender al vendedor, es de confirmación", () => {
+    const attribution = decideAdAttribution({
+      stored: SIN_ATRIBUCION,
+      referral: null,
+      receivedAt: AHORA,
+    });
+    const inbox = resolveInbox(
+      { lastAdClickAt: attribution.effective.adReferralAt, orders: SIN_PEDIDOS },
+      // El vendedor se encendió **después** de que naciera la conversación.
+      { activatedAt: AHORA, bornAt: NACIMIENTO },
+    );
+    expect(inbox).toEqual({ inbox: "operaciones", rule: "no_order" });
+    expect(
+      resolveConversationOwner({ salesAgentConfigured: true, inbox: inbox.inbox }),
+    ).toEqual({ agent: "confirmacion", rule: "operations_inbox" });
   });
 });
 

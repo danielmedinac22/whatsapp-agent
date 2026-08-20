@@ -6,7 +6,9 @@ import {
   type OrderPhase,
   type OrderPipelineStatus,
   resolveInbox,
+  resolveInboxAsOf,
   resolveOrderPhase,
+  type SalesCutoff,
 } from "@wa/db";
 
 // Las fechas son días distintos de un mismo mes para que el orden se lea a ojo:
@@ -24,16 +26,32 @@ function pedido(
 
 const sinNada: InboxFacts = { lastAdClickAt: null, orders: [] };
 
-describe("resolveInbox · las cuatro reglas", () => {
+/** La línea de corte de una operación con el vendedor encendido el día `d`. */
+const encendidoEl = (d: number, nacidaEl: number): SalesCutoff => ({
+  activatedAt: dia(d),
+  bornAt: dia(nacidaEl),
+});
+
+describe("resolveInbox · las cinco reglas", () => {
   it("un lead que llegó por un anuncio y no tiene pedido es de ventas", () => {
-    expect(resolveInbox({ lastAdClickAt: dia(10), orders: [] })).toEqual({
+    // Sin ningún pedido, la regla 1 no llega a dispararse: no hay contra qué
+    // comparar el clic. Lo decide la regla 4 —nació después del corte—.
+    expect(
+      resolveInbox({ lastAdClickAt: dia(10), orders: [] }, encendidoEl(5, 10)),
+    ).toEqual({
       inbox: "ventas",
-      rule: "no_order",
+      rule: "born_after_activation",
     });
   });
 
-  it("un contacto sin pedido ni atribución es de ventas: un mensaje sin pedido es un lead", () => {
-    expect(resolveInbox(sinNada)).toEqual({ inbox: "ventas", rule: "no_order" });
+  it("un contacto sin pedido y sin vendedor encendido es de operaciones", () => {
+    // **Producción hoy.** `sales_agent_settings` tiene una fila con el nombre
+    // vacío, así que no hay línea de corte: las 110 conversaciones sin pedido
+    // de Guatemala son de Katherine, y la bandeja de ventas queda vacía.
+    expect(resolveInbox(sinNada)).toEqual({
+      inbox: "operaciones",
+      rule: "no_order",
+    });
   });
 
   it("un pedido recién creado, todavía sin logística, es de operaciones", () => {
@@ -70,6 +88,125 @@ describe("resolveInbox · las cuatro reglas", () => {
     expect(
       resolveInbox({ lastAdClickAt: null, orders: [pedido(dia(10), "anulada")] }),
     ).toEqual({ inbox: "operaciones", rule: "order_finished" });
+  });
+});
+
+describe("resolveInbox · la línea de corte del vendedor", () => {
+  // La regla que este ticket vino a acotar. Antes, «sin pedido» significaba
+  // «de ventas» y punto: 110 conversaciones de Katherine presentadas como
+  // pendientes de un vendedor apagado. Ahora la bandeja de ventas se define en
+  // positivo —hay un motivo para creer que es suya— y el motivo es haber
+  // nacido después de que alguien lo encendiera.
+  //
+  // El corte compara **nacimientos** y no actividad, así que da igual mirar la
+  // conversación o su contacto: en producción hay una conversación por contacto
+  // (1.760 y 1.760, medido el 19-ago-2026) y las dos filas se crean en el mismo
+  // `handleInbound` —menos de medio segundo de diferencia en las 54 filas donde
+  // los dos instantes no coinciden al segundo—. Se eligió la conversación
+  // porque es lo que se rutea.
+
+  it("sin vendedor encendido, una conversación sin pedido es de Katherine", () => {
+    // El estado de producción, escrito de las dos formas en que un llamador
+    // puede expresarlo: omitiendo el corte, o pasándolo con la fecha en `null`.
+    expect(resolveInbox(sinNada)).toEqual({
+      inbox: "operaciones",
+      rule: "no_order",
+    });
+    expect(
+      resolveInbox(sinNada, { activatedAt: null, bornAt: dia(20) }),
+    ).toEqual({ inbox: "operaciones", rule: "no_order" });
+  });
+
+  it("una conversación nacida antes del encendido se queda en operaciones", () => {
+    // Lo histórico es de Katherine **para siempre**: encender al vendedor no
+    // le mueve de bandeja una sola conversación de las que ya existían.
+    expect(resolveInbox(sinNada, encendidoEl(10, 3))).toEqual({
+      inbox: "operaciones",
+      rule: "no_order",
+    });
+  });
+
+  it("una conversación nacida después del encendido es del vendedor", () => {
+    expect(resolveInbox(sinNada, encendidoEl(10, 11))).toEqual({
+      inbox: "ventas",
+      rule: "born_after_activation",
+    });
+  });
+
+  it("nacer en el mismo instante del encendido no alcanza: el borde es estricto", () => {
+    // Del lado conservador, igual que el clic del recomprador: la conversación
+    // que ya existía cuando se encendió el vendedor no la trajo él.
+    expect(resolveInbox(sinNada, encendidoEl(10, 10))).toEqual({
+      inbox: "operaciones",
+      rule: "no_order",
+    });
+  });
+
+  it("el corte solo alcanza a la regla 4: con pedido decide el pedido", () => {
+    // Un cliente que compró después de encendido el vendedor sigue siendo
+    // postventa. La línea de corte no es una fecha a partir de la cual todo es
+    // de ventas: es lo que hace falta para que **la ausencia de pedido**
+    // signifique algo.
+    const cutoff = encendidoEl(10, 11);
+    expect(
+      resolveInbox({ lastAdClickAt: null, orders: [pedido(dia(12), "en_transito")] }, cutoff),
+    ).toEqual({ inbox: "operaciones", rule: "order_in_progress" });
+    expect(
+      resolveInbox({ lastAdClickAt: null, orders: [pedido(dia(12), "entregado")] }, cutoff),
+    ).toEqual({ inbox: "operaciones", rule: "order_finished" });
+  });
+
+  it("el recomprador vuelve a ventas aunque haya nacido antes del corte", () => {
+    // La regla 1 no se tocó, y es la que va a traer a los recompradores el día
+    // que haya anuncios. Por eso la línea de corte puede mirar solo el
+    // nacimiento sin perder ese caso.
+    expect(
+      resolveInbox(
+        { lastAdClickAt: dia(20), orders: [pedido(dia(5), "entregado")] },
+        encendidoEl(15, 1),
+      ),
+    ).toEqual({ inbox: "ventas", rule: "ad_click_after_last_order" });
+  });
+
+  it("el que nunca compró y hace clic después del corte también es del vendedor", () => {
+    // **El agujero que el ticket no vio.** La regla del recomprador compara el
+    // clic contra el último pedido; a quien no tiene ninguno no lo alcanza. En
+    // Guatemala son 110 conversaciones sin ninguna fila de pedido, y sin esta
+    // regla el día que lleguen anuncios sus clics caerían en la bandeja de
+    // Katherine — que es justo la mentira al revés de la que este ticket
+    // vino a sacar.
+    expect(
+      resolveInbox({ lastAdClickAt: dia(20), orders: [] }, encendidoEl(10, 3)),
+    ).toEqual({ inbox: "ventas", rule: "ad_click_after_activation" });
+  });
+
+  it("un clic anterior al corte es historia, y la historia no cambia de bandeja", () => {
+    expect(
+      resolveInbox({ lastAdClickAt: dia(8), orders: [] }, encendidoEl(10, 3)),
+    ).toEqual({ inbox: "operaciones", rule: "no_order" });
+  });
+
+  it("sin vendedor encendido, ni el clic manda nada a ventas", () => {
+    // Producción hoy: `ad_referral_at` es `null` en las 1.760 conversaciones,
+    // así que este caso ni siquiera existe todavía. Vale igual como guardia:
+    // el corte manda sobre las dos formas de entrar a la bandeja.
+    expect(
+      resolveInbox({ lastAdClickAt: dia(20), orders: [] }),
+    ).toEqual({ inbox: "operaciones", rule: "no_order" });
+  });
+
+  it("con vendedor encendido y sin corte pasado, `resolveInboxAsOf` responde con lo de entonces", () => {
+    // El vendedor se encendió el día 10; al día 5 no existía, así que a esa
+    // fecha la conversación era de Katherine aunque hoy sea de ventas.
+    const cutoff = encendidoEl(10, 11);
+    expect(resolveInbox(sinNada, cutoff)).toEqual({
+      inbox: "ventas",
+      rule: "born_after_activation",
+    });
+    expect(resolveInboxAsOf(sinNada, dia(5), cutoff)).toEqual({
+      inbox: "operaciones",
+      rule: "no_order",
+    });
   });
 });
 

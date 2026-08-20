@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { salesAgentSettings } from "@wa/db";
+import { salesAgentIsConfigured, salesAgentSettings } from "@wa/db";
 import {
   activeSalesTonePreset,
   normalizeSalesAgentSettings,
@@ -9,7 +9,6 @@ import {
   SALES_TONE_PRESETS,
   type SalesAgentSettingsInput,
 } from "@wa/shared";
-import { isSalesAgentConfigured } from "./persona";
 
 /**
  * Las reglas de la pantalla de configuración del vendedor, ejercidas sin panel
@@ -59,7 +58,7 @@ describe("qué acepta guardar la pantalla del vendedor", () => {
     // El listón es el del worker, no uno propio del panel: el mismo que decide
     // en cada mensaje entrante quién contesta.
     const guardado = normalizeSalesAgentSettings(EN_BLANCO);
-    expect(isSalesAgentConfigured(guardado)).toBe(false);
+    expect(salesAgentIsConfigured(guardado)).toBe(false);
   });
 
   it("un nombre de puros espacios no enciende al vendedor", () => {
@@ -70,11 +69,11 @@ describe("qué acepta guardar la pantalla del vendedor", () => {
       displayName: "   ",
     });
     expect(guardado.displayName).toBe("");
-    expect(isSalesAgentConfigured(guardado)).toBe(false);
+    expect(salesAgentIsConfigured(guardado)).toBe(false);
   });
 
   it("escribir un nombre es lo que enciende al vendedor", () => {
-    expect(isSalesAgentConfigured(normalizeSalesAgentSettings(COMPLETA))).toBe(
+    expect(salesAgentIsConfigured(normalizeSalesAgentSettings(COMPLETA))).toBe(
       true,
     );
   });

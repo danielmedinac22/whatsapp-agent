@@ -9,6 +9,27 @@ significan nada hasta que el 02 esté mergeado y desplegado.
 
 **Status:** open — arranca cuando mergee el 01
 
+> **Lo que te dejó el 01, y es obligatorio.** `resolveInbox` ahora recibe la
+> línea de corte del vendedor como **segundo parámetro opcional**, y omitirlo
+> significa «no hay vendedor»: la bandeja de ventas queda vacía. Tuvo que ser
+> opcional porque hacerlo obligatorio rompía el `typecheck` de `queries.ts`, que
+> el 01 tenía prohibido tocar. **Vos sos el dueño de `apps/web`, así que te toca
+> pasarlo en los cuatro call sites** — si no, encender a Sebastián deja su
+> bandeja permanentemente en cero (medido sobre el panel corriendo):
+>
+> | Línea | Función | Qué le falta |
+> | -- | -- | -- |
+> | `queries.ts:345` | `conversationIdsOfInbox` | `conversations.created_at` al `select`, y el corte |
+> | `queries.ts:349` | `inboxChangedSince` | el mismo corte |
+> | `queries.ts:549` | `listConversations` | ya tiene `r.conversation.createdAt`; falta el corte |
+> | `queries.ts:598` | `countSalesInboxViews` | `conversations.created_at` al `select`, y el corte |
+>
+> El corte es `{ activatedAt: seller?.activatedAt ?? null, bornAt: <nacimiento> }`
+> y `seller` sale de `getSalesAgentSettings(op)`. Y ojo con el vocabulario: la
+> regla `no_order` **ya no significa ventas** — ahora significa lo contrario, y
+> las dos formas de entrar a la bandeja de ventas sin pedido se llaman
+> `born_after_activation` y `ad_click_after_activation`.
+
 **Este ticket NO arranca en paralelo con el 01.** Los dos tocan
 `apps/web/src/app/(app)/nav.ts` y `apps/web/src/app/(app)/inbox/page.tsx`, así que
 va después: nace de un `main` que ya trae el 01 mergeado.

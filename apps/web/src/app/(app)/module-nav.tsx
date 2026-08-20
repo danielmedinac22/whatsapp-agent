@@ -79,6 +79,19 @@ function viewLabel(view: NavView, sellerName: string): string {
   return view.key === "agente" ? `Las lleva ${sellerName}` : view.label;
 }
 
+/**
+ * El nombre del agente que se pinta al lado del módulo, o `null` si no hay
+ * ninguno que decir.
+ *
+ * **No se pinta un nombre que nadie escribió.** El de Ventas sale del vendedor
+ * configurado, y `sales` es `null` justo cuando no lo hay: entonces el módulo se
+ * dibuja con su etiqueta y sin agente, en vez de anunciar a un vendedor apagado
+ * como si atendiera.
+ */
+function agentName(group: NavGroup, sales: SalesNav | null): string | null {
+  return group.agentFromSeller ? sales?.sellerName ?? null : group.agent;
+}
+
 export function ModuleNav({
   allowed,
   sales,
@@ -99,9 +112,9 @@ export function ModuleNav({
         <div key={g.key} className={g.key === open ? "op-group is-on" : "op-group"}>
           <div className="flex items-baseline gap-2 px-2.5 pb-1.5">
             <span className="op-group-label">{g.label}</span>
-            {g.agent ? (
+            {agentName(g, sales) ? (
               <span className="text-[11px] text-[var(--color-text-soft)]">
-                {g.agent}
+                {agentName(g, sales)}
               </span>
             ) : null}
           </div>

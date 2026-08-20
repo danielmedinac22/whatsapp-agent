@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  buildSalesPersonaPrompt,
-  isSalesAgentConfigured,
-  type SalesPersona,
-} from "./persona";
+import { buildSalesPersonaPrompt, type SalesPersona } from "./persona";
 
 const COMPLETA: SalesPersona = {
   displayName: "Sebastián",
@@ -14,24 +10,6 @@ const COMPLETA: SalesPersona = {
   discountLimitPct: 15,
   discountLimitBehavior: "consultar",
 };
-
-describe("isSalesAgentConfigured · cuándo existe el vendedor", () => {
-  it("sin fila de configuración no hay vendedor", () => {
-    // El estado de producción hoy, y el que deja a Katherine atendiendo todo.
-    expect(isSalesAgentConfigured(null)).toBe(false);
-  });
-
-  it("una fila recién creada, con el nombre vacío, todavía no es un vendedor", () => {
-    // Los textos son NOT NULL default '': un INSERT a medio llenar no puede ser
-    // el momento en que Guatemala deja de ser atendida por Katherine.
-    expect(isSalesAgentConfigured({ displayName: "" })).toBe(false);
-    expect(isSalesAgentConfigured({ displayName: "   " })).toBe(false);
-  });
-
-  it("con nombre visible, la operación tiene vendedor", () => {
-    expect(isSalesAgentConfigured({ displayName: "Sebastián" })).toBe(true);
-  });
-});
 
 describe("buildSalesPersonaPrompt · la persona configurada", () => {
   it("se presenta con el nombre configurado para esa operación", () => {

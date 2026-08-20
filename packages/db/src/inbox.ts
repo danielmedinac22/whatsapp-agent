@@ -16,19 +16,35 @@
  * único), un campo que se sobrescribiera dejaría al recomprador con su estado
  * de julio encima.
  *
+ * **La bandeja de ventas se define en positivo, no por resta.** Una conversación
+ * es del vendedor si hay un motivo para creerlo —llegó por un anuncio, o nació
+ * después de que se encendiera el vendedor—, nunca por *no* tener pedido. Esa
+ * frase costó 110 conversaciones: la regla `no_order` mandaba a ventas todo
+ * contacto sin fila de pedido, y en Guatemala eso eran 110 contactos que
+ * escribieron y nunca compraron —de Katherine, todos— presentados como
+ * pendientes de un vendedor que ni siquiera estaba encendido.
+ *
  * Reglas, de mayor a menor precedencia:
  *
  * 1. Clic de anuncio **posterior al último pedido** → ventas. Es el
  *    recomprador: un clic nuevo es intención de compra nueva.
  * 2. Pedido en curso (ni entregado ni cancelado) → operaciones.
  * 3. Pedido terminado (entregado o cancelado), sin clic posterior → operaciones.
- * 4. Nada de lo anterior → ventas. Un mensaje sin pedido es un lead.
+ * 4. Sin pedido y **nacida después de la línea de corte** → ventas. Es el lead
+ *    del vendedor.
+ * 5. Sin pedido, nacida antes del corte, pero con un **clic de anuncio
+ *    posterior al corte** → ventas. Es la regla 1 para quien nunca compró: la 1
+ *    compara el clic contra el último pedido, y sin ningún pedido no llega a
+ *    dispararse.
+ * 6. Nada de lo anterior → operaciones. Es el histórico de Katherine, y lo es
+ *    para siempre.
  *
  * Quien alimenta {@link resolveInbox} carga: `lastAdClickAt` con la atribución
  * de anuncio **más reciente** de la conversación (no la primera: si solo se
  * guardara el primer clic, el recomprador nunca volvería a ventas), y `orders`
  * con los pedidos de tienda del contacto cruzados con su fila de logística, más
- * los pedidos que existen solo en logística.
+ * los pedidos que existen solo en logística. La línea de corte va aparte, en
+ * {@link SalesCutoff}: no es un hecho de la conversación sino de la operación.
  */
 
 import type { DropiOrder, ShopifyOrder } from "./schema";
@@ -188,7 +204,55 @@ export interface InboxFacts {
 }
 
 /**
- * Cuál de las cuatro reglas decidió la bandeja. No es decorativo: es lo que
+ * **La línea de corte del vendedor**, frente a una conversación concreta.
+ *
+ * Va aparte de {@link InboxFacts} porque mezcla dos cosas de origen distinto: el
+ * instante en que la operación encendió al vendedor —`activated_at`, uno solo
+ * para toda la operación— y el nacimiento de esta conversación. Los hechos de
+ * la conversación no saben de configuración, y meter `activated_at` entre ellos
+ * invitaría a cargarlo por conversación.
+ *
+ * **Mira la fecha de nacimiento y no la última actividad.** Lo histórico es de
+ * Katherine para siempre: mirar la actividad movería conversaciones vivas de
+ * bandeja sin que nadie lo pida, que es justo lo que `no-regresion.md` prohíbe.
+ * El caso que eso querría cubrir —el que vuelve con intención nueva— lo cubren
+ * las reglas del clic, la 1 y la 5, el día que haya anuncios.
+ */
+export interface SalesCutoff {
+  /**
+   * `sales_agent_settings.activated_at`. `null` cuando la operación no tiene
+   * vendedor encendido —el estado de producción hoy—, y entonces **nada** cae
+   * en ventas por no tener pedido.
+   */
+  activatedAt: Date | null;
+  /**
+   * Cuándo nació la conversación (`conversations.created_at`).
+   *
+   * Se eligió la conversación y no el contacto porque es la conversación lo que
+   * se rutea, y porque {@link InboxFacts} ya es «los hechos de una
+   * conversación». Da igual cuál: hay **una conversación por contacto** —1.760
+   * y 1.760 en producción el 19-ago-2026— y la conversación se crea en el mismo
+   * `handleInbound` que el contacto, medido a menos de medio segundo de
+   * distancia en las 54 filas donde los dos instantes no coinciden al segundo.
+   */
+  bornAt: Date;
+}
+
+/**
+ * Sin vendedor no hay línea de corte, y sin línea de corte la bandeja de ventas
+ * no recibe nada por la regla 4.
+ *
+ * Es el valor que {@link resolveInbox} usa cuando el llamador no pasa corte, y
+ * está nombrado para que en el sitio donde se usa se lea qué significa omitirlo.
+ */
+const SIN_VENDEDOR: SalesCutoff = {
+  activatedAt: null,
+  // Nunca se compara: sin `activatedAt` las reglas 4 y 5 salen antes de mirarlo.
+  bornAt: new Date(0),
+};
+
+/**
+ * Cuál de las seis reglas decidió la bandeja. No es decorativo: es lo que
  * hace verificable en un test que el recomprador cayó en ventas *por el clic*
  * y no por casualidad, y le da a la bandeja de operaciones (ticket 03) la
  * diferencia entre «en camino» y «terminado» sin volver a derivarla.
@@ -200,13 +264,41 @@ export type InboxRule =
   | "order_in_progress"
   /** Regla 3: todos los pedidos terminaron y no hubo clic después. */
   | "order_finished"
-  /** Regla 4: sin pedido. Un lead, o un contacto sin nada. */
+  /**
+   * Regla 4: sin pedido y nacida después de encender al vendedor. **El lead.**
+   */
+  | "born_after_activation"
+  /**
+   * Regla 5: sin pedido, más vieja que el corte, y con un clic de anuncio
+   * posterior al corte.
+   *
+   * **Es el agujero que el ticket no vio, y es el caso que la pauta paga.** La
+   * regla 1 trae al recomprador comparando el clic contra su último pedido; a
+   * quien nunca compró no lo alcanza, porque sin ningún pedido esa comparación
+   * no llega a hacerse. En Guatemala son **110 conversaciones** —contactos que
+   * escribieron y nunca generaron pedido, medido el 19-ago-2026—: sin esta
+   * regla, el día que empiecen a llegar anuncios, un clic de cualquiera de esos
+   * 110 caería en la bandeja de Katherine.
+   *
+   * El clic tiene que ser **posterior al corte** por lo mismo que el
+   * nacimiento: un clic anterior es historia, y mover historia de bandeja es lo
+   * que `no-regresion.md` prohíbe. Con `activated_at` en `null` no se dispara
+   * nunca, así que no cambia nada de lo de hoy.
+   */
+  | "ad_click_after_activation"
+  /**
+   * Regla 6: sin pedido y sin ningún motivo posterior al corte. Es el contacto
+   * que escribió y nunca compró **antes** de que existiera el vendedor:
+   * histórico de Katherine, y sigue siéndolo.
+   */
   | "no_order";
 
 /**
  * La bandeja y la regla que la decidió. No existe un caso «ninguna bandeja»,
  * y eso es deliberado: toda conversación cae en una, así que ninguna se puede
- * perder entre las dos. Si el llamador no sabe nada del contacto, es un lead.
+ * perder entre las dos. Si el llamador no sabe nada del contacto, la bandeja es
+ * la de operaciones —la de siempre—: el módulo nuevo no se queda con lo que no
+ * puede explicar.
  */
 export interface InboxDecision {
   inbox: Inbox;
@@ -225,6 +317,35 @@ function latestOrder(orders: readonly OrderFacts[]): OrderFacts | null {
 }
 
 /**
+ * Qué motivo hay, si hay alguno, para creer que una conversación **sin pedido**
+ * es del vendedor. `null` cuando no hay ninguno.
+ *
+ * Los dos motivos son **estrictamente posteriores** al corte, por el mismo
+ * criterio con el que el clic del recomprador tiene que ser estrictamente
+ * posterior al pedido: lo que ya existía en el instante del encendido no lo
+ * trajo el vendedor, y lo que ocurre en el mismo milisegundo es una
+ * coincidencia de reloj, no una venta suya. El borde cae del lado conservador,
+ * que es el lado en el que Katherine conserva lo que ya atendía.
+ */
+function salesLeadRule(
+  facts: InboxFacts,
+  cutoff: SalesCutoff,
+): Extract<InboxRule, "born_after_activation" | "ad_click_after_activation"> | null {
+  const activatedAt = cutoff.activatedAt;
+  if (activatedAt === null) return null;
+  if (cutoff.bornAt.getTime() > activatedAt.getTime()) {
+    return "born_after_activation";
+  }
+  if (
+    facts.lastAdClickAt !== null &&
+    facts.lastAdClickAt.getTime() > activatedAt.getTime()
+  ) {
+    return "ad_click_after_activation";
+  }
+  return null;
+}
+
+/**
  * A qué bandeja pertenece la conversación, y por qué.
  *
  * El clic tiene que ser **estrictamente** posterior al último pedido: el pedido
@@ -234,11 +355,25 @@ function latestOrder(orders: readonly OrderFacts[]): OrderFacts | null {
  * anterior siga en camino: ventas la toma, y las notificaciones logísticas del
  * pedido en curso siguen saliendo por su cuenta porque no dependen de la
  * bandeja.
+ *
+ * **Omitir el corte significa «no hay vendedor»**, y con eso lo único que puede
+ * caer en la bandeja de ventas es el recomprador de la regla 1. El valor por
+ * defecto es el conservador a propósito: un llamador que todavía no carga
+ * `activated_at` —el panel, hasta el ticket 03— deja la conversación sin pedido
+ * en la bandeja de Katherine, que es donde estaba antes de que existiera el
+ * módulo. El error posible es no mostrarle un lead al vendedor, nunca mudarle
+ * una conversación viva a Katherine.
  */
-export function resolveInbox(facts: InboxFacts): InboxDecision {
+export function resolveInbox(
+  facts: InboxFacts,
+  cutoff: SalesCutoff = SIN_VENDEDOR,
+): InboxDecision {
   const last = latestOrder(facts.orders);
   if (last === null) {
-    return { inbox: "ventas", rule: "no_order" };
+    const lead = salesLeadRule(facts, cutoff);
+    return lead === null
+      ? { inbox: "operaciones", rule: "no_order" }
+      : { inbox: "ventas", rule: lead };
   }
   if (
     facts.lastAdClickAt !== null &&
@@ -253,6 +388,19 @@ export function resolveInbox(facts: InboxFacts): InboxDecision {
     inbox: "operaciones",
     rule: anyInProgress ? "order_in_progress" : "order_finished",
   };
+}
+
+/**
+ * La línea de corte tal como era en un instante pasado.
+ *
+ * Un vendedor que se encendió **después** de `at` no existía entonces, así que
+ * a esa fecha la conversación sin pedido era de Katherine. El nacimiento no se
+ * recorta: una conversación no puede haber sido asignada antes de existir.
+ */
+function cutoffAsOf(cutoff: SalesCutoff, at: Date): SalesCutoff {
+  return cutoff.activatedAt !== null && cutoff.activatedAt.getTime() <= at.getTime()
+    ? cutoff
+    : { activatedAt: null, bornAt: cutoff.bornAt };
 }
 
 /**
@@ -289,8 +437,12 @@ function factsAsOf(facts: InboxFacts, at: Date): InboxFacts {
  * después fue pisado por otro ya no existe para nadie. En ese caso esta
  * función responde con lo que se puede saber —sin clic—, no con un invento.
  */
-export function resolveInboxAsOf(facts: InboxFacts, at: Date): InboxDecision {
-  return resolveInbox(factsAsOf(facts, at));
+export function resolveInboxAsOf(
+  facts: InboxFacts,
+  at: Date,
+  cutoff: SalesCutoff = SIN_VENDEDOR,
+): InboxDecision {
+  return resolveInbox(factsAsOf(facts, at), cutoffAsOf(cutoff, at));
 }
 
 /**
@@ -308,6 +460,12 @@ export function resolveInboxAsOf(facts: InboxFacts, at: Date): InboxDecision {
  * la conversación a quien la está trabajando por eso sería castigar a un asesor
  * por un hecho que no lo movió de sitio.
  */
-export function inboxChangedSince(facts: InboxFacts, since: Date): boolean {
-  return resolveInboxAsOf(facts, since).inbox !== resolveInbox(facts).inbox;
+export function inboxChangedSince(
+  facts: InboxFacts,
+  since: Date,
+  cutoff: SalesCutoff = SIN_VENDEDOR,
+): boolean {
+  return (
+    resolveInboxAsOf(facts, since, cutoff).inbox !== resolveInbox(facts, cutoff).inbox
+  );
 }

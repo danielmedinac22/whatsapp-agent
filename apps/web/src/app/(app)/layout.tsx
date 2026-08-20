@@ -1,7 +1,7 @@
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import { db, kapsoConnection } from "@/lib/db";
-import { getSalesAgentSettings } from "@wa/db";
+import { getSalesAgentSettings, salesAgentIsConfigured } from "@wa/db";
 import { countSalesInboxViews } from "@/lib/queries";
 import { operationTint } from "@wa/shared";
 import { resolveAccess } from "@/access/resolve";
@@ -87,22 +87,31 @@ export default async function AppLayout({
    * El vendedor de la operación activa, y los contadores de sus vistas.
    *
    * **`null` es el interruptor de la no-regresión**, y aquí se nota más que en
-   * ningún otro sitio: sin fila en `sales_agent_settings` no hay enlace de
-   * Conversaciones, no hay vistas, no se derivan bandejas y no se paga ni una
-   * consulta de más. En producción esa tabla está vacía, así que hoy el marco
-   * de Katherine se dibuja exactamente igual que antes de este ticket.
+   * ningún otro sitio: sin vendedor no hay enlace de Conversaciones, no hay
+   * vistas, no se derivan bandejas y no se paga ni una consulta de más.
+   *
+   * **El listón es `salesAgentIsConfigured`, no «existe la fila».** Preguntar
+   * por la fila fue el error que este ticket vino a corregir: el `upsert` de
+   * `/vendedor` la crea con todos los textos en `''`, así que abrir la pantalla
+   * de configuración encendía el módulo entero —menú, vistas y contadores— con
+   * el vendedor apagado del lado del worker. Ahora el panel y el que contesta
+   * responden lo mismo, porque preguntan lo mismo.
    *
    * Los contadores se calculan en el layout y no en la bandeja porque tienen
    * que verse **desde afuera** de ella (decisión 1 del nivel 2): un contador
    * que solo aparece estando ya dentro no sirve para que entres.
    */
   const seller = active ? await getSalesAgentSettings(active) : null;
-  const sales: SalesNav | null = seller
-    ? {
-        counts: await countSalesInboxViews(active!),
-        sellerName: seller.displayName.trim() || "el vendedor",
-      }
-    : null;
+  const sales: SalesNav | null =
+    active && salesAgentIsConfigured(seller)
+      ? {
+          counts: await countSalesInboxViews(active),
+          // El listón garantiza que no está vacío: es literalmente lo que
+          // pregunta. Por eso acá no hay ningún «o el vendedor» de reserva —un
+          // nombre de reserva es la barra diciendo un nombre que nadie escribió.
+          sellerName: seller.displayName.trim(),
+        }
+      : null;
 
   // Sin operación elegida el marco no toma el color de ninguna: teñirlo del
   // primero de la lista sería decir que se está trabajando sobre él.

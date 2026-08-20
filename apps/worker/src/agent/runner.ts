@@ -10,6 +10,7 @@ import {
   getSalesAgentSettings,
   messages,
   requireOperationOrSole,
+  salesAgentIsConfigured,
   type Contact,
   type Conversation,
 } from "@wa/db";
@@ -21,7 +22,6 @@ import { enqueueOutbound } from "../jobs/outbound";
 import { loadSalesEscalationFacts } from "../sales/escalation-facts";
 import { evaluateSalesEscalation } from "../sales/escalation-triggers";
 import { salesReasoningOptions } from "../sales/model";
-import { isSalesAgentConfigured } from "../sales/persona";
 import { enqueueApoyosVisuales } from "../sales/product-media-send";
 import { openrouter } from "./openrouter";
 import { escalateToHuman, SALES_ESCALATION_REASON } from "./escalation";
@@ -170,7 +170,7 @@ async function recordRun(
 async function flushSalesTurn(entry: Buffered): Promise<boolean> {
   const operation = await requireOperationOrSole(entry.conversation.operationId);
   const settings = await getSalesAgentSettings(operation);
-  if (!settings || !isSalesAgentConfigured(settings)) {
+  if (!salesAgentIsConfigured(settings)) {
     logger.info(
       { operationId: operation.id },
       "sales: la operación no tiene vendedor configurado; contesta el agente de confirmación",

@@ -72,28 +72,12 @@ export interface SalesPersona {
   discountLimitBehavior: SalesDiscountBehavior;
 }
 
-/**
- * Si la operación tiene vendedor de verdad.
- *
- * **No basta con que exista la fila.** Los textos son `NOT NULL default ''`, así
- * que una fila recién creada por el panel —o sembrada por una migración— tiene
- * nombre vacío, tono vacío y mensajes vacíos: un vendedor sin persona, que
- * contestaría con el esqueleto del prompt y nada más. Tomar la existencia de la
- * fila como «hay vendedor» convertiría un `INSERT` a medio llenar en el momento
- * en que Guatemala deja de ser atendida por Katherine, sin que nadie lo pidiera.
- *
- * El listón es el nombre visible porque es el primer campo que el admin llena y
- * el único que el cliente ve: sin él no hay a quién presentar.
- *
- * Es la puerta del riesgo R8 de la no-regresión —«la lógica nueva solo se activa
- * cuando hay un vendedor configurado para esa operación»— y `null` la deja
- * cerrada, que es como está producción hoy.
- */
-export function isSalesAgentConfigured(
-  settings: Pick<SalesPersona, "displayName"> | null,
-): boolean {
-  return Boolean(settings && settings.displayName.trim().length > 0);
-}
+// Si la operación tiene vendedor de verdad **ya no se decide acá**: el listón es
+// `salesAgentIsConfigured` de `@wa/db`, junto a la tabla que describe, y
+// `SalesPersona` encaja en su forma estructural sin conversión. Estaba escrito
+// dos veces en el worker y una tercera —distinta— en el panel, y la tercera es
+// la que encendió el módulo de ventas de Guatemala sin vendedor: preguntaba si
+// la fila existía, y el `upsert` de `/vendedor` la crea con todo en `''`.
 
 /**
  * Las reglas que no salen de la configuración porque no son del admin sino del

@@ -6,6 +6,7 @@ import {
   eq,
   getSalesAgentSettings,
   parseRecognitionOutcome,
+  salesAgentIsConfigured,
   resolveRowMark,
   type Inbox,
 } from "@wa/db";
@@ -51,10 +52,11 @@ export default async function InboxPage({
   // el que le habría puesto el CDN guatemalteco a las guías colombianas.
   const op = await resolvePanelOperation();
 
-  // El vendedor decide si esta operación tiene dos bandejas o una. Sin fila,
+  // El vendedor decide si esta operación tiene dos bandejas o una. Sin vendedor
+  // —el listón único: nombre visible no vacío, no la existencia de la fila—
   // `listConversations` no filtra ni deriva nada y la pantalla es la de hoy.
   const seller = await getSalesAgentSettings(op);
-  const inbox = bandejaPedida(b, seller !== null);
+  const inbox = bandejaPedida(b, salesAgentIsConfigured(seller));
 
   const [items, [conn], approvedTemplates] = await Promise.all([
     listConversations(op, { search: q, pinnedId: c, inbox }),
@@ -129,7 +131,11 @@ export default async function InboxPage({
       selectedId={c ?? null}
       bandeja={inbox ?? null}
       vista={v === "atencion" || v === "agente" ? v : null}
-      sellerName={seller ? seller.displayName.trim() || "el vendedor" : null}
+      // El mismo listón que decide la bandeja, y por lo mismo: `null` es lo que
+      // apaga el nombre del vendedor en los eventos del hilo y el botón de
+      // «TRABAJARLA YO». Con la fila a medio llenar esto decía «el vendedor» y
+      // encendía los dos, que es la mentira que el ticket vino a sacar.
+      sellerName={salesAgentIsConfigured(seller) ? seller.displayName.trim() : null}
       currentUserId={session?.user.id ?? null}
     />
   );

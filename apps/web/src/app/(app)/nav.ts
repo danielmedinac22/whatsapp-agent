@@ -66,8 +66,26 @@ export interface NavItem {
 export interface NavGroup {
   key: string;
   label: string;
-  /** El agente que atiende el módulo. `null` en lo que no es de un módulo. */
+  /**
+   * El agente que atiende el módulo, **escrito a mano**. `null` en lo que no es
+   * de un módulo, y `null` también donde el nombre no es un dato del menú sino
+   * de la configuración — ver {@link NavGroup.agentFromSeller}.
+   */
   agent: string | null;
+  /**
+   * Si el nombre del agente sale del vendedor configurado en vez de estar
+   * escrito acá.
+   *
+   * Ventas lo usa porque su agente **no existe hasta que alguien lo nombra**:
+   * el nombre vive en `sales_agent_settings.display_name` y es el mismo con el
+   * que el vendedor se presenta al cliente. Hasta este ticket la barra decía
+   * «VENTAS · Sebastián» siempre, incluso con la configuración vacía y el
+   * vendedor apagado — la misma clase de mentira que la bandeja heredada.
+   *
+   * Confirmación se queda con su nombre escrito: Katherine sí existe, atiende
+   * hoy, y su configuración es otra tabla que no tiene nombre visible.
+   */
+  agentFromSeller?: boolean;
   items: readonly NavItem[];
 }
 
@@ -75,7 +93,8 @@ export const NAV_GROUPS: readonly NavGroup[] = [
   {
     key: "ventas",
     label: "Ventas",
-    agent: "Sebastián",
+    agent: null,
+    agentFromSeller: true,
     items: [
       /**
        * La bandeja de ventas **no es una pantalla nueva**: es el Inbox de
@@ -86,7 +105,8 @@ export const NAV_GROUPS: readonly NavGroup[] = [
        * veredicto rechazó.
        *
        * Solo aparece cuando la operación tiene vendedor configurado; lo decide
-       * el layout, que es quien sabe si `sales_agent_settings` tiene fila.
+       * el layout con `salesAgentIsConfigured` —nombre visible no vacío, no la
+       * existencia de la fila—, que es el mismo listón que usa el worker.
        */
       {
         href: "/inbox?b=ventas",
@@ -96,7 +116,10 @@ export const NAV_GROUPS: readonly NavGroup[] = [
         icon: MessagesSquare,
         views: [
           { key: "atencion", label: "Necesitan atención", count: "needsAttention" },
-          { key: "agente", label: "Las lleva Sebastián", count: "automated" },
+          // La etiqueta real la arma `viewLabel` con el nombre configurado;
+          // esta es la que queda si algún día la vista se dibuja sin vendedor,
+          // y por eso no nombra a nadie.
+          { key: "agente", label: "Las lleva el vendedor", count: "automated" },
           { key: null, label: "Todas", count: "all" },
         ],
       },

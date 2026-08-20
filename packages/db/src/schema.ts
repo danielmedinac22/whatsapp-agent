@@ -882,6 +882,26 @@ export const salesAgentSettings = pgTable(
     model: text("model").notNull().default("openai/gpt-5.4-mini"),
     /** `low` | `medium` | `high` — vocabulario del proveedor, por eso texto y no enum. */
     reasoningEffort: text("reasoning_effort").notNull().default("low"),
+    /**
+     * **La línea de corte del vendedor**: cuándo se encendió por primera vez.
+     * Migración `0030`.
+     *
+     * `null` mientras el vendedor no exista —el estado de producción hoy, con
+     * `display_name` en `''`— y es lo que hace que la bandeja de ventas no
+     * contenga nada por la regla `no_order`: sin fecha, una conversación sin
+     * pedido es de Katherine. Ver `inbox.ts::resolveInbox`.
+     *
+     * **Se escribe una sola vez y no se vuelve a mover**, ni siquiera si el
+     * vendedor se apaga y se vuelve a encender. Re-estamparla arrastraría
+     * conversaciones vivas de vuelta a Katherine sin que nadie lo pida, que es
+     * justo lo que `no-regresion.md` prohíbe. La escritura vive en
+     * `stampSalesAgentActivation` y su `where activated_at is null` es lo que
+     * hace cumplir el «una sola vez» aunque dos lecturas corran a la vez.
+     *
+     * Nullable y additiva a propósito: el worker viejo la ignora, así que
+     * aplicar la migración y desplegar son seguros en cualquier orden.
+     */
+    activatedAt: timestamp("activated_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
