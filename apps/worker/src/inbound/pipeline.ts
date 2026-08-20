@@ -9,6 +9,7 @@ import {
 import { db } from "../db";
 import { logger } from "../lib/logger";
 import { events } from "../lib/events";
+import { instantaneaDe } from "../lib/eventos";
 import { onAgentInbound } from "../agent/runner";
 import { scheduleConfirmationClassify } from "../agent/confirmation-classifier";
 import { escalateToHuman } from "../agent/escalation";
@@ -367,13 +368,19 @@ export async function handleInbound(parsed: ParsedInboundMessage): Promise<void>
   if (!stored) return;
 
   const now = new Date();
+  // Lo que la conversación pasa a decir, con nombre porque **lo que se escribe
+  // es exactamente lo que viaja en el evento**. El panel repinta la fila con
+  // esto en vez de volver a pedir la pantalla entera, y que salga de la
+  // escritura que ya estaba es lo que hace que enriquecer el evento no cueste
+  // ni una consulta más: acá no se lee nada que no estuviera en la mano.
+  const huella = {
+    lastMessagePreview: parsed.text.slice(0, 200),
+    lastInboundAt: now,
+    unreadCount: (conv.unreadCount ?? 0) + 1,
+  };
   await db
     .update(conversations)
-    .set({
-      lastMessagePreview: parsed.text.slice(0, 200),
-      lastInboundAt: now,
-      unreadCount: (conv.unreadCount ?? 0) + 1,
-    })
+    .set(huella)
     .where(eq(conversations.id, conv.id));
   await db
     .update(contacts)
@@ -382,8 +389,15 @@ export async function handleInbound(parsed: ParsedInboundMessage): Promise<void>
 
   events.emitEvent({
     type: "message.created",
+    // La operación de la conversación, que la ingesta resolvió por el número
+    // que recibió el mensaje. Es lo que impide que este entrante mueva la
+    // bandeja del otro país.
+    operationId: conv.operationId,
     conversationId: conv.id,
     messageId: stored.id,
+    // `conv` es la fila de antes de la escritura; `huella` es lo que acaba de
+    // cambiar. Juntas son la fila como quedó.
+    conversation: instantaneaDe({ ...conv, ...huella }),
   });
 
   // Blue ticks + typing indicator (typing only when the agent will answer).

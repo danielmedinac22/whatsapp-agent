@@ -2,6 +2,7 @@ import { generateText } from "ai";
 import { conversations, desc, eq, messages } from "@wa/db";
 import { db } from "../db";
 import { events } from "../lib/events";
+import { instantaneaDe } from "../lib/eventos";
 import { logger } from "../lib/logger";
 import { openrouter } from "./openrouter";
 
@@ -92,7 +93,16 @@ async function runClassifier(conversationId: string, contactId: string) {
     })
     .where(eq(conversations.id, conversationId));
 
-  events.emitEvent({ type: "conversation.updated", conversationId });
+  events.emitEvent({
+    type: "conversation.updated",
+    // `conv` es la fila entera y ya estaba leída para decidir si clasificar:
+    // la operación y el resumen de la fila salen de ahí, sin consulta nueva.
+    // El clasificador no toca ninguno de los tres campos del resumen, así que
+    // lo que manda es lo que la base dice ahora.
+    operationId: conv.operationId,
+    conversationId,
+    conversation: instantaneaDe(conv),
+  });
   void contactId;
 }
 

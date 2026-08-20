@@ -1,5 +1,5 @@
 import { eq } from "@wa/db";
-import { messages, outboundMessages } from "@wa/db";
+import { conversations, messages, outboundMessages } from "@wa/db";
 import { db } from "../db";
 import { events } from "../lib/events";
 import { logger } from "../lib/logger";
@@ -104,13 +104,20 @@ export function humanDeliveryError(s: ParsedStatusEvent): string {
  * for messages we didn't record (e.g. sent from the Kapso inbox directly).
  */
 export async function applyDeliveryStatus(s: ParsedStatusEvent): Promise<void> {
+  // La operación viaja en el evento para que un acuse de Guatemala no mueva la
+  // bandeja de Colombia, y sale de este mismo `select`: es una tabla más en el
+  // `join`, no un viaje más. `messages.conversation_id` es `NOT NULL` con clave
+  // foránea, así que el `innerJoin` no puede perder ninguna fila que el
+  // anterior encontraba.
   const [msg] = await db
     .select({
       id: messages.id,
       status: messages.status,
       conversationId: messages.conversationId,
+      operationId: conversations.operationId,
     })
     .from(messages)
+    .innerJoin(conversations, eq(conversations.id, messages.conversationId))
     .where(eq(messages.waId, s.waMessageId))
     .limit(1);
 
@@ -124,8 +131,13 @@ export async function applyDeliveryStatus(s: ParsedStatusEvent): Promise<void> {
           : {}),
       })
       .where(eq(messages.id, msg.id));
+    // Sin instantánea de la fila, y no es un olvido: un acuse de entrega o de
+    // lectura no cambia la vista previa, ni el contador de no leídos, ni la
+    // fecha de última actividad. Lo único que mueve de la lista es el chulo del
+    // fallo, que se deriva del propio `status`.
     events.emitEvent({
       type: "message.status",
+      operationId: msg.operationId,
       conversationId: msg.conversationId,
       messageId: msg.id,
       status: s.status,
