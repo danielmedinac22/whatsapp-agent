@@ -581,8 +581,17 @@ export const conversations = pgTable(
   },
   (t) => [
     uniqueIndex("conversations_contact_idx").on(t.contactId),
-    index("conversations_last_msg_idx").on(t.lastInboundAt, t.lastOutboundAt),
     index("conversations_confirmation_idx").on(t.confirmationStatus),
+
+    // Acá vivía `conversations_last_msg_idx (last_inbound_at,
+    // last_outbound_at)`, desde la `0000` y borrado por la `0032`. **No lo
+    // vuelvas a poner sin leer esa migración**: producción lo reportó con
+    // `idx_scan = 0` y `last_idx_scan` nulo, y ninguna consulta del producto
+    // filtra ni ordena por esas dos columnas sueltas — la lista va por la
+    // expresión `GREATEST(...)`, que un índice sobre las columnas no sirve, y
+    // para eso está `conversations_operation_activity_idx`. Costaba 91 bytes
+    // de WAL por fila en la escritura más caliente que hay, la del
+    // `last_inbound_at` de cada mensaje entrante.
 
     // ── Por operación · `0031` ─────────────────────────────────────────────
     //
@@ -603,10 +612,11 @@ export const conversations = pgTable(
     /**
      * El orden real de la bandeja, que hasta ahora ningún índice podía servir.
      *
-     * `conversations_last_msg_idx` tiene las dos columnas del medio y **no
-     * sirve**: la lista no ordena por ellas sino por
+     * `conversations_last_msg_idx` tenía las dos columnas del medio y **no
+     * servía**: la lista no ordena por ellas sino por
      * `GREATEST(last_inbound_at, last_outbound_at, created_at)`, que es una
-     * expresión, y un índice sobre las columnas no ordena la expresión. Es la
+     * expresión, y un índice sobre las columnas no ordena la expresión. Por eso
+     * mismo no lo usaba nadie, y por eso la `0032` lo borró. Es la
      * misma frase que `lastActivityAt` escribe en `queries.ts` y que
      * `actividadDe` escribe en TypeScript; ahora son tres los sitios que
      * tienen que cambiar juntos.
