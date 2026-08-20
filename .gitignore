@@ -34,3 +34,6 @@ auth_info_baileys/
 .turbo/
 coverage/
 .vercel
+
+# Ajustes personales de Claude Code (permisos locales). No viaja al repo.
+.claude/settings.local.json
