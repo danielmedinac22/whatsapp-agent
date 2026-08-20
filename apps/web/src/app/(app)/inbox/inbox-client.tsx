@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { buildReopenOptions, type ReopenOption } from "@/lib/reopen";
 // Del subcamino y no del barril: `@wa/db` arrastra el cliente de la base y
@@ -17,7 +24,9 @@ import {
   reordenarPorActividad,
 } from "@wa/db/bandeja-viva";
 import type { WaEvent } from "@wa/shared";
+import { ContextLine } from "../context-line";
 import { VoiceRecorder } from "./voice-recorder";
+import { tiempoCompleto, tiempoRelativo } from "./tiempo-relativo";
 import {
   AlertCircle,
   AlertTriangle,
@@ -122,33 +131,97 @@ type FilterKey =
   | "automated";
 
 /**
- * Cómo se dice en la fila lo que el reconocimiento dejó a medias.
+ * **Los estados de la fila, cada uno con su nombre escrito.**
  *
- * **«Ambiguo» y «sin producto» son dos marcas y no una**, porque le piden al
- * asesor cosas opuestas: la primera se resuelve desempatando dentro del chat,
- * la segunda cargando el anuncio en el catálogo, que es otra pantalla. Hasta la
- * `0026` las dos dejaban la misma huella en la base y la fila no podía
- * separarlas.
+ * Es el veredicto del nivel 3 hecho tabla. Hasta hoy la fila codificaba sus
+ * estados de tres maneras distintas y ninguna decía nada: «sin responder» era
+ * una rayita roja de dos píxeles a la izquierda, «en automático» un icono de
+ * chispas sin texto, y el reconocimiento tres pastillas de tres colores. Quien
+ * no se hubiera aprendido el código no podía recorrer la bandeja con la vista,
+ * que es literalmente lo que el dueño del producto reportó.
+ *
+ * **Ningún estado se codifica solo con color**, y por eso cada fila lleva el
+ * nombre: fue criterio de aceptación de la ronda y es lo que hizo ganar esta
+ * variante sobre las cuatro que dependían de aprenderse un matiz. El color
+ * acompaña; los cinco pares están medidos entre 5,25:1 y 6,33:1 sobre AA.
+ *
+ * **Una fila con dos estados los muestra los dos.** No hay «el más importante»:
+ * una escalada que además espera respuesta es las dos cosas, y elegir una
+ * escondería justo la que hace falta. Lo que cuesta —la fila más alta de las
+ * cinco variantes, tres líneas con dos estados— se aceptó a sabiendas.
+ *
+ * El orden es el de lectura: primero lo que le pide algo a una persona, al
+ * final lo que va solo.
  */
-const MARK_META: Record<RowMark, { label: string; title: string; classes: string }> = {
-  escalada: {
+const ESTADOS_DE_LA_FILA: readonly {
+  label: string;
+  title: string;
+  /** El modificador de `.state-chip`. Los nombres los fija el spec. */
+  modificador: string;
+  lo: (it: ChatItem) => boolean;
+}[] = [
+  {
+    label: "sin responder",
+    title: "El cliente escribió y todavía nadie le contestó",
+    modificador: "state-chip--espera",
+    // Lo deriva el servidor y **no se recalcula acá**: ver `sinResponderCount`.
+    lo: (it) => it.sinResponder,
+  },
+  {
     label: "escalada",
     title: "El vendedor pasó esta conversación a un asesor",
-    classes: "border-red-400/30 bg-red-500/10 text-red-200",
+    modificador: "state-chip--escalada",
+    lo: (it) => it.mark === "escalada",
   },
-  ambiguo: {
-    label: "ambiguo",
-    title:
-      "El anuncio apunta a varios productos y el vendedor no pudo elegir — hay que desempatar en el chat",
-    classes: "border-sky-400/30 bg-sky-500/10 text-sky-200",
+  {
+    label: "novedad",
+    title: "La logística reportó una novedad en la entrega",
+    modificador: "state-chip--novedad",
+    // El estado `novedad` y la bandera son dos caminos al mismo hecho: la
+    // novedad puede seguir viva con la guía ya en otro estado.
+    lo: (it) => it.dropiHasNovedad || it.dropiStatus === "novedad",
   },
-  sin_identificar: {
+  {
     label: "sin producto",
     title:
       "Llegó por un anuncio y no hubo ni un candidato — hay que cargar el anuncio en el catálogo",
-    classes: "border-amber-400/30 bg-amber-500/10 text-amber-200",
+    modificador: "state-chip--sin-producto",
+    lo: (it) => it.mark === "sin_identificar",
   },
-};
+  {
+    /**
+     * **«Ambiguo» y «sin producto» son dos marcas y no una**, porque le piden
+     * al asesor cosas opuestas: la primera se resuelve desempatando dentro del
+     * chat, la segunda cargando el anuncio en el catálogo, que es otra
+     * pantalla. Hasta la `0026` las dos dejaban la misma huella en la base y la
+     * fila no podía separarlas.
+     *
+     * **El contrato de nombres fija cinco modificadores y esta es la sexta
+     * marca**, así que comparte el tinte de «sin producto» —las dos son el
+     * reconocimiento que no llegó— y se separa por el nombre escrito, que es
+     * justo el canal que el veredicto puso por delante del color. Queda
+     * avisado: si la ronda quiere un par propio, sale del spec y no de acá.
+     */
+    label: "ambiguo",
+    title:
+      "El anuncio apunta a varios productos y el vendedor no pudo elegir — hay que desempatar en el chat",
+    modificador: "state-chip--sin-producto",
+    lo: (it) => it.mark === "ambiguo",
+  },
+  {
+    label: "en automático",
+    title: "La lleva el vendedor automático",
+    // Solo se marca cuando lo está: «manual» era una etiqueta en cada fila que
+    // no lo estaba, y marcar todas las filas es no marcar ninguna.
+    modificador: "state-chip--auto",
+    lo: (it) => it.agentMode,
+  },
+];
+
+/** Las etiquetas que le tocan a una fila, en el orden de la tabla. */
+function estadosDe(it: ChatItem) {
+  return ESTADOS_DE_LA_FILA.filter((e) => e.lo(it));
+}
 
 /**
  * **El filtro de la lista, tal como viaja en `?v=`.**
@@ -233,28 +306,43 @@ function filtroDeLaVista(vista: string | null, esVentas: boolean): FilterKey {
  */
 const VENTANA_DE_REFRESCO_MS = 400;
 
+/**
+ * **El detalle de la fila se dibuja más callado que sus estados.**
+ *
+ * Los cinco estados van rellenos, en 800 y en versalitas —son lo que hace que
+ * la bandeja se recorra con la vista—. Lo de aquí abajo es el detalle del
+ * pedido: importa cuando ya te detuviste en una fila, no cuando la estás
+ * salteando. Por eso lleva contorno y no relleno, y el color lo pone el texto.
+ *
+ * Ninguno inventa un tono: salen todos del contrato de nombres del spec.
+ */
+const DETALLE = "border-[var(--color-border)] text-[var(--color-text-dim)]";
+const DETALLE_BIEN = "border-[var(--color-border)] text-[var(--color-ink)]";
+const DETALLE_MAL = "border-[var(--color-border)] text-[var(--color-danger)]";
+const DETALLE_ESPERA = "border-[var(--color-border)] text-[var(--color-warn)]";
+
 const STATUS_META: Record<
   ConfirmationStatus,
   { label: string; classes: string; icon: typeof CheckCircle2 }
 > = {
   confirmed: {
     label: "confirmado",
-    classes: "border-emerald-400/30 bg-emerald-500/10 text-emerald-200",
+    classes: DETALLE_BIEN,
     icon: CheckCircle2,
   },
   not_confirmed: {
     label: "no confirmado",
-    classes: "border-red-400/30 bg-red-500/10 text-red-200",
+    classes: DETALLE_MAL,
     icon: XCircle,
   },
   pending: {
     label: "pendiente",
-    classes: "border-amber-400/30 bg-amber-500/10 text-amber-200",
+    classes: DETALLE_ESPERA,
     icon: CircleDashed,
   },
   unknown: {
     label: "sin clasificar",
-    classes: "border-[var(--color-border)] text-[var(--color-text-soft)]",
+    classes: DETALLE,
     icon: HelpCircle,
   },
 };
@@ -265,82 +353,85 @@ const DROPI_META: Record<
 > = {
   unknown: {
     label: "—",
-    classes: "border-[var(--color-border)] text-[var(--color-text-soft)]",
+    classes: DETALLE,
     icon: HelpCircle,
   },
   pendiente_confirmacion: {
     label: "por confirmar",
-    classes: "border-amber-400/30 bg-amber-500/10 text-amber-200",
+    classes: DETALLE_ESPERA,
     icon: CircleDashed,
   },
   pendiente: {
     label: "pendiente",
-    classes: "border-amber-400/30 bg-amber-500/10 text-amber-200",
+    classes: DETALLE_ESPERA,
     icon: CircleDashed,
   },
+  // El tramo de en medio —la guía ya existe y todavía no llegó— no es ni bueno
+  // ni malo: informa. Va en gris, que es lo que lo deja pasar de largo cuando
+  // se está buscando otra cosa.
   guia_generada: {
     label: "guía",
-    classes: "border-sky-400/30 bg-sky-500/10 text-sky-200",
+    classes: DETALLE,
     icon: FileText,
   },
   preparado_transportadora: {
     label: "preparado",
-    classes: "border-sky-400/30 bg-sky-500/10 text-sky-200",
+    classes: DETALLE,
     icon: Package,
   },
   recolectado: {
     label: "recolectado",
-    classes: "border-sky-400/30 bg-sky-500/10 text-sky-200",
+    classes: DETALLE,
     icon: Package,
   },
   en_transito: {
     label: "en tránsito",
-    classes: "border-sky-400/30 bg-sky-500/10 text-sky-200",
+    classes: DETALLE,
     icon: Truck,
   },
   con_mensajero: {
     label: "con mensajero",
-    classes: "border-sky-400/30 bg-sky-500/10 text-sky-200",
+    classes: DETALLE,
     icon: Truck,
   },
   en_oficina: {
     label: "en oficina",
-    classes: "border-orange-400/30 bg-orange-500/10 text-orange-200",
+    classes: DETALLE_ESPERA,
     icon: Building2,
   },
   entregado: {
     label: "entregado",
-    classes: "border-emerald-400/30 bg-emerald-500/10 text-emerald-200",
+    classes: DETALLE_BIEN,
     icon: CheckCircle2,
   },
   novedad: {
     label: "novedad",
-    classes: "border-red-400/30 bg-red-500/10 text-red-200",
+    classes: DETALLE_MAL,
     icon: AlertTriangle,
   },
   novedad_solucionada: {
     label: "novedad resuelta",
-    classes: "border-emerald-400/30 bg-emerald-500/10 text-emerald-200",
+    classes: DETALLE_BIEN,
     icon: CheckCircle2,
   },
   devolucion: {
     label: "devolución",
-    classes: "border-amber-400/30 bg-amber-500/10 text-amber-200",
+    classes: DETALLE_ESPERA,
     icon: Undo2,
   },
   rechazado: {
     label: "rechazado",
-    classes: "border-red-400/30 bg-red-500/10 text-red-200",
+    classes: DETALLE_MAL,
     icon: XCircle,
   },
   retornado: {
     label: "retornado",
-    classes: "border-amber-400/30 bg-amber-500/10 text-amber-200",
+    classes: DETALLE_ESPERA,
     icon: Undo2,
   },
   anulada: {
     label: "anulada",
-    classes: "border-[var(--color-border)] text-[var(--color-text-soft)]",
+    classes: DETALLE,
     icon: XCircle,
   },
 };
@@ -360,10 +451,16 @@ type Novedades = {
 
 const SIN_NOVEDADES: Novedades = { conversaciones: [], faltaAlguna: false };
 
+/** Qué filas están esperando respuesta, por id. */
+function idsEsperando(filas: readonly ChatItem[]): ReadonlySet<string> {
+  return new Set(filas.filter((f) => f.sinResponder).map((f) => f.id));
+}
+
 export function InboxClient({
   initial,
   approvedTemplates,
   query,
+  op,
   operationId,
   bandeja,
   sellerName,
@@ -373,6 +470,15 @@ export function InboxClient({
   approvedTemplates: string[];
   /** Término de búsqueda vigente en la URL (?q=), resuelto en el servidor. */
   query: string;
+  /**
+   * De qué operación es esta bandeja, para la línea de contexto.
+   *
+   * Baja desde `page.tsx`, que ya tiene la fila entera (`resolvePanelOperation`).
+   * Hasta hoy el cliente solo recibía `operationId`, así que en la pantalla
+   * desde la que salen mensajes a Guatemala el único indicio del país era una
+   * bandera de 8×30 px en un riel que además se pliega.
+   */
+  op: { name: string; countryCode: string };
   /**
    * La operación que está mirando esta pestaña, o `null` si no se pudo
    * resolver.
@@ -415,6 +521,30 @@ export function InboxClient({
   const pedidaEnLaDireccion = params.get("c");
   const esVentas = bandeja === "ventas";
   const [items, setItems] = useState<ChatItem[]>(initial);
+  /**
+   * **En qué sección quedó cada fila la última vez que la lista se asentó.**
+   *
+   * Las secciones se agrupan por esto y **no por `it.sinResponder` en vivo**, y
+   * la diferencia no es un detalle: un mensaje entrante enciende «sin responder»
+   * (`aplicarEvento` lo mueve hacia arriba y con certeza), y agrupar en vivo
+   * haría saltar esa fila desde el fondo hasta la primera sección. Es
+   * exactamente el bug que PRO-12 sacó —la lista se reordena, el asesor abre la
+   * conversación equivocada— con otra ropa, y la prueba de aquel ticket lo
+   * agarra.
+   *
+   * Así que la agrupación es parte del **arreglo** de la lista, y el arreglo
+   * solo cambia cuando lo cambia el servidor o cuando el asesor se pone al día.
+   * Mientras tanto la fila se repinta donde está: la etiqueta ya dice que está
+   * esperando respuesta, y que además subiría de puesto lo dice el aviso de
+   * novedades, que es el que ya existe y el que reagrupa al tocarlo.
+   *
+   * **El filtro y el contador sí leen el campo en vivo**, y tienen que hacerlo:
+   * son preguntas del asesor sobre lo que es cierto ahora. Lo que se congela es
+   * dónde está dibujada la fila, no lo que la fila dice de sí misma.
+   */
+  const [esperandoAlAsentarse, setEsperandoAlAsentarse] = useState<
+    ReadonlySet<string>
+  >(() => idsEsperando(initial));
   const [novedades, setNovedades] = useState<Novedades>(SIN_NOVEDADES);
   const [search, setSearch] = useState(query);
   const [searching, startSearch] = useTransition();
@@ -599,6 +729,59 @@ export function InboxClient({
           ? items.filter((item) => item.agentMode)
           : items.filter((item) => item.confirmationStatus === filter);
 
+  /**
+   * **Las secciones son estructura, no decoración de la fila.**
+   *
+   * Hasta hoy la lista no tenía ninguna: tenía un filtro. Un `h1` y cero `h2`,
+   * en la pantalla que más se abre. Ahora se parte en dos por el mismo campo
+   * que leen la etiqueta, el filtro y el contador de la barra —`sinResponder`,
+   * que decide el servidor y que **aquí no se recalcula**—, así que no hay una
+   * regla nueva que pueda discrepar con las otras tres.
+   *
+   * Lo que se lee es {@link esperandoAlAsentarse} y no el campo en vivo, y ahí
+   * está la única sutileza de todo esto: agrupar en vivo haría saltar de sección
+   * a la fila que acaba de recibir un mensaje. Lo cuenta ese comentario.
+   *
+   * **El orden de cada sección es el que traía la lista.** Partir conserva el
+   * orden relativo, así que dentro de «Esperando respuesta» y dentro de «El
+   * resto» las filas siguen por actividad, como las manda el servidor.
+   *
+   * ## Las secciones conviven con el filtro sin repetirlo
+   *
+   * Un filtro puesto puede dejar un solo grupo con filas —«Sin responder» las
+   * deja todas en el primero, «En automático» todas en el segundo—, y ahí un
+   * encabezado diría lo mismo que el selector que está tres centímetros más
+   * arriba, y el otro sería un «· 0» que no lleva a ninguna parte. **Con un
+   * solo grupo la lista va plana**, exactamente como estaba. Los encabezados
+   * aparecen cuando la lista de verdad se parte en dos, que es cuando decir
+   * dónde termina una y empieza la otra informa algo.
+   *
+   * `null` es «esta sección no se anuncia»: es una sola y es toda la lista.
+   */
+  const esperandoRespuesta = visibleItems.filter((it) =>
+    esperandoAlAsentarse.has(it.id),
+  );
+  const elResto = visibleItems.filter(
+    (it) => !esperandoAlAsentarse.has(it.id),
+  );
+  const secciones: { nombre: string | null; filas: ChatItem[] }[] =
+    esperandoRespuesta.length > 0 && elResto.length > 0
+      ? [
+          { nombre: "Esperando respuesta", filas: esperandoRespuesta },
+          { nombre: "El resto", filas: elResto },
+        ]
+      : [{ nombre: null, filas: visibleItems }];
+
+  /**
+   * El «ahora» con el que cada fila dice su tiempo, uno solo por render.
+   *
+   * Se calcula acá y baja como parámetro para que {@link tiempoRelativo} sea
+   * pura: los tres bordes que hay que probar —medianoche, ayer a las 23:59 y el
+   * salto de semana— no se pueden escribir contra un reloj que corre. Y de paso
+   * las filas de un mismo render no se contradicen entre ellas.
+   */
+  const ahora = new Date();
+
   /** Anotar que llegó algo que la lista no va a mostrar sola. */
   const anotarNovedad = useCallback(
     (conversationId: string, fueraDeLaLista: boolean) => {
@@ -701,6 +884,7 @@ export function InboxClient({
   useEffect(() => {
     itemsRef.current = initial;
     setItems(initial);
+    setEsperandoAlAsentarse(idsEsperando(initial));
     setNovedades(SIN_NOVEDADES);
   }, [initial]);
 
@@ -716,6 +900,10 @@ export function InboxClient({
     const ordenadas = reordenarPorActividad(itemsRef.current);
     itemsRef.current = ordenadas;
     setItems(ordenadas);
+    // Ponerse al día reordena **y reagrupa**: son la misma acción del asesor
+    // sobre el mismo arreglo, y dejar una sin la otra sería reordenar la lista
+    // para que las secciones siguieran diciendo lo de antes.
+    setEsperandoAlAsentarse(idsEsperando(ordenadas));
     if (novedades.faltaAlguna) refrescar();
     setNovedades(SIN_NOVEDADES);
   }, [novedades.faltaAlguna, refrescar]);
@@ -757,7 +945,21 @@ export function InboxClient({
     <div className="app-page flex min-h-[calc(100vh-46px)] flex-col gap-3 xl:h-[calc(100vh-46px)] xl:min-h-0">
       <header className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="app-title">{esVentas ? "Conversaciones" : "Inbox"}</h1>
+          {/*
+            La línea de contexto va **sobre** el `h1`, siempre, y una sola vez
+            por pantalla. Vive acá y no en `inbox/page.tsx` por un accidente que
+            no lo es tanto: el `h1` del Inbox está en el cliente, porque el
+            título cambia con la bandeja y la bandeja se lee de la URL.
+
+            `pantalla` es el **módulo del menú** y no el nombre de la pantalla
+            —«Ventas», «Confirmación»—, que es lo que distingue el trabajo de
+            Katherine del de Sebastián sin abrir el selector. Repetir el `h1`
+            dos renglones más arriba no diría nada nuevo.
+          */}
+          <ContextLine op={op} pantalla={esVentas ? "Ventas" : "Confirmación"} />
+          <h1 className="app-title mt-1">
+            {esVentas ? "Conversaciones" : "Inbox"}
+          </h1>
           <p className="mt-1 text-sm text-[var(--color-text-dim)]">
             {esVentas
               ? `La bandeja de ${sellerName ?? "ventas"} — el mismo número, la misma pantalla`
@@ -796,7 +998,7 @@ export function InboxClient({
             <SummaryCard
               label="Por confirmar"
               value={String(pendingCount)}
-              accent={pendingCount > 0 ? "text-amber-200" : undefined}
+              accent={pendingCount > 0 ? "text-[var(--color-warn)]" : undefined}
               active={filter === "pending"}
               onClick={() => ponerFiltro("pending")}
             />
@@ -807,7 +1009,9 @@ export function InboxClient({
           <SummaryCard
             label="Sin responder"
             value={String(sinResponderCount)}
-            accent={sinResponderCount > 0 ? "text-red-200" : undefined}
+            accent={
+              sinResponderCount > 0 ? "text-[var(--color-danger)]" : undefined
+            }
             active={filter === "sin_responder"}
             onClick={() => ponerFiltro("sin_responder")}
           />
@@ -818,7 +1022,13 @@ export function InboxClient({
         {/* Debajo de xl la altura la fija el viewport, no el contenido: sin esto
             las 200 conversaciones estiran la lista y el hilo queda 21.000 px
             más abajo. min-w-0 deja que el `truncate` de cada fila funcione. */}
-        <aside className="app-card flex h-[55vh] min-h-[320px] min-w-0 flex-col overflow-hidden xl:h-auto xl:min-h-[520px]">
+        {/*
+          **La lista comparte el fondo de la pantalla y el hilo va sobre
+          blanco**, y eso —y no un borde grueso ni un espacio— es lo que las
+          separa. Es el criterio del nivel 2, y por eso este `aside` dejó de ser
+          `.app-card`: dos tarjetas lado a lado se leían como un continuo.
+        */}
+        <aside className="flex h-[55vh] min-h-[320px] min-w-0 flex-col overflow-hidden rounded-lg xl:h-auto xl:min-h-[520px]">
           <div className="flex flex-col gap-2 border-b border-[var(--color-border)] px-3 py-2.5">
             <div className="relative">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--color-text-soft)]" />
@@ -833,7 +1043,7 @@ export function InboxClient({
                   type="button"
                   onClick={() => setSearch("")}
                   title="Limpiar búsqueda"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--color-text-soft)] hover:text-[var(--color-text)]"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--color-text-dim)] hover:text-[var(--color-text)]"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
@@ -854,7 +1064,7 @@ export function InboxClient({
               <select
                 value={filter}
                 onChange={(e) => ponerFiltro(e.target.value as FilterKey)}
-                className="h-9 min-w-0 rounded-md border border-[var(--color-border)] bg-[rgba(8,21,30,0.72)] px-2 text-xs text-[var(--color-text-dim)] outline-none transition hover:border-[rgba(110,231,183,0.3)] focus:border-[rgba(110,231,183,0.5)] lg:h-7"
+                className="h-9 min-w-0 rounded-md border border-[var(--color-border)] bg-[var(--color-card)] px-2 text-xs text-[var(--color-text-dim)] outline-none transition hover:border-[var(--color-border-strong)] focus:border-[var(--color-ink)] lg:h-7"
               >
                 {filtrosDeLaBandeja(esVentas).map((f) => (
                   <option key={f} value={f}>
@@ -862,7 +1072,7 @@ export function InboxClient({
                   </option>
                 ))}
               </select>
-              <span className="shrink-0 rounded-md border border-[var(--color-border)] bg-[rgba(8,21,30,0.72)] px-2 py-1 text-xs text-[var(--color-text-dim)]">
+              <span className="shrink-0 rounded-md border border-[var(--color-border)] bg-[var(--color-card)] px-2 py-1 text-xs text-[var(--color-text-dim)]">
                 {visibleItems.length}/{items.length}
               </span>
             </div>
@@ -881,7 +1091,7 @@ export function InboxClient({
             <button
               type="button"
               onClick={ponerseAlDia}
-              className="mx-2 mt-2 rounded-lg border border-[rgba(110,231,183,0.35)] bg-[rgba(18,42,53,0.92)] px-3 py-1.5 text-left text-xs text-[var(--color-accent)] transition hover:bg-[rgba(24,54,68,0.95)]"
+              className="mx-2 mt-2 rounded-lg border border-[var(--color-ink)] bg-[var(--color-ink-wash)] px-3 py-1.5 text-left text-xs text-[var(--color-ink)] transition hover:bg-[var(--color-ink-soft)]"
             >
               {novedades.conversaciones.length === 1
                 ? "1 conversación con novedades"
@@ -899,108 +1109,42 @@ export function InboxClient({
                   : "Sin resultados con este filtro."}
             </li>
           )}
-          {visibleItems.map((it) => {
-            // La ventana cerrada **no la saca de la cuenta**: un lead de hace
-            // treinta horas sigue esperando respuesta, y el panel sabe reabrir
-            // con plantilla. Lo que cambia es que la fila lo diga, para que
-            // nadie abra el chat esperando poder escribir suelto.
-            const ventanaCerrada =
-              it.sinResponder && windowStateOf(it.lastInboundAt) === "closed";
-            return (
-            <li
-              key={it.id}
-              onClick={() => abrirConversacion(it)}
-              className={`mb-2 cursor-pointer rounded-lg border px-3 py-2.5 transition ${
-                selected?.id === it.id
-                  ? "border-[rgba(110,231,183,0.35)] bg-[rgba(18,42,53,0.92)] shadow-[0_6px_18px_rgba(3,10,16,0.45)]"
-                  : "border-[var(--color-border)] bg-[rgba(12,26,36,0.55)] shadow-[0_2px_8px_rgba(3,10,16,0.3)] hover:border-[rgba(110,231,183,0.2)] hover:bg-[rgba(18,35,48,0.78)]"
-              } ${it.sinResponder ? "border-l-2 border-l-red-400/60" : ""}`}
-            >
-              <div className="flex items-center justify-between">
-                <p className="truncate font-medium text-[var(--color-text)]">
-                  {it.name}
-                </p>
-                {it.unread > 0 && (
-                  <span className="ml-2 rounded-md bg-[var(--color-accent)] px-2 py-0.5 text-xs font-semibold text-[#032617]">
-                    {it.unread}
-                  </span>
-                )}
-              </div>
-              <p className="mt-1 truncate text-xs text-[var(--color-text-dim)]">
-                {it.preview ?? "—"}
-              </p>
-              <div className="mt-2 flex items-center justify-between gap-2">
-                <div className="flex flex-wrap items-center gap-1">
-                  {it.agentMode ? (
-                    <span
-                      title="Agente IA activo"
-                      className="inline-flex h-5 w-5 items-center justify-center rounded-md border border-emerald-400/20 bg-emerald-500/10 text-emerald-200"
-                    >
-                      <Sparkles className="h-3 w-3" />
+          {secciones.map((seccion) => (
+            <Fragment key={seccion.nombre ?? "sin-secciones"}>
+              {seccion.nombre !== null && (
+                /*
+                  Un `<li>` y no un `<h2>` suelto porque un `<ul>` solo puede
+                  tener `<li>` por hijo; `role="presentation"` le saca el papel
+                  de fila para que la lista siga teniendo tantas filas como
+                  conversaciones, y el `<h2>` de adentro conserva el suyo.
+                */
+                <li role="presentation" className="px-1 pb-2 pt-4 first:pt-1">
+                  {/* `.app-section` tal cual la define el contrato —16 px, 600—
+                      y sin achicarla acá: es el mismo encabezado de sección que
+                      el resto del panel, y que el Inbox por fin tenga uno es
+                      justo lo que el diagnóstico echaba de menos. */}
+                  <h2 className="app-section">
+                    {seccion.nombre}
+                    <span className="font-normal text-[var(--color-text-dim)]">
+                      {" "}
+                      · {seccion.filas.length}
                     </span>
-                  ) : (
-                    <span className="text-[10px] uppercase text-[var(--color-text-soft)]">
-                      manual
-                    </span>
-                  )}
-                  {/* Solo lo que NO es limpio: «reconocido» no se marca.
-                      Marcar todas las filas es no marcar ninguna. */}
-                  {it.mark && <MarkChip mark={it.mark} />}
-                  {ventanaCerrada && (
-                    <span
-                      title="El cliente lleva más de 24 horas sin escribir: WhatsApp solo permite reabrir con una plantilla"
-                      className="inline-flex items-center gap-1 rounded-md border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-[10px] uppercase text-amber-200"
-                    >
-                      <Clock className="h-3 w-3" />
-                      ventana cerrada
-                    </span>
-                  )}
-                  {/* Sin vendedor configurado la fila es la de siempre: la
-                      asignación no se puede tomar, así que tampoco se enseña. */}
-                  {sellerName !== null && it.assignedTo && (
-                    <span
-                      title={`La está trabajando ${it.assignedTo.label}`}
-                      className="inline-flex items-center gap-1 rounded-md border border-sky-400/30 bg-sky-500/10 px-2 py-0.5 text-[10px] uppercase text-sky-200"
-                    >
-                      <UserRound className="h-3 w-3" />
-                      {it.assignedTo.id === currentUserId
-                        ? "la trabajo yo"
-                        : it.assignedTo.label}
-                    </span>
-                  )}
-                  <ConfirmationChip status={it.confirmationStatus} />
-                  {it.dropiStatus && it.dropiStatus !== "unknown" && (
-                    <DropiChip status={it.dropiStatus} />
-                  )}
-                  {it.deliveryFailed && (
-                    <span
-                      title="El último mensaje que enviamos no se entregó — revisa si el número es válido"
-                      className="inline-flex items-center gap-1 rounded-md border border-red-400/30 bg-red-500/10 px-2 py-0.5 text-[10px] uppercase text-red-200"
-                    >
-                      <AlertCircle className="h-3 w-3" />
-                      no entregado
-                    </span>
-                  )}
-                  {it.dropiHasNovedad && it.dropiStatus !== "novedad" && (
-                    <span className="inline-flex items-center gap-1 rounded-md border border-red-400/30 bg-red-500/10 px-2 py-0.5 text-[10px] uppercase text-red-200">
-                      <AlertTriangle className="h-3 w-3" />
-                      novedad
-                    </span>
-                  )}
-                </div>
-                <span
-                  className="text-[11px] text-[var(--color-text-soft)]"
-                  suppressHydrationWarning
-                >
-                  {new Date(it.lastAt).toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </span>
-              </div>
-            </li>
-            );
-          })}
+                  </h2>
+                </li>
+              )}
+              {seccion.filas.map((it) => (
+                <FilaDeConversacion
+                  key={it.id}
+                  it={it}
+                  ahora={ahora}
+                  abierta={selected?.id === it.id}
+                  sellerConfigured={sellerName !== null}
+                  currentUserId={currentUserId}
+                  onAbrir={abrirConversacion}
+                />
+              ))}
+            </Fragment>
+          ))}
         </ul>
         </aside>
 
@@ -1026,6 +1170,142 @@ export function InboxClient({
   );
 }
 
+/**
+ * **Una fila de la bandeja.** La unidad que más se lee del producto.
+ *
+ * Tres renglones, y en ese orden por una razón cada uno:
+ *
+ * 1. **quién y cuándo** — el tiempo pegado al nombre, como en WhatsApp, que es
+ *    donde el asesor ya lo busca;
+ * 2. **qué dijo** — la vista previa, y el contador de no leídos a su derecha;
+ * 3. **cómo está** — las etiquetas de estado, cada una con su nombre escrito,
+ *    y detrás el detalle del pedido, más callado.
+ *
+ * Con dos estados son tres líneas y **es la fila más alta de las cinco
+ * variantes que se probaron**: entran menos filas en pantalla y se eligió
+ * legibilidad sobre densidad, a sabiendas. Apretarla para que entren más es
+ * desandar el veredicto.
+ */
+function FilaDeConversacion({
+  it,
+  ahora,
+  abierta,
+  sellerConfigured,
+  currentUserId,
+  onAbrir,
+}: {
+  it: ChatItem;
+  ahora: Date;
+  abierta: boolean;
+  sellerConfigured: boolean;
+  currentUserId: string | null;
+  onAbrir: (it: ChatItem) => void;
+}) {
+  // La ventana cerrada **no la saca de la cuenta**: un lead de hace treinta
+  // horas sigue esperando respuesta, y el panel sabe reabrir con plantilla. Lo
+  // que cambia es que la fila lo diga, para que nadie abra el chat esperando
+  // poder escribir suelto.
+  const ventanaCerrada =
+    it.sinResponder && windowStateOf(it.lastInboundAt) === "closed";
+  const estados = estadosDe(it);
+  return (
+    <li
+      onClick={() => onAbrir(it)}
+      className={`mb-0.5 cursor-pointer rounded-lg border px-3 py-2 transition ${
+        abierta
+          ? "border-[var(--color-ink)] bg-[var(--color-ink-wash)]"
+          : "border-transparent hover:bg-[var(--color-hover)]"
+      }`}
+    >
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="truncate font-medium text-[var(--color-text)]">
+          {it.name}
+        </p>
+        {/*
+          **El tiempo se dice en relativo**, y esto es lo que arregla la mentira
+          más vieja de esta lista: la bandeja mezcla a propósito las 200 más
+          recientes por actividad con **todas** las que están sin responder, que
+          son mucho más viejas, y hasta hoy las pintaba todas con el mismo
+          `14:32`. El día exacto sigue estando, en el `title`, para el que se
+          detiene en una fila.
+
+          `suppressHydrationWarning` porque el servidor y el navegador no están
+          en la misma zona horaria y esta es la línea donde eso se nota.
+        */}
+        <span
+          className="shrink-0 text-[11px] text-[var(--color-text-dim)]"
+          title={tiempoCompleto(it.lastAt)}
+          suppressHydrationWarning
+        >
+          {tiempoRelativo(it.lastAt, ahora)}
+        </span>
+      </div>
+
+      <div className="mt-0.5 flex items-center justify-between gap-2">
+        <p className="truncate text-xs text-[var(--color-text-dim)]">
+          {it.preview ?? "—"}
+        </p>
+        {it.unread > 0 && (
+          <span className="shrink-0 rounded-md bg-[var(--color-ink)] px-1.5 py-0.5 text-[11px] font-semibold text-[var(--color-card)]">
+            {it.unread}
+          </span>
+        )}
+      </div>
+
+      {/* Los estados primero y el detalle detrás, en la misma tira: lo que se
+          recorre con la vista va delante de lo que se lee al detenerse. */}
+      <div className="mt-1.5 flex flex-wrap items-center gap-1">
+        {estados.map((e) => (
+          <span
+            key={e.label}
+            title={e.title}
+            className={`state-chip ${e.modificador}`}
+          >
+            {e.label}
+          </span>
+        ))}
+        {ventanaCerrada && (
+          <span
+            title="El cliente lleva más de 24 horas sin escribir: WhatsApp solo permite reabrir con una plantilla"
+            className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] uppercase ${DETALLE_ESPERA}`}
+          >
+            <Clock className="h-3 w-3" />
+            ventana cerrada
+          </span>
+        )}
+        {/* Sin vendedor configurado la fila es la de siempre: la asignación no
+            se puede tomar, así que tampoco se enseña. */}
+        {sellerConfigured && it.assignedTo && (
+          <span
+            title={`La está trabajando ${it.assignedTo.label}`}
+            className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] uppercase ${DETALLE_BIEN}`}
+          >
+            <UserRound className="h-3 w-3" />
+            {it.assignedTo.id === currentUserId
+              ? "la trabajo yo"
+              : it.assignedTo.label}
+          </span>
+        )}
+        <ConfirmationChip status={it.confirmationStatus} />
+        {/* «Novedad» ya es una etiqueta de estado: acá la pastilla de logística
+            sería el mismo hecho dicho dos veces en la misma tira. */}
+        {it.dropiStatus &&
+          it.dropiStatus !== "unknown" &&
+          it.dropiStatus !== "novedad" && <DropiChip status={it.dropiStatus} />}
+        {it.deliveryFailed && (
+          <span
+            title="El último mensaje que enviamos no se entregó — revisa si el número es válido"
+            className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] uppercase ${DETALLE_MAL}`}
+          >
+            <AlertCircle className="h-3 w-3" />
+            no entregado
+          </span>
+        )}
+      </div>
+    </li>
+  );
+}
+
 type MessageStatus = "pending" | "sent" | "delivered" | "read" | "failed";
 
 type Msg = {
@@ -1046,19 +1326,24 @@ function DeliveryTicks({
 }: {
   status: MessageStatus;
 }) {
+  // `--color-text-soft` da 2,85:1 y dejó de ser color de texto, pero estos
+  // chulos **dicen algo** —en cola, salió, llegó, lo leyó—, así que van en
+  // `--color-text-dim`, que sí llega a AA. El azul de «leído» pasa a la tinta.
   if (status === "failed") {
-    return <AlertCircle className="h-3 w-3 text-red-300" />;
+    return <AlertCircle className="h-3 w-3 text-[var(--color-danger)]" />;
   }
   if (status === "pending") {
-    return <Clock className="h-3 w-3 text-[var(--color-text-soft)]" />;
+    return <Clock className="h-3 w-3 text-[var(--color-text-dim)]" />;
   }
   if (status === "sent") {
-    return <Check className="h-3 w-3 text-[var(--color-text-soft)]" />;
+    return <Check className="h-3 w-3 text-[var(--color-text-dim)]" />;
   }
   return (
     <CheckCheck
       className={`h-3 w-3 ${
-        status === "read" ? "text-sky-300" : "text-[var(--color-text-soft)]"
+        status === "read"
+          ? "text-[var(--color-ink)]"
+          : "text-[var(--color-text-dim)]"
       }`}
     />
   );
@@ -1439,7 +1724,7 @@ function ConversationPane({
               }
               className={`inline-flex h-9 items-center gap-2 rounded-md border px-3 text-xs uppercase lg:h-8 ${
                 chat.assignedTo
-                  ? "border-sky-400/30 bg-sky-500/10 text-sky-200"
+                  ? "border-[var(--color-ink)] bg-[var(--color-ink-wash)] text-[var(--color-ink)]"
                   : "border-[var(--color-border)] text-[var(--color-text-dim)]"
               }`}
             >
@@ -1457,7 +1742,7 @@ function ConversationPane({
             disabled={agentBusy}
             className={`inline-flex h-9 items-center gap-2 rounded-md border px-3 text-xs uppercase lg:h-8 ${
               chat.agentMode
-                ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-200"
+                ? "border-[var(--color-border)] bg-[var(--state-auto-bg)] text-[var(--state-auto-fg)]"
                 : "border-[var(--color-border)] text-[var(--color-text-dim)]"
             }`}
           >
@@ -1469,19 +1754,19 @@ function ConversationPane({
 
       <div className="border-b border-[var(--color-border)] px-4 py-2">
         <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--color-text-dim)]">
-          <span className="inline-flex h-7 items-center gap-2 rounded-md border border-[var(--color-border)] bg-[rgba(8,21,30,0.72)] px-2">
+          <span className="inline-flex h-7 items-center gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2">
             <MessageSquareText className="h-3.5 w-3.5" />
             {msgs.length} mensajes
           </span>
-          <span className="inline-flex h-7 items-center gap-2 rounded-md border border-[var(--color-border)] bg-[rgba(8,21,30,0.72)] px-2">
-            <span className="h-2 w-2 rounded-full bg-[var(--color-accent)]" />
+          <span className="inline-flex h-7 items-center gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2">
+            <span className="h-2 w-2 rounded-full bg-[var(--color-ink)]" />
             {chat.agentMode ? "Automatización activa" : "Respuesta manual"}
           </span>
           {chat.dropiStatus && chat.dropiStatus !== "unknown" && (
             <DropiChip status={chat.dropiStatus} />
           )}
           {chat.dropiGuide && (
-            <span className="inline-flex h-7 items-center gap-2 rounded-md border border-[var(--color-border)] bg-[rgba(8,21,30,0.72)] px-2">
+            <span className="inline-flex h-7 items-center gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2">
               <Package className="h-3.5 w-3.5" />
               {chat.dropiGuide}
               {chat.dropiCarrier ? ` · ${chat.dropiCarrier}` : ""}
@@ -1492,7 +1777,7 @@ function ConversationPane({
               href={chat.dropiPdfUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex h-7 items-center gap-2 rounded-md border border-sky-400/30 bg-sky-500/10 px-2 text-sky-200 hover:bg-sky-500/20"
+              className="inline-flex h-7 items-center gap-2 rounded-md border border-[var(--color-border)] px-2 text-[var(--color-ink)] transition hover:bg-[var(--color-ink-wash)]"
             >
               <FileText className="h-3.5 w-3.5" />
               PDF guía
@@ -1509,7 +1794,7 @@ function ConversationPane({
         role="log"
         aria-label="Mensajes de la conversación"
         onScroll={anotarSiVaAlPie}
-        className="flex-1 space-y-2 overflow-y-auto bg-[linear-gradient(180deg,rgba(9,19,28,0.3),rgba(5,12,18,0.18))] p-4"
+        className="flex-1 space-y-2 overflow-y-auto bg-[var(--color-surface)] p-4"
       >
         {threadEntries(msgs, events).map((entry) =>
           entry.kind === "event" ? (
@@ -1524,14 +1809,14 @@ function ConversationPane({
         )}
       </div>
 
-      <footer className="border-t border-[var(--color-border)] bg-[rgba(10,24,34,0.84)] p-3">
+      <footer className="border-t border-[var(--color-border)] bg-[var(--color-surface)] p-3">
         {/* «El resto del equipo ve quién la tiene, ANTES de escribir» es el
             criterio del ticket, así que el aviso va pegado al compositor y no
             arriba del todo: arriba se lee cuando ya escribiste. */}
         {sellerConfigured &&
           chat.assignedTo &&
           chat.assignedTo.id !== currentUserId && (
-            <div className="mb-2 rounded-lg border border-sky-400/30 bg-sky-500/10 p-2.5 text-xs leading-5 text-sky-100">
+            <div className="mb-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-ink-wash)] p-2.5 text-xs leading-5 text-[var(--color-text)]">
               👤 <strong>{chat.assignedTo.label} está trabajando esta
               conversación.</strong> Si vas a escribir, avisale primero: el
               cliente ve un solo hilo.
@@ -1539,7 +1824,7 @@ function ConversationPane({
           )}
         {windowState === "closed" ? (
           <div className="space-y-2">
-            <div className="rounded-lg border border-amber-400/30 bg-amber-500/10 p-3 text-xs leading-5 text-amber-100">
+            <div className="rounded-lg border border-[var(--color-border)] bg-[var(--state-espera-bg)] p-3 text-xs leading-5 text-[var(--state-espera-fg)]">
               ⏳ <strong>Ventana de 24h cerrada.</strong> El cliente lleva más
               de 24 horas sin escribir y WhatsApp solo permite reabrir con una
               plantilla aprobada por Meta. Cuando responda, el chat libre se
@@ -1559,7 +1844,7 @@ function ConversationPane({
                     <p className="text-xs font-semibold text-[var(--color-text)]">
                       {opt.label}
                       {!opt.sendable && opt.reason && (
-                        <span className="ml-2 font-normal text-amber-200/80">
+                        <span className="ml-2 font-normal text-[var(--color-warn)]">
                           · {opt.reason}
                         </span>
                       )}
@@ -1635,13 +1920,16 @@ function MessageBubble({ m }: { m: Msg }) {
             className={`flex ${m.direction === "out" ? "justify-end" : "justify-start"}`}
           >
             <div
-              className={`max-w-[78%] rounded-lg px-3 py-2 text-sm shadow-[0_10px_28px_rgba(3,10,16,0.2)] ${
+              // Las dos burbujas dejaron de ser degradados: son un color cada
+              // una, y la del cliente se separa del fondo con la línea suave y
+              // no con la opacidad de casi el mismo color.
+              className={`max-w-[78%] rounded-lg border px-3 py-2 text-sm ${
                 m.direction === "out"
-                  ? "bg-[image:var(--color-bubble-out)]"
-                  : "bg-[image:var(--color-bubble-in)]"
+                  ? "border-transparent bg-[var(--color-bubble-out)]"
+                  : "border-[var(--color-border)] bg-[var(--color-bubble-in)]"
               } ${
                 m.status === "failed" && m.direction === "out"
-                  ? "border border-red-400/40"
+                  ? "border-[var(--color-danger)]"
                   : ""
               }`}
             >
@@ -1665,7 +1953,7 @@ function MessageBubble({ m }: { m: Msg }) {
                 <p className="whitespace-pre-wrap break-words">{m.body}</p>
               )}
               {m.direction === "out" && m.status === "failed" && (
-                <p className="mt-1 text-[11px] leading-4 text-red-200">
+                <p className="mt-1 text-[11px] leading-4 text-[var(--color-danger)]">
                   ⚠ No entregado
                   {m.deliveryError ? ` · ${m.deliveryError}` : ""}
                 </p>
@@ -1757,12 +2045,15 @@ function SalesEventLine({
   return (
     <div className="flex justify-center py-1">
       <span
-        className={`inline-flex max-w-[86%] items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] leading-4 ${
+        // Los mismos tres tintes que la fila usa para lo mismo, y salidos de
+        // los mismos tokens: la línea del hilo y la etiqueta de la lista hablan
+        // de un solo hecho y no tendrían por qué verse de dos maneras.
+        className={`inline-flex max-w-[86%] items-center gap-1.5 rounded-full border border-transparent px-3 py-1 text-[11px] leading-4 ${
           tono === "alarma"
-            ? "border-amber-400/25 bg-amber-500/10 text-amber-100"
+            ? "bg-[var(--state-espera-bg)] text-[var(--state-espera-fg)]"
             : tono === "duda"
-              ? "border-sky-400/25 bg-sky-500/10 text-sky-100"
-              : "border-[var(--color-border)] bg-[rgba(8,21,30,0.72)] text-[var(--color-text-dim)]"
+              ? "bg-[var(--state-sinprod-bg)] text-[var(--state-sinprod-fg)]"
+              : "border-[var(--color-border)] bg-[var(--color-card)] text-[var(--color-text-dim)]"
         }`}
       >
         {tono === "alarma" ? (
@@ -1802,19 +2093,26 @@ function SummaryCard({
     clickable ? "cursor-pointer" : ""
   } ${
     active
-      ? "border-[rgba(110,231,183,0.4)] bg-[rgba(18,42,53,0.92)]"
+      ? "border-[var(--color-ink)] bg-[var(--color-ink-wash)]"
       : clickable
-        ? "hover:border-[var(--color-border)] hover:bg-[rgba(18,35,48,0.68)]"
+        ? "hover:border-[var(--color-border-strong)] hover:bg-[var(--color-hover)]"
         : ""
   }`;
   const inner = (
     <>
-      <p className="text-[11px] uppercase text-[var(--color-text-soft)]">
-        {label}
-      </p>
-      <p
-        className={`mt-1 text-xl font-semibold text-[var(--color-text)] ${accent ?? ""}`}
-      >
+      {/* `.app-label` es exactamente esto —el rótulo de un dato— y es adonde
+          fueron a parar los textos que estaban en el tono «suave», que da
+          2,85:1 y dejó de ser color de texto. */}
+      <p className="app-label">{label}</p>
+      {/*
+        Un solo color y no dos apilados. Con `text-[var(--color-text)] ${accent}`
+        el que gana lo decide **el orden en la hoja generada**, no el orden en el
+        atributo: medido el 20-ago-2026 sobre el CSS compilado, `--color-warn`
+        salía después de `--color-text` y `--color-danger` antes, así que «Por
+        confirmar» se pintaba de ámbar y «Sin responder» se quedaba en negro. El
+        contador que este repo ya pagó caro no puede depender de eso.
+      */}
+      <p className={`mt-1 text-xl font-semibold ${accent ?? "text-[var(--color-text)]"}`}>
         {value}
       </p>
     </>
@@ -1834,25 +2132,7 @@ function DropiChip({ status }: { status: DropiStatus }) {
   const Icon = meta.icon;
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] uppercase ${meta.classes}`}
-    >
-      <Icon className="h-3 w-3" />
-      {meta.label}
-    </span>
-  );
-}
-
-/** Lo que la fila dice del reconocimiento cuando no quedó limpio. */
-function MarkChip({ mark }: { mark: RowMark }) {
-  const meta = MARK_META[mark];
-  // El interrogante es de la duda entre candidatos y el triángulo de lo que
-  // está trabado: de un vistazo la bandeja separa «hay que elegir» de «hay que
-  // ir a otra pantalla», que es toda la razón de que sean dos marcas.
-  const Icon = mark === "ambiguo" ? HelpCircle : AlertTriangle;
-  return (
-    <span
-      title={meta.title}
-      className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] uppercase ${meta.classes}`}
+      className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] uppercase ${meta.classes}`}
     >
       <Icon className="h-3 w-3" />
       {meta.label}
@@ -1866,7 +2146,7 @@ function ConfirmationChip({ status }: { status: ConfirmationStatus }) {
   const Icon = meta.icon;
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] uppercase ${meta.classes}`}
+      className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] uppercase ${meta.classes}`}
     >
       <Icon className="h-3 w-3" />
       {meta.label}
@@ -1937,19 +2217,19 @@ function ConfirmationMenu({
         <Icon className="h-3.5 w-3.5" />
         {meta.label}
         {chat.confirmationSource === "manual" && (
-          <span className="ml-1 rounded bg-[rgba(8,21,30,0.72)] px-1 text-[9px]">
+          <span className="ml-1 rounded bg-[var(--color-surface)] px-1 text-[9px]">
             manual
           </span>
         )}
       </button>
       {open && (
-        <div className="absolute right-0 top-full z-10 mt-1 w-48 rounded-md border border-[var(--color-border)] bg-[rgba(8,21,30,0.96)] p-1 text-xs shadow-lg">
+        <div className="absolute right-0 top-full z-10 mt-1 w-48 rounded-md border border-[var(--color-border)] bg-[var(--color-card)] p-1 text-xs shadow-[var(--shadow-panel)]">
           {options.map((status) => (
             <button
               key={status}
               onClick={() => set(status)}
               disabled={busy}
-              className="flex w-full items-center rounded px-2 py-1.5 text-left hover:bg-[rgba(18,42,53,0.92)]"
+              className="flex w-full items-center rounded px-2 py-1.5 text-left hover:bg-[var(--color-hover)]"
             >
               <ConfirmationChip status={status} />
             </button>

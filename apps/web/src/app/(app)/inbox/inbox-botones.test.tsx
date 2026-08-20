@@ -21,6 +21,7 @@ import {
   chat,
   irA,
   montarRed,
+  OP,
   OPERACION,
   router,
   useSearchParamsFingido,
@@ -52,6 +53,7 @@ function abrirBandeja(items = [chat({ id: "c-uno" }), chat({ id: "c-dos" })]) {
       initial={items}
       approvedTemplates={[]}
       query=""
+      op={OP}
       operationId={OPERACION}
       bandeja={null}
       sellerName="Sebastián"
@@ -105,11 +107,13 @@ describe("Agente ON/OFF", () => {
     await user.click(screen.getByRole("button", { name: /Agente: OFF/ }));
     await screen.findByRole("button", { name: /Agente: ON/ });
 
-    // La otra fila lo dice también: las dos dejan de decir «manual» y las dos
-    // llevan la marca del agente.
+    // La otra fila lo dice también, y ahora lo dice **escrito**: hasta el
+    // 20-ago-2026 el modo agente era un icono de chispas sin texto y su
+    // contrario la palabra «manual» en cada fila que no lo estaba. Marcar todas
+    // las filas es no marcar ninguna, así que solo se marca la que sí.
     const lista = screen.getByRole("list");
     await waitFor(() =>
-      expect(within(lista).getAllByTitle("Agente IA activo")).toHaveLength(2),
+      expect(within(lista).getAllByText("en automático")).toHaveLength(2),
     );
     expect(within(lista).queryAllByText("manual")).toHaveLength(0);
   });

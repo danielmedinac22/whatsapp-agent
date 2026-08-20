@@ -14,19 +14,21 @@
  * de antemano, se elige el caso que más se da; están anotados abajo.
  */
 
-/** Anchos de las dos primeras líneas de cada fila. Desparejos a propósito: una
- *  columna de barras idénticas se lee como una tabla vacía, no como nombres y
- *  mensajes todavía sin llegar. Ocho filas llenan la lista más alta; las que
- *  sobran las recorta el `overflow-hidden` de la tarjeta. */
+/** Anchos del nombre, de la vista previa y de la tira de etiquetas de cada
+ *  fila. Desparejos a propósito: una columna de barras idénticas se lee como
+ *  una tabla vacía, no como nombres y mensajes todavía sin llegar. **La tercera
+ *  barra es nueva y es la de los estados**, que es lo que ahora hace a la fila
+ *  de tres renglones; sin ella la silueta sería más baja que la pantalla que
+ *  viene y todo saltaría al llegar. Siete filas llenan la lista más alta; las
+ *  que sobran las recorta el `overflow-hidden` de la columna. */
 const FILAS = [
-  ["w-32", "w-44"],
-  ["w-24", "w-36"],
-  ["w-36", "w-28"],
-  ["w-28", "w-40"],
-  ["w-40", "w-32"],
-  ["w-24", "w-44"],
-  ["w-32", "w-24"],
-  ["w-36", "w-36"],
+  ["w-32", "w-44", "w-24"],
+  ["w-24", "w-36", "w-32"],
+  ["w-36", "w-28", "w-20"],
+  ["w-28", "w-40", "w-28"],
+  ["w-40", "w-32", "w-20"],
+  ["w-24", "w-44", "w-32"],
+  ["w-32", "w-24", "w-24"],
 ] as const;
 
 /** El rótulo de cada tarjeta del encabezado —«Conversaciones», «Sin leer»,
@@ -46,11 +48,16 @@ export default function InboxLoading() {
 
       <header className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
+          {/* La línea de contexto, que va sobre el título. Tampoco se escribe:
+              el nombre de la operación sale de una cookie que este archivo no
+              lee, y la pantalla es una de dos. */}
+          <div className="app-skeleton h-3 w-56" />
           {/* El título no se dibuja de verdad porque esta ruta sirve dos
               pantallas: «Inbox» y «Conversaciones» según `?b=ventas`, y un
               `loading.tsx` no recibe la URL. Escribir uno de los dos sería
-              acertar la mitad de las veces y mentir la otra mitad. */}
-          <div className="app-skeleton h-7 w-40 md:h-8" />
+              acertar la mitad de las veces y mentir la otra mitad. Alto de
+              `.app-title`, que ahora son 34 px. */}
+          <div className="app-skeleton mt-2 h-9 w-52" />
           <div className="app-skeleton mt-2 h-4 w-52" />
         </div>
         {/* Cinco tarjetas: las de la bandeja de siempre, que es a la que se
@@ -67,7 +74,9 @@ export default function InboxLoading() {
       </header>
 
       <div className="grid min-h-0 flex-1 gap-3 xl:grid-cols-[336px_1fr]">
-        <aside className="app-card flex h-[55vh] min-h-[320px] min-w-0 flex-col overflow-hidden xl:h-auto xl:min-h-[520px]">
+        {/* Sin `.app-card`, como la lista de verdad: **lo que la separa del
+            hilo es la superficie**, y el hilo es el que va sobre blanco. */}
+        <aside className="flex h-[55vh] min-h-[320px] min-w-0 flex-col overflow-hidden rounded-lg xl:h-auto xl:min-h-[520px]">
           <div className="flex flex-col gap-2 border-b border-[var(--color-border)] px-3 py-2.5">
             <div className="app-skeleton h-9 w-full lg:h-8" />
             <div className="flex items-center justify-between gap-2">
@@ -78,26 +87,27 @@ export default function InboxLoading() {
               </div>
             </div>
           </div>
-          <ul className="flex-1 overflow-hidden p-2">
-            {FILAS.map(([nombre, preview], i) => (
-              <li
-                key={i}
-                className="mb-2 rounded-lg border border-[var(--color-border)] bg-[rgba(12,26,36,0.55)] px-3 py-2.5 shadow-[0_2px_8px_rgba(3,10,16,0.3)]"
-              >
-                <div className={`app-skeleton h-4 ${nombre}`} />
-                <div className={`app-skeleton mt-2 h-3 ${preview}`} />
-                {/* La tira de abajo: «manual», la pastilla de confirmación y
-                    la hora. Las filas de verdad a veces suman una segunda
-                    tira de pastillas y crecen; se dibuja la de una sola, que
-                    es el piso — un esqueleto más alto que la fila deja un
-                    salto al revés, más feo que el corto. */}
-                <div className="mt-2.5 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5">
-                    <div className="app-skeleton h-4 w-12" />
-                    <div className="app-skeleton h-5 w-24 rounded" />
-                  </div>
-                  <div className="app-skeleton h-3 w-9" />
+          {/* Un encabezado de sección arriba del todo: la lista de verdad se
+              parte en «Esperando respuesta» y «El resto» siempre que las dos
+              tengan filas, que es el caso corriente en esta bandeja. */}
+          <div className="px-3 pb-1.5 pt-3">
+            <div className="app-skeleton h-4 w-40" />
+          </div>
+          <ul className="flex-1 overflow-hidden px-2">
+            {FILAS.map(([nombre, preview, estados], i) => (
+              <li key={i} className="mb-0.5 rounded-lg px-3 py-2">
+                {/* Renglón 1: el nombre, y el tiempo a la derecha. */}
+                <div className="flex items-center justify-between gap-2">
+                  <div className={`app-skeleton h-4 ${nombre}`} />
+                  <div className="app-skeleton h-3 w-8" />
                 </div>
+                {/* Renglón 2: la vista previa. */}
+                <div className={`app-skeleton mt-1.5 h-3 ${preview}`} />
+                {/* Renglón 3: las etiquetas de estado. Se dibuja una, que es el
+                    piso: las filas de verdad a veces llevan dos y crecen, y un
+                    esqueleto más alto que la fila deja un salto al revés, más
+                    feo que el corto. */}
+                <div className={`app-skeleton mt-2 h-3.5 ${estados}`} />
               </li>
             ))}
           </ul>
@@ -138,9 +148,9 @@ export default function InboxLoading() {
                 de montarse. Dibujar globos acá sería prometer algo que esta
                 navegación no trae; lo que trae es el marco vacío, y eso es lo
                 que se dibuja. */}
-            <div className="flex-1 bg-[linear-gradient(180deg,rgba(9,19,28,0.3),rgba(5,12,18,0.18))]" />
+            <div className="flex-1 bg-[var(--color-surface)]" />
 
-            <footer className="border-t border-[var(--color-border)] bg-[rgba(10,24,34,0.84)] p-3">
+            <footer className="border-t border-[var(--color-border)] bg-[var(--color-surface)] p-3">
               <div className="flex items-start gap-2">
                 <div className="app-skeleton h-9 min-w-[180px] flex-1" />
                 <div className="app-skeleton h-9 w-9" />

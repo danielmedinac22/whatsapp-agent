@@ -145,7 +145,7 @@ export function VoiceRecorder({
             type="button"
             onClick={start}
             title="Grabar nota de voz"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[var(--color-border)] text-[var(--color-text-dim)] transition hover:border-[rgba(110,231,183,0.4)] hover:text-[var(--color-accent)]"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[var(--color-border)] text-[var(--color-text-dim)] transition hover:border-[var(--color-ink)] hover:text-[var(--color-ink)]"
           >
             <Mic className="h-4 w-4" />
           </button>
@@ -157,13 +157,13 @@ export function VoiceRecorder({
               type="button"
               onClick={stop}
               title="Detener grabación"
-              className="inline-flex h-9 items-center gap-2 rounded-md border border-red-400/40 bg-red-500/10 px-3 text-xs text-red-200"
+              className="inline-flex h-9 items-center gap-2 rounded-md border border-[var(--color-border)] bg-[var(--state-escalada-bg)] px-3 text-xs text-[var(--state-escalada-fg)]"
             >
               <Square className="h-3.5 w-3.5" />
               {fmtDuration(elapsed)}
             </button>
             <span className="flex items-center gap-1.5 text-xs text-[var(--color-text-dim)]">
-              <span className="h-2 w-2 animate-pulse rounded-full bg-red-400" />
+              <span className="h-2 w-2 animate-pulse rounded-full bg-[var(--color-danger)]" />
               Grabando… (máx {MAX_MS / 1000}s)
             </span>
           </>
@@ -186,14 +186,16 @@ export function VoiceRecorder({
               onClick={discard}
               disabled={phase === "sending"}
               title="Descartar"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[var(--color-border)] text-[var(--color-text-dim)] hover:border-red-400/40 hover:text-red-200"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[var(--color-border)] text-[var(--color-text-dim)] transition hover:border-[var(--color-danger)] hover:text-[var(--color-danger)]"
             >
               <Trash2 className="h-4 w-4" />
             </button>
           </>
         )}
       </div>
-      {error && <p className="text-[11px] text-red-200">{error}</p>}
+      {error && (
+        <p className="text-[11px] text-[var(--color-danger)]">{error}</p>
+      )}
     </div>
   );
 }

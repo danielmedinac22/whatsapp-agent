@@ -23,6 +23,7 @@ import {
   irA,
   mensaje,
   montarRed,
+  OP,
   OPERACION,
   router,
   scrollTo,
@@ -57,6 +58,7 @@ async function abrirHiloLargo() {
       initial={[chat({ id: CHAT })]}
       approvedTemplates={[]}
       query=""
+      op={OP}
       operationId={OPERACION}
       bandeja={null}
       sellerName={null}

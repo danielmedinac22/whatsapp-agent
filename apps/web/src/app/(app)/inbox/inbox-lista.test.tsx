@@ -23,6 +23,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 import { InboxClient } from "./inbox-client";
+import { tiempoRelativo } from "./tiempo-relativo";
 import {
   chat,
   emitirWa,
@@ -30,6 +31,7 @@ import {
   FakeEventSource,
   irA,
   montarRed,
+  OP,
   OPERACION,
   router,
   useSearchParamsFingido,
@@ -62,6 +64,7 @@ function abrir(items = TRES) {
       initial={items}
       approvedTemplates={[]}
       query=""
+      op={OP}
       operationId={OPERACION}
       bandeja={null}
       sellerName="Sebastián"
@@ -364,5 +367,423 @@ describe("una sola conexión al stream por pestaña", () => {
     await waitFor(() =>
       expect(within(hilo).getByText("¿ya salió mi pedido?")).toBeInTheDocument(),
     );
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PRO-28 · La fila dice su estado y su tiempo
+
+   El dueño del producto lo dijo así: «es más colores, formas, títulos. Es
+   difícil navegarlo en general.» Lo que sigue afirma las tres cosas con las
+   que la bandeja se vuelve recorrible con la vista —cada estado con su nombre
+   escrito, el tiempo dicho en relativo, y secciones con nombre y cuenta— y una
+   cuarta que no es nueva pero que estas tres podían romper: que la lista no se
+   mueva sola.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * **Los tres bordes del formato de tiempo.**
+ *
+ * Se prueban contra la función pura y no contra la pantalla, y por eso la
+ * función recibe el «ahora»: medianoche, ayer a las 23:59 y el salto de semana
+ * no se pueden escribir contra un reloj que corre sin congelar el del proceso,
+ * y congelarlo ataría la prueba a un truco del arnés en vez de al criterio.
+ *
+ * Las fechas van **sin zona** a propósito: así se leen en la hora local del que
+ * corre la prueba, que es la del asesor, que es donde la cuenta de días de
+ * calendario tiene que dar bien.
+ */
+describe("el tiempo de la fila", () => {
+  const jueves2032 = () => new Date("2026-08-20T20:32:00");
+
+  it("dice la hora cuando es de hoy", () => {
+    expect(tiempoRelativo("2026-08-20T14:32:00", jueves2032())).toBe("14:32");
+  });
+
+  describe("borde 1 · medianoche", () => {
+    it("lo de las 00:00 de hoy es de hoy, y dice 00:00", () => {
+      expect(tiempoRelativo("2026-08-20T00:00:00", jueves2032())).toBe("00:00");
+    });
+
+    it("a las 00:01, lo de hace dos minutos ya es de ayer", () => {
+      // El corte es el día del calendario y no las 24 horas, que es lo que
+      // hace que esto diga «ayer» y no «14:32» ni «hace un rato».
+      expect(
+        tiempoRelativo("2026-08-19T23:59:00", new Date("2026-08-20T00:01:00")),
+      ).toBe("ayer");
+    });
+  });
+
+  describe("borde 2 · ayer a las 23:59", () => {
+    it("dice «ayer», no el nombre del día", () => {
+      expect(tiempoRelativo("2026-08-19T23:59:00", jueves2032())).toBe("ayer");
+    });
+
+    it("y ayer a las 00:00 también", () => {
+      expect(tiempoRelativo("2026-08-19T00:00:00", jueves2032())).toBe("ayer");
+    });
+  });
+
+  describe("borde 3 · el salto de semana", () => {
+    it("a los dos días ya es el nombre del día", () => {
+      expect(tiempoRelativo("2026-08-18T09:00:00", jueves2032())).toBe("mar");
+    });
+
+    it("a los seis días todavía es el nombre del día", () => {
+      expect(tiempoRelativo("2026-08-14T09:00:00", jueves2032())).toBe("vie");
+    });
+
+    it("a los siete pasa a fecha, porque el día se llamaría igual que hoy", () => {
+      // Es el borde entero: `2026-08-13` es jueves y hoy también. «jue» de un
+      // jueves de hace una semana es la misma mentira que arregla este ticket.
+      expect(tiempoRelativo("2026-08-13T09:00:00", jueves2032())).toBe("13 ago");
+    });
+  });
+
+  it("lo viejo va con fecha, que es el caso más común de esta bandeja", () => {
+    // 955 de las 1.760 conversaciones de producción tienen más de un mes sin
+    // actividad, y aparecen en la lista por estar sin responder.
+    expect(tiempoRelativo("2026-07-30T09:00:00", jueves2032())).toBe("30 jul");
+  });
+
+  it("lo de otro año lleva el año, que el spec no pedía y la bandeja sí", () => {
+    expect(tiempoRelativo("2025-12-24T09:00:00", jueves2032())).toBe(
+      "24 dic 2025",
+    );
+  });
+
+  it("una fecha que no se puede leer no inventa una", () => {
+    expect(tiempoRelativo("no es una fecha", jueves2032())).toBe("—");
+  });
+
+  it("el reloj del asesor atrasado no produce «en tres días»", () => {
+    expect(tiempoRelativo("2026-08-21T09:00:00", jueves2032())).toBe("09:00");
+  });
+});
+
+describe("la fila dice su tiempo, no siempre la hora", () => {
+  const haceUnRato = new Date();
+  const haceTresSemanas = new Date(haceUnRato.getTime() - 21 * 86_400_000);
+
+  it("separa lo de hoy de lo de hace tres semanas", () => {
+    // Es la mezcla que la bandeja hace **a propósito**: las 200 más recientes
+    // por actividad y **todas** las que están sin responder, que son mucho más
+    // viejas. Hasta hoy las dos filas decían `14:32`.
+    abrir([
+      chat({ id: "c-hoy", lastAt: haceUnRato.toISOString() }),
+      chat({ id: "c-vieja", lastAt: haceTresSemanas.toISOString() }),
+    ]);
+
+    expect(within(fila("c-hoy")).getByTitle(/·/).textContent).toMatch(
+      /^\d{2}:\d{2}$/,
+    );
+    expect(within(fila("c-vieja")).getByTitle(/·/).textContent).toMatch(
+      /^\d{1,2} [a-zé]{3}$/,
+    );
+  });
+
+  it("el día exacto sigue estando, para el que se detiene en una fila", () => {
+    abrir([chat({ id: "c-vieja", lastAt: haceTresSemanas.toISOString() })]);
+
+    expect(
+      within(fila("c-vieja")).getByTitle(
+        new RegExp(`^${haceTresSemanas.getDate()} [a-zé]{3} \\d{4} · `),
+      ),
+    ).toBeInTheDocument();
+  });
+});
+
+/** Las etiquetas de estado de una fila, tal como se leen. */
+function etiquetasDe(id: string): string[] {
+  return [...fila(id).querySelectorAll(".state-chip")].map(
+    (e) => e.textContent ?? "",
+  );
+}
+
+describe("las etiquetas de estado", () => {
+  it("ningún estado se codifica solo con color: los cinco llevan su nombre", () => {
+    // Era criterio de aceptación de la ronda y es lo que hizo ganar esta
+    // variante. Hasta hoy se incumplía de forma literal: «sin responder» era
+    // `border-l-2 border-l-red-400/60`, una rayita roja y nada más.
+    abrir([
+      chat({ id: "c-espera", sinResponder: true }),
+      chat({ id: "c-auto", agentMode: true }),
+      chat({ id: "c-escalada", mark: "escalada" }),
+      chat({ id: "c-novedad", dropiHasNovedad: true }),
+      chat({ id: "c-sinprod", mark: "sin_identificar" }),
+    ]);
+
+    expect(etiquetasDe("c-espera")).toEqual(["sin responder"]);
+    expect(etiquetasDe("c-auto")).toEqual(["en automático"]);
+    expect(etiquetasDe("c-escalada")).toEqual(["escalada"]);
+    expect(etiquetasDe("c-novedad")).toEqual(["novedad"]);
+    expect(etiquetasDe("c-sinprod")).toEqual(["sin producto"]);
+  });
+
+  it("una fila con dos estados muestra los dos", () => {
+    // No hay «el más importante»: una escalada que además espera respuesta es
+    // las dos cosas, y elegir una escondería justo la que hace falta.
+    abrir([chat({ id: "c-dos-estados", sinResponder: true, mark: "escalada" })]);
+
+    expect(etiquetasDe("c-dos-estados")).toEqual([
+      "sin responder",
+      "escalada",
+    ]);
+  });
+
+  it("una fila limpia no lleva ninguna, porque marcar todas es no marcar", () => {
+    abrir([chat({ id: "c-limpia" })]);
+
+    expect(etiquetasDe("c-limpia")).toEqual([]);
+  });
+
+  it("«ambiguo» y «sin producto» siguen siendo dos, y se separan por el nombre", () => {
+    // Le piden al asesor cosas opuestas: una se resuelve desempatando en el
+    // chat, la otra cargando el anuncio en el catálogo, que es otra pantalla.
+    abrir([
+      chat({ id: "c-ambiguo", mark: "ambiguo" }),
+      chat({ id: "c-sinprod", mark: "sin_identificar" }),
+    ]);
+
+    expect(etiquetasDe("c-ambiguo")).toEqual(["ambiguo"]);
+    expect(etiquetasDe("c-sinprod")).toEqual(["sin producto"]);
+  });
+
+  it("la novedad de logística no se dice dos veces en la misma fila", () => {
+    abrir([
+      chat({ id: "c-novedad", dropiStatus: "novedad", dropiHasNovedad: true }),
+    ]);
+
+    expect(etiquetasDe("c-novedad")).toEqual(["novedad"]);
+    expect(within(fila("c-novedad")).getAllByText("novedad")).toHaveLength(1);
+  });
+});
+
+/** Los encabezados de sección, con su cuenta, de arriba abajo. */
+function seccionesDeLaLista(): string[] {
+  return within(screen.getByRole("list"))
+    .queryAllByRole("heading")
+    .map((h) => h.textContent!.replace(/\s+/g, " ").trim());
+}
+
+/**
+ * Seis esperando respuesta y tres que no, **en el orden del servidor**: por
+ * actividad, y con las que esperan repartidas entre las otras. Es la forma que
+ * tiene la lista de producción, donde las sin responder entran aunque se hayan
+ * salido del corte por actividad y quedan mezcladas entre las recientes.
+ */
+const SEIS_Y_TRES = [
+  chat({ id: "c-espera-0", sinResponder: true, lastAt: "2026-08-20T11:00:00.000Z" }),
+  chat({ id: "c-resto-0", lastAt: "2026-08-20T10:00:00.000Z" }),
+  chat({ id: "c-espera-1", sinResponder: true, lastAt: "2026-08-20T09:00:00.000Z" }),
+  chat({ id: "c-espera-2", sinResponder: true, lastAt: "2026-08-19T09:00:00.000Z" }),
+  chat({ id: "c-resto-1", lastAt: "2026-08-18T09:00:00.000Z" }),
+  chat({ id: "c-espera-3", sinResponder: true, lastAt: "2026-08-17T09:00:00.000Z" }),
+  chat({ id: "c-resto-2", lastAt: "2026-08-16T09:00:00.000Z" }),
+  chat({ id: "c-espera-4", sinResponder: true, lastAt: "2026-07-30T09:00:00.000Z" }),
+  chat({ id: "c-espera-5", sinResponder: true, lastAt: "2026-07-02T09:00:00.000Z" }),
+];
+
+describe("las secciones de la lista", () => {
+  it("llevan nombre y cuenta", () => {
+    // Hasta hoy la lista no tenía secciones: tenía un filtro. Un `h1` y cero
+    // `h2`, en la pantalla que más se abre del panel.
+    abrir(SEIS_Y_TRES);
+
+    expect(seccionesDeLaLista()).toEqual([
+      "Esperando respuesta · 6",
+      "El resto · 3",
+    ]);
+  });
+
+  it("las que esperan van primero, y dentro de cada una manda el servidor", () => {
+    abrir(SEIS_Y_TRES);
+
+    expect(ordenDeLaLista()).toEqual([
+      "c-espera-0", "c-espera-1", "c-espera-2",
+      "c-espera-3", "c-espera-4", "c-espera-5",
+      "c-resto-0", "c-resto-1", "c-resto-2",
+    ]);
+  });
+
+  it("sin nadie esperando, la lista va plana", () => {
+    // «El resto · 3» a solas no nombra nada: sería un encabezado que dice
+    // «esto es una lista» encima de una lista.
+    abrir(TRES);
+
+    expect(seccionesDeLaLista()).toEqual([]);
+    expect(ordenDeLaLista()).toEqual(["c-uno", "c-dos", "c-tres"]);
+  });
+
+  it("con la bandeja vacía tampoco hay encabezados que anunciar", () => {
+    abrir([]);
+
+    expect(seccionesDeLaLista()).toEqual([]);
+    expect(screen.getByText("No hay conversaciones todavía.")).toBeInTheDocument();
+  });
+
+  it("un filtro que deja un solo grupo apaga los encabezados, en vez de repetirse", async () => {
+    // «Sin responder» deja todas las filas en la primera sección: el encabezado
+    // diría lo mismo que el selector que está tres centímetros más arriba, y el
+    // otro sería un «· 0» que no lleva a ninguna parte.
+    const user = userEvent.setup();
+    abrir(SEIS_Y_TRES);
+    expect(seccionesDeLaLista()).toHaveLength(2);
+
+    await user.selectOptions(screen.getByRole("combobox"), "sin_responder");
+
+    expect(seccionesDeLaLista()).toEqual([]);
+    expect(screen.getByText("6/9")).toBeInTheDocument();
+  });
+
+  it("un filtro que corta las dos secciones las conserva", async () => {
+    const user = userEvent.setup();
+    abrir([
+      chat({ id: "c-espera", sinResponder: true, confirmationStatus: "pending" }),
+      chat({ id: "c-espera-2", sinResponder: true }),
+      chat({ id: "c-resto", confirmationStatus: "pending" }),
+    ]);
+
+    await user.selectOptions(screen.getByRole("combobox"), "pending");
+
+    expect(seccionesDeLaLista()).toEqual([
+      "Esperando respuesta · 1",
+      "El resto · 1",
+    ]);
+  });
+});
+
+describe("las secciones no mueven una fila bajo el cursor", () => {
+  /** Dos esperando y dos no: la lista se parte, que es cuando se puede saltar. */
+  const DOS_Y_DOS = [
+    chat({ id: "c-espera", sinResponder: true, lastAt: "2026-07-01T09:00:00.000Z" }),
+    chat({ id: "c-espera-2", sinResponder: true, lastAt: "2026-07-01T08:00:00.000Z" }),
+    chat({ id: "c-quieta", lastAt: "2026-08-20T11:00:00.000Z" }),
+    chat({ id: "c-nueva", lastAt: "2026-08-20T10:00:00.000Z" }),
+  ];
+
+  it("un entrante enciende la etiqueta sin sacar la fila de su sección", async () => {
+    // Es el bug de PRO-12 con otra ropa: un entrante enciende «sin responder»
+    // (`aplicarEvento` lo mueve hacia arriba y con certeza), y agrupar en vivo
+    // haría saltar esa fila desde el fondo hasta la primera sección — con el
+    // cursor encima, y con todo lo que hay en medio bajando un puesto.
+    abrir(DOS_Y_DOS);
+
+    act(() => {
+      emitirWa(
+        entrante("c-nueva", {
+          lastMessagePreview: "hola, ¿siguen abiertos?",
+          unreadCount: 1,
+          lastActivityAt: "2026-08-20T12:00:00.000Z",
+        }),
+      );
+    });
+
+    // La etiqueta sí aparece: la fila dice lo que es, donde está.
+    await waitFor(() =>
+      expect(etiquetasDe("c-nueva")).toEqual(["sin responder"]),
+    );
+    expect(ordenDeLaLista()).toEqual([
+      "c-espera", "c-espera-2", "c-quieta", "c-nueva",
+    ]);
+    expect(seccionesDeLaLista()).toEqual([
+      "Esperando respuesta · 2",
+      "El resto · 2",
+    ]);
+  });
+
+  it("y ponerse al día reordena y reagrupa, que es lo mismo pedido por el asesor", async () => {
+    const user = userEvent.setup();
+    abrir(DOS_Y_DOS);
+
+    act(() => {
+      emitirWa(
+        entrante("c-nueva", {
+          unreadCount: 1,
+          lastActivityAt: "2026-08-20T12:00:00.000Z",
+        }),
+      );
+    });
+    await screen.findByText(/1 conversación con novedades/);
+
+    await user.click(screen.getByRole("button", { name: /novedades/ }));
+
+    expect(seccionesDeLaLista()).toEqual([
+      "Esperando respuesta · 3",
+      "El resto · 1",
+    ]);
+    expect(ordenDeLaLista()).toEqual([
+      "c-nueva", "c-espera", "c-espera-2", "c-quieta",
+    ]);
+  });
+});
+
+/** El número que muestra una tarjeta del encabezado. */
+function tarjeta(rotulo: string): string {
+  const p = screen.getByText(rotulo);
+  return p.parentElement!.querySelectorAll("p")[1]!.textContent!;
+}
+
+/** Lo que el selector dice de una vista, tal cual se lee. */
+function opcion(nombre: string): string {
+  return within(screen.getByRole("combobox")).getByText(
+    new RegExp(`^${nombre} \\(`),
+  ).textContent!;
+}
+
+describe("los tres números de «sin responder» dicen lo mismo", () => {
+  /**
+   * Es el criterio que este repo ya pagó caro: hasta el 19-ago-2026 el cliente
+   * lo calculaba como `!agentMode && unread > 0`, y de las 54 que marcaba **30
+   * ya habían sido respondidas**. Ahora lo decide el servidor y acá se lee el
+   * mismo campo tres veces, así que no pueden discrepar — pero eso hay que
+   * seguir sin romperlo, y esto es lo que lo vigila.
+   */
+  it("la etiqueta, el contador de la barra y el filtro cuentan igual", () => {
+    abrir(SEIS_Y_TRES);
+
+    const conEtiqueta = within(screen.getByRole("list")).getAllByText(
+      "sin responder",
+    );
+    expect(conEtiqueta).toHaveLength(6);
+    expect(tarjeta("Sin responder")).toBe("6");
+    expect(opcion("Sin responder")).toBe("Sin responder (6)");
+  });
+
+  it("y siguen contando igual después de un entrante", async () => {
+    abrir([
+      chat({ id: "c-espera", sinResponder: true }),
+      chat({ id: "c-nueva" }),
+    ]);
+
+    act(() => {
+      emitirWa(entrante("c-nueva", { unreadCount: 1 }));
+    });
+
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole("list")).getAllByText("sin responder"),
+      ).toHaveLength(2),
+    );
+    expect(tarjeta("Sin responder")).toBe("2");
+    expect(opcion("Sin responder")).toBe("Sin responder (2)");
+  });
+});
+
+
+describe("la línea de contexto", () => {
+  it("dice en qué operación y en qué bandeja está, encima del título", () => {
+    // En la pantalla desde la que salen mensajes a clientes de Guatemala, el
+    // único indicio del país era una bandera de 8×30 px en un riel que se
+    // pliega.
+    abrir();
+
+    const contexto = screen.getByText(/Vorare Store Guatemala/);
+    expect(contexto.textContent).toBe("Vorare Store Guatemala · Confirmación");
+    expect(
+      contexto.compareDocumentPosition(
+        screen.getByRole("heading", { name: "Inbox", level: 1 }),
+      ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });

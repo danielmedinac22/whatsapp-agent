@@ -29,6 +29,7 @@ import {
   direccion,
   irA,
   montarRed,
+  OP,
   OPERACION,
   router,
   useSearchParamsFingido,
@@ -58,6 +59,7 @@ function abrir({
       initial={items}
       approvedTemplates={[]}
       query=""
+      op={OP}
       operationId={OPERACION}
       bandeja={bandeja}
       sellerName="Sebastián"
@@ -205,6 +207,7 @@ describe("cambiar de bandeja", () => {
         initial={items}
         approvedTemplates={[]}
         query=""
+        op={OP}
         operationId={OPERACION}
         bandeja={bandeja}
         sellerName="Sebastián"
@@ -225,7 +228,7 @@ describe("cambiar de bandeja", () => {
     // Y la fila abierta está resaltada, que era el otro síntoma: antes quedaba
     // una conversación abierta sin ninguna fila marcada.
     const filas = within(screen.getByRole("list")).getAllByRole("listitem");
-    expect(filas[0]!.className).toContain("rgba(110,231,183,0.35)");
+    expect(filas[0]!.className).toContain("var(--color-ink)");
   });
 
   it("el selector nunca queda en blanco mientras la lista filtra", () => {
