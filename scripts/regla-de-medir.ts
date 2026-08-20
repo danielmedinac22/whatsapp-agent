@@ -34,11 +34,9 @@
  */
 
 import {
-  dropiConnection,
-  eq,
   getSalesAgentSettings,
   getRawClient,
-  kapsoConnection,
+  listConnectionPhones,
   listOperations,
   salesAgentIsConfigured,
   type Operation,
@@ -46,9 +44,9 @@ import {
   type TrazaSql,
   type ViajeSql,
 } from "@wa/db";
-import { db } from "../apps/web/src/lib/db";
 import {
   countSalesInboxViews,
+  getAssetsBaseUrl,
   listApprovedWaTemplates,
   listConversations,
   type BandejaPedida,
@@ -98,13 +96,19 @@ export const pct = (parte: number, total: number): string =>
 export function resumirSql(texto: string): string {
   const plano = texto.replace(/\s+/g, " ").trim();
   if (/pg_catalog\.pg_type/.test(plano)) return "introspección de tipos (driver)";
-  const verbo = /^(select|insert|update|delete|with)/i.exec(plano)?.[1] ?? "?";
+  // **El paréntesis de apertura es de un `union`**, y sin saltarlo esta línea
+  // decía «? ?» sobre la consulta más importante del render — la que PRO-16
+  // fusionó. Una regla que no sabe nombrar lo que mide deja de servir justo
+  // cuando alguien la usa para revisar un cambio.
+  const desnudo = plano.replace(/^\(+\s*/, "");
+  const verbo = /^(select|insert|update|delete|with)/i.exec(desnudo)?.[1] ?? "?";
+  const union = /\)\s*union(\s+all)?\s*\(/i.test(plano) ? " ∪" : "";
 
   // **Las subconsultas se sacan antes de buscar la tabla.** El `select` grande
   // del Inbox trae un `select … from messages` dentro de su lista de columnas,
   // y sin esto la fila decía «select messages» sobre la consulta que lista
   // conversaciones — el nombre equivocado en la línea que más se mira.
-  let raso = plano;
+  let raso = desnudo;
   for (let i = 0; i < 12 && /\([^()]*\)/.test(raso); i++) {
     raso = raso.replace(/\([^()]*\)/g, " ⟨⟩ ");
   }
@@ -117,7 +121,7 @@ export function resumirSql(texto: string): string {
   const principal = tablas[0] ?? "?";
   const resto = new Set(tablas.slice(1)).size;
   const agregados = /\bcount\(|\bmax\(|\bgroup by\b/i.test(plano) ? " ⧉" : "";
-  return `${verbo.toLowerCase()} ${principal}${resto > 0 ? ` +${resto} join` : ""}${agregados}`;
+  return `${verbo.toLowerCase()} ${principal}${union}${resto > 0 ? ` +${resto} join` : ""}${agregados}`;
 }
 
 export const DETALLE = process.env.DETALLE ?? "si";
@@ -281,12 +285,10 @@ export async function marco(op: Operation, vendedor: SalesAgentSettings | null) 
   // eso también es un dato del render, no un defecto de la medición.
   await listOperations();
 
-  const conexiones = await db
-    .select({
-      operationId: kapsoConnection.operationId,
-      phone: kapsoConnection.displayPhoneNumber,
-    })
-    .from(kapsoConnection);
+  // Los teléfonos del riel, cacheados desde PRO-15 con el mismo TTL y por lo
+  // mismo. Se llama al mismo lector que el layout, no a la consulta que el
+  // layout tenía escrita adentro: lo que se mide es el código que corre.
+  const conexiones = await listConnectionPhones();
 
   // El vendedor de la operación activa, y solo con vendedor los contadores.
   const seller = await getSalesAgentSettings(op);
@@ -311,17 +313,13 @@ export async function pantalla(
 ) {
   await getSalesAgentSettings(op);
 
-  const [items, [conn], approvedTemplates] = await Promise.all([
+  const [items, assetsBase, approvedTemplates] = await Promise.all([
     listConversations(op, { search: buscar, bandeja }),
-    db
-      .select({ assetsBaseUrl: dropiConnection.assetsBaseUrl })
-      .from(dropiConnection)
-      .where(eq(dropiConnection.operationId, op.id))
-      .limit(1),
+    getAssetsBaseUrl(op),
     listApprovedWaTemplates(op),
   ]);
 
-  return { filas: items.length, conn: conn ?? null, plantillas: approvedTemplates.length };
+  return { filas: items.length, conn: assetsBase, plantillas: approvedTemplates.length };
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -383,7 +381,10 @@ export async function tiempoEnPostgres(
   const porConsulta: Array<{ n: number; ms: number }> = [];
   for (const v of traza.viajes) {
     if (v.origen === "driver") continue;
-    if (!/^\s*select/i.test(v.sql)) continue;
+    // El `(` opcional es el de un `union`: sin él, la consulta fusionada de
+    // PRO-16 se caía de esta cuenta sin decirlo y «lo que es Postgres pensando»
+    // pasaba a medir el render **menos** su consulta más grande.
+    if (!/^\s*\(*\s*select/i.test(v.sql)) continue;
     const filas = (await cliente.unsafe(
       `explain (analyze, timing, format json) ${v.sql}`,
       v.valores as never[],

@@ -10,8 +10,12 @@ Origen: diagnóstico de rendimiento del 20-ago-2026 · conviene después de [La 
 (`scripts/viajes-del-panel.ts`), con la traza apagada salvo `WA_SQL_TRACE=1`.
 Detalle y números en `entrega.md`.
 
-**Falta: PRO-14, PRO-15 y PRO-16** — la región, las cachés y bajar el conteo a
-cuatro. Los tres se miden con el contador, así que dejaron de ser una impresión.
+**Hechos, sin mergear: PRO-15 y PRO-16.** Las cachés y el conteo. Un render del
+Inbox pasó de **13 consultas y 23 idas y vueltas a 4 y 8**, con las mismas filas
+en el mismo orden. Detalle en `entrega-viajes-cortos.md`.
+
+**Falta: PRO-14** — la región. Es el que no es código y el único que necesita el
+visto bueno del dueño, porque toca producción. Se mide con el mismo contador.
 
 ## Problem Statement
 

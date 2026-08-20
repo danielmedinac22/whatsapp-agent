@@ -64,7 +64,11 @@ import {
   eq,
   getSalesAgentSettings,
   getRawClient,
+  invalidateApprovedWaTemplatesCache,
+  invalidateAssetsBaseUrlCache,
+  invalidateConnectionPhonesCache,
   invalidateOperationsCache,
+  invalidateSalesAgentSettingsCache,
   listOperations,
   medirViajes,
   salesAgentIsConfigured,
@@ -199,12 +203,24 @@ async function main() {
 
   for (let p = 1; p <= pasadas; p++) {
     const frio = p === 1;
-    // **La pasada fría es un proceso frío, no solo conexiones frías.** La lista
-    // de operaciones se cachea 30 s en `@wa/db`, así que el render la lee una
-    // vez cada medio minuto y no una vez por pantalla; sin vaciarla acá, el
-    // viaje que sí paga el primer render de una función recién levantada no
-    // aparecería en ninguna pasada.
-    if (frio) invalidateOperationsCache();
+    // **La pasada fría es un proceso frío, no solo conexiones frías.** Las
+    // cinco lecturas cacheadas en `@wa/db` —la lista de operaciones, los
+    // teléfonos del riel, el vendedor, las plantillas aprobadas y la URL de los
+    // archivos— las hace el render una vez cada TTL y no una vez por pantalla;
+    // sin vaciarlas acá, los viajes que sí paga el primer render de una función
+    // recién levantada no aparecerían en ninguna pasada.
+    //
+    // **Y la del vendedor hay que vaciarla porque este mismo script la llenó**:
+    // arriba se lee para saber si la operación tiene dos bandejas. Sin esta
+    // línea la pasada 1 salía con una consulta de menos que un arranque de
+    // verdad — la regla midiendo su propia preparación en vez del render.
+    if (frio) {
+      invalidateOperationsCache();
+      invalidateConnectionPhonesCache();
+      invalidateSalesAgentSettingsCache();
+      invalidateApprovedWaTemplatesCache();
+      invalidateAssetsBaseUrlCache();
+    }
     const { traza } = await medirViajes(`render ${p}`, async () => {
       // El marco y la pantalla se renderizan a la vez: en el App Router el
       // layout recibe `children` ya construido y los dos componentes async

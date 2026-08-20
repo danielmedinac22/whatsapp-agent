@@ -1,7 +1,10 @@
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
-import { db, kapsoConnection } from "@/lib/db";
-import { getSalesAgentSettings, salesAgentIsConfigured } from "@wa/db";
+import {
+  getSalesAgentSettings,
+  listConnectionPhones,
+  salesAgentIsConfigured,
+} from "@wa/db";
 import { countSalesInboxViews } from "@/lib/queries";
 import { operationTint } from "@wa/shared";
 import { resolveAccess } from "@/access/resolve";
@@ -55,12 +58,13 @@ export default async function AppLayout({
   // El número de cada operación sale de su conexión de WhatsApp. Una sola
   // consulta para todo el riel: son una o dos filas, y el índice único de la
   // `0021` garantiza una conexión por operación.
-  const connections = await db
-    .select({
-      operationId: kapsoConnection.operationId,
-      phone: kapsoConnection.displayPhoneNumber,
-    })
-    .from(kapsoConnection);
+  //
+  // **Y desde PRO-15 esa consulta casi nunca viaja.** Es la hermana de
+  // `listOperations`: las dos dibujan el riel, las dos traen una o dos filas que
+  // cambian cuando alguien conecta un número, y las dos las paga cada render de
+  // cada una de las siete pantallas. La invalida `invalidateKapsoConnectionCache`
+  // en el worker, que es quien escribe.
+  const connections = await listConnectionPhones();
   const phoneByOperation = new Map(
     connections.map((c) => [c.operationId, c.phone]),
   );

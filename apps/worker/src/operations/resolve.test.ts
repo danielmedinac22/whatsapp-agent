@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { OperationScopedCache } from "./cache";
 import {
   type OperationConnectionRef,
   decideInboundOperation,
@@ -119,50 +118,6 @@ describe("decideInboundOperation", () => {
   });
 });
 
-describe("OperationScopedCache", () => {
-  it("lo cacheado para una operación no se le sirve a otra", () => {
-    const cache = new OperationScopedCache<string>();
-    cache.set(GUATEMALA, "numero-de-guatemala");
-    expect(cache.get(GUATEMALA)?.value).toBe("numero-de-guatemala");
-    expect(cache.get(COLOMBIA)).toBeNull();
-  });
-
-  it("invalidar una operación no toca la de al lado", () => {
-    // Antes había además una clave de «la operación única» que apuntaba a la
-    // misma fila y había que invalidar en pareja. El contract la borró junto
-    // con el `operationId: null` de los accesores: una fila, una clave.
-    const cache = new OperationScopedCache<string>();
-    cache.set(GUATEMALA, "gt");
-    cache.set(COLOMBIA, "co");
-
-    cache.invalidate(GUATEMALA);
-
-    expect(cache.get(GUATEMALA)).toBeNull();
-    expect(cache.get(COLOMBIA)?.value).toBe("co");
-  });
-
-  it("invalidar sin argumento borra la caché entera", () => {
-    const cache = new OperationScopedCache<string>();
-    cache.set(GUATEMALA, "a");
-    cache.set(COLOMBIA, "b");
-
-    cache.invalidate();
-
-    expect(cache.get(GUATEMALA)).toBeNull();
-    expect(cache.get(COLOMBIA)).toBeNull();
-  });
-
-  it("una entrada vencida no se sirve", async () => {
-    const cache = new OperationScopedCache<string>(1);
-    cache.set(GUATEMALA, "vieja");
-    await new Promise((r) => setTimeout(r, 5));
-    expect(cache.get(GUATEMALA)).toBeNull();
-  });
-
-  it("cachear null es un valor, no un fallo de caché", () => {
-    const cache = new OperationScopedCache<string | null>();
-    cache.set(GUATEMALA, null);
-    // Una operación sin conexión no debe re-consultar la base cada vez.
-    expect(cache.get(GUATEMALA)).toEqual({ value: null });
-  });
-});
+// Las pruebas de `OperationScopedCache` se mudaron a `cache.test.ts` cuando
+// PRO-15 subió la clase a `@wa/db` y le pasó el reloj por parámetro. La del
+// vencimiento estaba escrita con un `setTimeout` de 5 ms y ahora es una resta.

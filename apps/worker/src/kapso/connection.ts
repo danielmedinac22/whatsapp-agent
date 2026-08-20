@@ -1,5 +1,10 @@
 import { eq } from "@wa/db";
-import { kapsoConnection, type KapsoConnection, type Operation } from "@wa/db";
+import {
+  invalidateConnectionPhonesCache,
+  kapsoConnection,
+  type KapsoConnection,
+  type Operation,
+} from "@wa/db";
 import { db } from "../db";
 import { logger } from "../lib/logger";
 import {
@@ -57,6 +62,11 @@ export async function getKapsoConnection(
 export function invalidateKapsoConnectionCache(op?: Operation): void {
   cache.invalidate(op?.id);
   allConnectionsCache = null;
+  // El riel del panel dibuja el número de cada operación y lo lee de esta misma
+  // tabla (PRO-15). Se cuelga del invalidador que ya existía en vez de sumar una
+  // llamada en cada punto de escritura: los tres que hay hoy ya pasan por acá, y
+  // el que se escriba mañana también.
+  invalidateConnectionPhonesCache();
 }
 
 /** The active phone_number_id, or throw — send paths need it. */

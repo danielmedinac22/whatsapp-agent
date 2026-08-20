@@ -1,14 +1,12 @@
 import { auth } from "@/auth";
-import { db } from "@/lib/db";
 import {
+  getAssetsBaseUrl,
   listApprovedWaTemplates,
   listConversations,
   type BandejaPedida,
 } from "@/lib/queries";
 import {
   actividadDe,
-  dropiConnection,
-  eq,
   getSalesAgentSettings,
   parseRecognitionOutcome,
   salesAgentIsConfigured,
@@ -49,9 +47,10 @@ export default async function InboxPage({
 }) {
   const session = await auth();
   const { q, c, b, v } = await searchParams;
-  // El CDN del PDF de la guía sale de la logística de la operación del panel.
-  // Antes leía `dropi_connection` por `id = 1`: el último `id = 1` del panel, y
-  // el que le habría puesto el CDN guatemalteco a las guías colombianas.
+  // El CDN del PDF de la guía sale de la logística de la operación del panel
+  // (`getAssetsBaseUrl`). Antes leía `dropi_connection` por `id = 1`: el último
+  // `id = 1` del panel, y el que le habría puesto el CDN guatemalteco a las
+  // guías colombianas.
   const op = await resolvePanelOperation();
 
   // El vendedor decide si esta operación tiene dos bandejas o una. Sin vendedor
@@ -60,17 +59,12 @@ export default async function InboxPage({
   const seller = await getSalesAgentSettings(op);
   const bandeja = bandejaPedida(b, salesAgentIsConfigured(seller) ? seller : null);
 
-  const [items, [conn], approvedTemplates] = await Promise.all([
+  const [items, assetsBase, approvedTemplates] = await Promise.all([
     listConversations(op, { search: q, pinnedId: c, bandeja }),
-    db
-      .select({ assetsBaseUrl: dropiConnection.assetsBaseUrl })
-      .from(dropiConnection)
-      .where(eq(dropiConnection.operationId, op.id))
-      .limit(1),
+    getAssetsBaseUrl(op),
     listApprovedWaTemplates(op),
   ]);
 
-  const assetsBase = (conn?.assetsBaseUrl ?? "").replace(/\/$/, "");
   const buildPdfUrl = (path: string | null): string | null => {
     if (!assetsBase || !path) return null;
     return `${assetsBase}/${path.replace(/^\//, "")}`;

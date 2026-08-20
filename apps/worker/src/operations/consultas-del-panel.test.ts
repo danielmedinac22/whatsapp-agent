@@ -46,9 +46,19 @@ describe("la red sobre las consultas del panel", () => {
       // Las de la bandeja por módulo: derivan y escriben, así que la red tiene
       // que verlas por nombre y no de casualidad.
       "loadOrderFactsByContact",
+      // Los salientes del Inbox: PRO-16 fusionó dos consultas en una y la nueva
+      // no aparecía en el inventario, porque `outbound_messages` no estaba
+      // vigilada. Nombrarla acá es lo que impide que la próxima fusión vuelva a
+      // salirse de la red sin que nadie se entere.
+      "loadSalientesDelInbox",
       "releaseStaleAssignments",
       "conversationIdsOfInbox",
       "countSalesInboxViews",
+      // La URL base de los archivos de logística. Vivía suelta dentro de
+      // `inbox/page.tsx`, o sea fuera de esta red, y PRO-15 la trajo a
+      // `queries.ts` al cachearla: una consulta que la red no lee es una
+      // consulta que pasa en verde sin que nadie la haya mirado.
+      "getAssetsBaseUrl",
       "getSalesContext",
       "setAssignment",
       "listApprovedWaTemplates",
@@ -75,6 +85,17 @@ describe("la red sobre las consultas del panel", () => {
       (c) => c.funcion === "listConversations",
     );
     expect(enElInbox.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("los salientes se vigilan aunque la tabla no lleve la columna", () => {
+    // `outbound_messages` no tiene `operation_id` y sus filas son de una
+    // operación igual, por el `to_wa_id`. Antes de PRO-16 ninguna de sus tres
+    // consultas estaba en el inventario.
+    const enSalientes = analizarConsultasDelPanel(fuente(VIGILADOS[0])).filter(
+      (c) => c.tabla === "outboundMessages",
+    );
+    expect(enSalientes.length).toBeGreaterThanOrEqual(3);
+    expect(enSalientes.every((c) => c.acota)).toBe(true);
   });
 
   it("las tablas con dueño salen del esquema, no de una lista a mano", () => {
@@ -201,6 +222,34 @@ export async function listMessages(conversationId: string) {
         motivo: "sin_operacion_a_mano",
       },
     ]);
+  });
+
+  it("un saliente sin acotar por wa_id se atrapa como cualquier otra fuga", () => {
+    // La consulta que la red no veía hasta PRO-16: `outbound_messages` no lleva
+    // `operation_id`, así que sin la tabla en la lista indirecta esto pasaba en
+    // verde — leyendo las escaladas de todos los países.
+    const source = `
+export async function loadSalientesDelInbox(op: Operation) {
+  return db.select().from(outboundMessages).where(eq(outboundMessages.source, "escalation"));
+}`;
+    expect(consultasSinAlcance(source)).toEqual([
+      {
+        funcion: "loadSalientesDelInbox",
+        tabla: "outboundMessages",
+        motivo: "sin_filtro_de_operacion",
+      },
+    ]);
+  });
+
+  it("acotar los salientes por wa_id cuenta como acotar", () => {
+    // El quinto ayudante de `operation-scope.ts`, que faltaba en la lista de
+    // marcadores: es el único que sabe acotar esta tabla.
+    const source = `
+export async function loadSalientesDelInbox(op: Operation) {
+  return db.select().from(outboundMessages)
+    .where(and(eq(outboundMessages.source, "escalation"), waIdOfOperation(op, outboundMessages.toWaId)));
+}`;
+    expect(consultasSinAlcance(source)).toEqual([]);
   });
 
   it("una tabla que solo se une a otra no exige su propio filtro", () => {
