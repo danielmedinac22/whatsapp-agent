@@ -7,7 +7,7 @@ Inbox cuenten algo verificable, y se llamen como lo que cuentan.
 las columnas que arregla el **02**, así que los conteos contra producción no
 significan nada hasta que el 02 esté mergeado y desplegado.
 
-**Status:** open — arranca cuando mergee el 01
+**Status:** resolved — desplegado y verificado contra producción, 20-ago-2026
 
 > **Lo que te dejó el 01, y es obligatorio.** `resolveInbox` ahora recibe la
 > línea de corte del vendedor como **segundo parámetro opcional**, y omitirlo
@@ -235,3 +235,61 @@ producción, con las 1.759 conversaciones reales.
 El 02 **ya está mergeado y desplegado**, así que tus números cierran desde el
 primer día: `outbound_messages.source` es la fuente y está completa desde el
 28-jul.
+
+## Answer
+
+**«Sin responder» cuenta lo que su nombre dice: 90 se volvió 35.** Desplegado y
+verificado contra producción el 20-ago-2026.
+
+La regla vieja era `!agent_mode && unread_count > 0`, y `unread_count` mide «nadie
+la abrió en el panel». Ahora la vista y la tarjeta cuentan lo mismo, con la misma
+frase: el cliente escribió, nadie le contestó, el agente no la lleva, hubo
+actividad en 30 días y nadie la tomó. O el agente escaló dentro de esos días.
+
+La barra quedó **En automático → Sin responder → Todas**, con los nombres enteros
+—13 caracteres cada uno— donde antes se leía «Las lleva el ven…».
+
+### El número no era 39. Era 35, y el error era mío
+
+Yo medí 39 agrupando `outbound_messages` por `conversation_id`. **Esa columna está
+en `null` en 316 de los 352 envíos manuales**, así que cuatro conversaciones donde
+una persona sí contestó contaban como «nadie contestó». El agrupamiento correcto
+va por `to_wa_id`. Verificado por las dos partes, por separado: **35**.
+
+Es la tercera vez en este lote que ejecutar encuentra lo que leer no.
+
+### Lo que la medición encontró de paso
+
+**La tarjeta del Inbox decía 0, y era mentira.** Contaba sobre las 200 filas que
+la lista carga, que cubren cinco días y traen **una sola** conversación con el
+agente apagado. Ahora el conteo se hace en el servidor sobre todas, y la lista
+trae siempre las que están sin responder aunque sean viejas: el número y las filas
+tienen que ser el mismo conjunto, o el número no significa nada.
+
+**`resolveInbox` no recibía la línea de corte en los cuatro call sites del panel.**
+Sin eso, el día que alguien encendiera a Sebastián su bandeja habría arrancado en
+0/0/0. Verificado contra producción con una activación hipotética: el código viejo
+da 0/0/0 y el nuevo 24/1/49.
+
+Y `loadEscalationsByWaId` ahora acota por operación, que era el aislamiento que
+faltaba.
+
+### Las escaladas, que Katherine no veía
+
+Se cargan también sin vendedor configurado. De las 37, **5 siguen vivas** dentro
+de los 30 días; las otras 31 llevan más de un mes quietas y no son trabajo.
+
+### El costo, medido
+
+Inbox de Katherine contra las 1.760 conversaciones reales: mediana **815 ms
+antes, 828 a 881 ms después**, en 7 vueltas alternadas. Las cuatro cargas que
+iban en fila india ahora van en paralelo, y eso es lo que paga las consultas
+nuevas.
+
+### Verificado en producción tras desplegar
+
+| | |
+| -- | --: |
+| Conversaciones | 1.760 |
+| Regla vieja (`unread > 0`) | 90 |
+| **«Sin responder»** | **35** |

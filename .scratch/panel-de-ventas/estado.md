@@ -2,7 +2,7 @@
 
 **Si acabas de llegar a este proyecto con contexto fresco, lee este archivo primero.** Está al día al **19-ago-2026**.
 
-## Lote `ventas-bandeja-honesta` — 01 y 02 EN PRODUCCIÓN (20-ago-2026), falta el 03
+## Lote `ventas-bandeja-honesta` — CERRADO Y EN PRODUCCIÓN (20-ago-2026)
 
 **Vuelve a haber trabajo construible, y no salió de un ticket: salió de mirar el
 panel.** Pablo abrió la bandeja y preguntó de qué eran las 55 conversaciones que
@@ -29,6 +29,34 @@ decisiones ya cerradas con el usuario:
 depende de los otros. El `02` y el `03` van en paralelo —uno es worker, el otro
 `apps/web`—, pero el `03` no se **verifica** hasta que el `02` esté desplegado:
 sus números salen de las columnas que el `02` arregla.
+
+### Los tres, cerrados. Lo que cambió para quien mira el panel
+
+| | Antes | Después |
+| -- | --: | --: |
+| Bandeja de ventas | 110 | **0** |
+| Inbox de Katherine | 1.650 | **1.760** |
+| «Necesita atención» / «Sin responder» | 90 | **35** |
+
+Las 110 que le hacían ruido a un vendedor apagado volvieron con Katherine, sin
+perder ninguna. Y el rojo dejó de contar «nadie la abrió en el panel» para contar
+«el cliente escribió y nadie le contestó».
+
+**Tres veces en este lote, ejecutar encontró lo que leer no**, y las tres fueron
+correcciones a lo que yo había medido:
+
+1. `last_outbound_at` no estaba rota. Los 855 desfases eran todos anteriores al
+   28-jul. **Un conteo de filas malas sin fecha no dice si el bug está vivo.**
+2. La regla contaba una notificación logística como «ya contestamos». 20 pasó a
+   39.
+3. `outbound_messages.conversation_id` está en `null` en 316 de 352 envíos
+   manuales, así que agrupar por esa columna hacía invisibles las respuestas de
+   personas. El join va por `to_wa_id`, y 39 pasó a 35.
+
+Y dos bugs que nadie había pedido: la tarjeta del Inbox contaba sobre las 200
+filas cargadas y decía 0; y `resolveInbox` no recibía la línea de corte en los
+cuatro call sites del panel, así que encender a Sebastián le habría dejado la
+bandeja en 0/0/0.
 
 ### Lo que ya está en producción, medido
 
