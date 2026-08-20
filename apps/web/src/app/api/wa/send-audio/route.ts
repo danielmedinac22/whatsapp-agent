@@ -11,6 +11,9 @@ export async function POST(req: Request) {
   for (const [key, value] of incoming.entries()) {
     form.append(key, value as string | Blob);
   }
+  // La nota de voz también la manda una persona: el worker lee este campo con
+  // el mismo `usuarioQueEnvia` que los otros dos envíos.
+  if (session.user.id) form.set("sentByUserId", session.user.id);
   const res = await workerFetchMultipart("/api/wa/send-audio", form);
   return new Response(await res.text(), {
     status: res.status,

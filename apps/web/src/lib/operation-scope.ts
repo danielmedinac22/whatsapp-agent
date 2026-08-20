@@ -98,3 +98,26 @@ export function contactOfOperation(op: Operation, contactId: string): SQL {
     )`,
   )!;
 }
+
+/**
+ * Los salientes que fueron hacia un cliente de esta operación.
+ *
+ * `outbound_messages` no lleva `operation_id`, y su `conversation_id` **no
+ * alcanza para acotarla**: está en `null` en 316 de los 352 salientes manuales
+ * de producción y en los 5.979 de `dropi_2fa`. Lo que la fila siempre trae es el
+ * `to_wa_id`, y ese sí lleva a una conversación con dueño — `contacts.wa_id` es
+ * único en toda la base y el índice único sobre `conversations.contact_id`
+ * garantiza una sola conversación por contacto.
+ *
+ * Hoy no filtra nada de más, porque hay una sola operación; el día que haya dos
+ * es la diferencia entre contar las escaladas de Guatemala y contar las de
+ * todos. Es la clase de aislamiento que este repositorio trata como bug.
+ */
+export function waIdOfOperation(op: Operation, waIdColumn: PgColumn): SQL {
+  return sql`exists (
+    select 1 from ${contacts}
+    join ${conversations} on ${conversations.contactId} = ${contacts.id}
+    where ${contacts.waId} = ${waIdColumn}
+      and ${conversations.operationId} = ${op.id}
+  )`;
+}

@@ -1,43 +1,45 @@
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
-import { listApprovedWaTemplates, listConversations } from "@/lib/queries";
 import {
+  listApprovedWaTemplates,
+  listConversations,
+  type BandejaPedida,
+} from "@/lib/queries";
+import {
+  actividadDe,
   dropiConnection,
   eq,
   getSalesAgentSettings,
   parseRecognitionOutcome,
   salesAgentIsConfigured,
   resolveRowMark,
-  type Inbox,
 } from "@wa/db";
 import { resolvePanelOperation } from "@/lib/operation";
 import { InboxClient } from "./inbox-client";
 
 export const dynamic = "force-dynamic";
 
-/** Actividad más reciente: el mayor de los tres, no el primero no-nulo. */
-function lastActivity(
-  lastInboundAt: Date | null,
-  lastOutboundAt: Date | null,
-  createdAt: Date,
-): Date {
-  return [lastInboundAt, lastOutboundAt, createdAt].reduce<Date>(
-    (max, d) => (d && d > max ? d : max),
-    createdAt,
-  );
-}
-
 /**
- * Qué bandeja pide la URL.
+ * Qué bandeja pide la URL, con la línea de corte del vendedor pegada.
  *
  * `?b=ventas` es la de Sebastián; **cualquier otra cosa es la de siempre**, y
  * eso incluye no poner el parámetro. Es deliberado que el enlace de Katherine
  * no lleve parámetro: su URL de hoy tiene que seguir significando lo mismo
  * mañana, aunque lo que traiga cambie cuando exista vendedor.
+ *
+ * `undefined` es «esta operación tiene una sola bandeja», y sale de que no haya
+ * vendedor configurado. El corte viaja adentro porque sin él la bandeja de
+ * ventas queda vacía y nada deja de compilar — ver {@link BandejaPedida}.
  */
-function bandejaPedida(b: string | undefined, conVendedor: boolean): Inbox | undefined {
-  if (!conVendedor) return undefined;
-  return b === "ventas" ? "ventas" : "operaciones";
+function bandejaPedida(
+  b: string | undefined,
+  vendedor: { activatedAt: Date | null } | null,
+): BandejaPedida | undefined {
+  if (vendedor === null) return undefined;
+  return {
+    inbox: b === "ventas" ? "ventas" : "operaciones",
+    activatedAt: vendedor.activatedAt,
+  };
 }
 
 export default async function InboxPage({
@@ -56,10 +58,10 @@ export default async function InboxPage({
   // —el listón único: nombre visible no vacío, no la existencia de la fila—
   // `listConversations` no filtra ni deriva nada y la pantalla es la de hoy.
   const seller = await getSalesAgentSettings(op);
-  const inbox = bandejaPedida(b, salesAgentIsConfigured(seller));
+  const bandeja = bandejaPedida(b, salesAgentIsConfigured(seller) ? seller : null);
 
   const [items, [conn], approvedTemplates] = await Promise.all([
-    listConversations(op, { search: q, pinnedId: c, inbox }),
+    listConversations(op, { search: q, pinnedId: c, bandeja }),
     db
       .select({ assetsBaseUrl: dropiConnection.assetsBaseUrl })
       .from(dropiConnection)
@@ -96,11 +98,7 @@ export default async function InboxPage({
         unread: i.conversation.unreadCount,
         confirmationStatus: i.conversation.confirmationStatus,
         confirmationSource: i.conversation.confirmationSource,
-        lastAt: lastActivity(
-          i.conversation.lastInboundAt,
-          i.conversation.lastOutboundAt,
-          i.conversation.createdAt,
-        ).toISOString(),
+        lastAt: actividadDe(i.conversation).toISOString(),
         lastInboundAt: i.conversation.lastInboundAt?.toISOString() ?? null,
         dropiStatus: i.dropi?.status ?? null,
         dropiHasNovedad: i.dropi?.hasNovedad ?? false,
@@ -111,26 +109,32 @@ export default async function InboxPage({
         orderNumber: i.shopify?.orderNumber ?? null,
         producto: i.shopify?.producto ?? null,
         assignedTo: i.assignedTo,
+        sinResponder: i.sinResponder,
         // La fila solo marca el reconocimiento cuando NO es limpio: la regla
         // vive en `@wa/db` y aquí solo se le pasan los hechos. «Ambiguo» sale
         // de lo que la cascada dejó registrado (`0026`); antes era
         // indistinguible de «no encontré nada» y las dos se marcaban igual.
-        mark: i.routing
-          ? resolveRowMark({
-              adReferralAt: i.conversation.adReferralAt,
-              productIdentified: i.conversation.productId !== null,
-              recognitionOutcome: parseRecognitionOutcome(
-                i.conversation.productRecognition,
-              ),
-              escalations: i.routing.escalations,
-            })
-          : null,
+        //
+        // **Se calcula siempre, también sin vendedor**, que es lo que hace que
+        // Katherine vea las escaladas: antes dependía de que hubiera bandeja, y
+        // sin vendedor no hay bandeja. Las otras dos marcas necesitan un clic de
+        // anuncio, y `ad_referral_at` es `null` en las 1.760 conversaciones de
+        // producción; el día que lleguen anuncios habrá vendedor, porque es el
+        // vendedor quien los atiende.
+        mark: resolveRowMark({
+          adReferralAt: i.conversation.adReferralAt,
+          productIdentified: i.conversation.productId !== null,
+          recognitionOutcome: parseRecognitionOutcome(
+            i.conversation.productRecognition,
+          ),
+          escalations: i.routing.escalations,
+        }),
       }))}
       approvedTemplates={approvedTemplates}
       query={q ?? ""}
       selectedId={c ?? null}
-      bandeja={inbox ?? null}
-      vista={v === "atencion" || v === "agente" ? v : null}
+      bandeja={bandeja?.inbox ?? null}
+      vista={v === "sin-responder" || v === "en-automatico" ? v : null}
       // El mismo listón que decide la bandeja, y por lo mismo: `null` es lo que
       // apaga el nombre del vendedor en los eventos del hilo y el botón de
       // «TRABAJARLA YO». Con la fila a medio llenar esto decía «el vendedor» y

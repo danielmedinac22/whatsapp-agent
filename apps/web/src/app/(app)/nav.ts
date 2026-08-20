@@ -35,15 +35,21 @@ import {
  * bandeja, porque si solo aparece estando ya adentro no sirve para que entres.
  * Es el mismo criterio por el que el riel le ganó al filo de color en el nivel 1.
  *
- * Las tres son las que el Inbox ya calcula con ese nombre —`needsAttention`,
- * `automatedCount`, el total—, no vocabulario nuevo.
+ * **Cada vista se llama como la regla que calcula.** «Sin responder» es
+ * literalmente eso —el cliente escribió y nadie le contestó—, y «En automático»
+ * es el opuesto exacto de «Respuesta manual», que la cabecera del hilo ya dice.
+ * Los nombres viejos no decían su regla: «Necesitan atención» contaba
+ * `unread_count`, que mide «nadie la abrió acá adentro», y «Las lleva el
+ * vendedor» nombraba a quien no existe hasta que alguien lo configura —y se veía
+ * cortado, «Las lleva el ven…», porque la barra corta cerca de los 14
+ * caracteres—. Los dos nuevos miden 13 y caben enteros.
  */
 export interface NavView {
   /** Valor de `?v=`. `null` es la vista por defecto, sin parámetro. */
-  key: "atencion" | "agente" | null;
+  key: "sin-responder" | "en-automatico" | null;
   label: string;
   /** Cuál de los contadores la acompaña. */
-  count: "needsAttention" | "automated" | "all";
+  count: "sinResponder" | "enAutomatico" | "todas";
 }
 
 export interface NavItem {
@@ -114,13 +120,16 @@ export const NAV_GROUPS: readonly NavGroup[] = [
         bandeja: "ventas",
         label: "Conversaciones",
         icon: MessagesSquare,
+        /**
+         * **El orden es primero lo que el vendedor hace solo y después lo que
+         * le toca a una persona.** Es el pedido explícito del usuario —«las que
+         * le interesan son las del segundo nivel»—: se entra a la bandeja a ver
+         * qué está pasando sin uno, y enseguida qué hay que atender.
+         */
         views: [
-          { key: "atencion", label: "Necesitan atención", count: "needsAttention" },
-          // La etiqueta real la arma `viewLabel` con el nombre configurado;
-          // esta es la que queda si algún día la vista se dibuja sin vendedor,
-          // y por eso no nombra a nadie.
-          { key: "agente", label: "Las lleva el vendedor", count: "automated" },
-          { key: null, label: "Todas", count: "all" },
+          { key: "en-automatico", label: "En automático", count: "enAutomatico" },
+          { key: "sin-responder", label: "Sin responder", count: "sinResponder" },
+          { key: null, label: "Todas", count: "todas" },
         ],
       },
       { href: "/catalogo", label: "Catálogo", icon: Boxes },

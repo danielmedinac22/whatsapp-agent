@@ -3,7 +3,7 @@
 import { Fragment } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { NAV_GROUPS, type NavGroup, type NavItem, type NavView } from "./nav";
+import { NAV_GROUPS, type NavGroup, type NavItem } from "./nav";
 
 /**
  * La navegación de módulos, anidada dentro de la operación.
@@ -25,15 +25,19 @@ import { NAV_GROUPS, type NavGroup, type NavItem, type NavView } from "./nav";
 
 /** Los contadores de las tres vistas de la bandeja de ventas. */
 export type SalesInboxCounts = {
-  needsAttention: number;
-  automated: number;
-  all: number;
+  sinResponder: number;
+  enAutomatico: number;
+  todas: number;
 };
 
 /** Lo que el servidor sabe del vendedor de esta operación. */
 export type SalesNav = {
   counts: SalesInboxCounts;
-  /** El nombre configurado, para que la vista diga «Las lleva <quien sea>». */
+  /**
+   * El nombre configurado. Va al lado del módulo —«VENTAS · Sebastián»— y ya no
+   * dentro de las vistas: una vista se llama por lo que cuenta, no por quién la
+   * atiende, y el nombre metido en la etiqueta era lo que la barra cortaba.
+   */
   sellerName: string;
 };
 
@@ -72,11 +76,6 @@ function openGroupKey(
     if (g.items.some((i) => isOpen(pathname, i, bandeja))) return g.key;
   }
   return null;
-}
-
-/** La etiqueta de la vista, con el nombre del vendedor que esté configurado. */
-function viewLabel(view: NavView, sellerName: string): string {
-  return view.key === "agente" ? `Las lleva ${sellerName}` : view.label;
 }
 
 /**
@@ -144,9 +143,12 @@ export function ModuleNav({
                               : undefined
                           }
                         >
-                          <span className="flex-1 truncate">
-                            {viewLabel(view, sales.sellerName)}
-                          </span>
+                          {/* La etiqueta es la de `./nav`, tal cual. Antes se
+                              rearmaba acá con el nombre del vendedor —«Las
+                              lleva Sebastián»— y la barra la cortaba en «Las
+                              lleva el ven…»; ahora la vista se llama por su
+                              regla, que no depende de quién la atienda. */}
+                          <span className="flex-1 truncate">{view.label}</span>
                           <span className="tabular-nums text-[10.5px] text-[var(--color-text-soft)]">
                             {sales.counts[view.count]}
                           </span>

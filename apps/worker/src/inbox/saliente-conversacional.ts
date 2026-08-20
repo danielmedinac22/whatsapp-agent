@@ -14,57 +14,19 @@
  * Es puro a propósito. La escritura la hace `jobs/outbound.ts`, que es quien
  * sabe si el mensaje salió; acá solo vive la decisión, que es la parte que se
  * prueba.
- */
-
-import type { OutboundMessage } from "@wa/db";
-
-/**
- * Los ocho valores del enum `outbound_source`, tomados de la fila y no
- * escritos a mano: si el esquema gana un noveno, el `switch` de abajo deja de
- * compilar. Es el mismo trato que `logisticsPhase`
- * (`packages/db/src/inbox.ts`) le da a los estados logísticos.
- */
-export type OutboundSource = OutboundMessage["source"];
-
-/**
- * ¿Este saliente es **una respuesta**, o es una notificación?
  *
- * La distinción es la que le da sentido al contador: contestar apaga el rojo,
- * avisar no. Volumen en producción (Guatemala, 19-ago-2026, 18.712 filas):
- * conversacional 5.211 · notificación 13.501.
- *
- * - `agent` (4.859) y `manual` (352) son respuestas: las escribe el agente
- *   contestando, o una persona desde el panel. Son las únicas dos.
- * - `followup` (980), `remarketing` (379), `confirmation_ack` (1.528),
- *   `dropi_status` (4.542) y `dropi_2fa` (5.979) son notificaciones: salen
- *   solas, por un evento del pedido o del reloj, y que salgan no significa que
- *   alguien haya mirado la conversación.
- * - `escalation` (93) **no es conversacional, y es la que más se parece a
- *   serlo**: es el aviso de que hace falta una persona, no la respuesta de esa
- *   persona. Apagar el contador con ella sería esconder exactamente la
- *   conversación que se pidió mirar.
+ * **`esSalienteConversacional` ya no vive acá: vive en `@wa/db`.** La misma
+ * frase —«esto fue contestar»— la necesita el panel para contar las
+ * conversaciones **sin responder** (ticket 03), y `apps/web` no depende de
+ * `@wa/worker`. Se re-exporta desde este archivo porque este sigue siendo el
+ * sitio donde se pregunta al enviar, y porque mover el import de sus llamadores
+ * habría sido cambiar código del ticket 02 para no cambiar nada.
  */
-export function esSalienteConversacional(source: OutboundSource): boolean {
-  switch (source) {
-    case "agent":
-    case "manual":
-      return true;
-    case "followup":
-    case "remarketing":
-    case "confirmation_ack":
-    case "dropi_status":
-    case "dropi_2fa":
-    case "escalation":
-      return false;
-    default: {
-      // Si esto deja de compilar es que el esquema ganó un `source` nuevo y hay
-      // que decidir acá de qué lado cae — no dejarlo caer en un `else`, que es
-      // como se cuela una notificación apagando el contador de nadie.
-      const exhaustive: never = source;
-      return exhaustive;
-    }
-  }
-}
+
+import { esSalienteConversacional, type OutboundSource } from "@wa/db";
+
+export { esSalienteConversacional } from "@wa/db";
+export type { OutboundSource } from "@wa/db";
 
 /** Lo que cabe en la vista previa de la lista, igual que en la ingesta. */
 const PREVIEW_MAX = 200;

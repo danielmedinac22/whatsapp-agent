@@ -20,10 +20,14 @@ import {
   isNull,
   or,
   sql,
+  actividadDe,
+  DIAS_SIN_RESPONDER,
   escalationReasonFromDedupKey,
   inboxChangedSince,
   parseRecognitionOutcome,
   resolveInbox,
+  sinResponder,
+  SALIENTES_CONVERSACIONALES,
 } from "@wa/db";
 import type { SQL } from "drizzle-orm";
 import type {
@@ -32,7 +36,9 @@ import type {
   InboxFacts,
   Operation,
   OrderFacts,
+  SalesAgentSettings,
   SalesContextFacts,
+  SalesCutoff,
 } from "@wa/db";
 import { situationByKey } from "@wa/shared";
 import {
@@ -40,6 +46,7 @@ import {
   ofOperation,
   rowOfOperation,
   throughConversationOfOperation,
+  waIdOfOperation,
 } from "./operation-scope";
 
 /**
@@ -63,6 +70,10 @@ import {
  * COALESCE(lastInbound, …) una conversación donde el último mensaje es NUESTRO
  * se quedaba anclada a la fecha del cliente y nunca subía al tope de la lista.
  * GREATEST ignora los NULL y createdAt es NOT NULL, así que siempre hay valor.
+ *
+ * Es el `ORDER BY` de la lista. La misma frase dicha en TypeScript es
+ * `actividadDe` (`@wa/db`), que es la que decide la recencia de «sin responder»;
+ * si una de las dos cambia, la otra tiene que cambiar con ella.
  */
 const lastActivityAt = sql`GREATEST(${conversations.lastInboundAt}, ${conversations.lastOutboundAt}, ${conversations.createdAt})`;
 
@@ -113,14 +124,20 @@ export type AssignedTo = {
 };
 
 /**
- * Lo que el ruteo derivó de una conversación. `null` cuando no se derivó nada,
- * que es el caso de una operación sin vendedor configurado: ahí no hay dos
- * bandejas, hay la de siempre, y calcular la bandeja de cada fila sería pagar
- * tres consultas para no mostrar nada.
+ * Lo que se sabe de una conversación más allá de sus columnas.
+ *
+ * `inbox` es `null` cuando no hay dos bandejas —la operación no tiene vendedor
+ * configurado—: ahí derivar la bandeja de cada fila sería pagar dos consultas
+ * para no dibujar nada.
+ *
+ * Las escaladas **no** se apagan con él, y esa es la diferencia con la versión
+ * anterior de este tipo: son un hecho de la conversación, no del módulo de
+ * ventas, y la conversación que un agente pasó a una persona hace falta verla
+ * exista o no vendedor.
  */
 export type ConversationRouting = {
-  /** La bandeja a la que pertenece hoy, derivada con la regla de `@wa/db`. */
-  inbox: Inbox;
+  /** La bandeja a la que pertenece hoy, o `null` si la operación tiene una sola. */
+  inbox: Inbox | null;
   /** Las escaladas a humano que salieron, de la más vieja a la más nueva. */
   escalations: EscalationFacts[];
 };
@@ -133,11 +150,53 @@ export type ConversationListItem = {
   dropi: DropiSummary | null;
   shopify: ShopifySummary | null;
   assignedTo: AssignedTo | null;
-  routing: ConversationRouting | null;
+  /**
+   * Está esperando que una persona conteste. Lo decide `sinResponder`
+   * (`@wa/db`) sobre los hechos de la conversación, en el servidor y una sola
+   * vez: la fila, la tarjeta y el contador de la barra leen este mismo booleano,
+   * que es lo que hace que digan el mismo número.
+   */
+  sinResponder: boolean;
+  routing: ConversationRouting;
 };
 
 /** El corte de la lista. Es el de siempre y no cambia con la bandeja. */
 const CORTE_DE_LISTA = 200;
+
+/**
+ * **La bandeja que se quiere ver, con la línea de corte del vendedor pegada.**
+ *
+ * Los dos datos viajan juntos porque son el mismo hecho —hay vendedor— dicho de
+ * dos maneras, y separarlos fue el agujero que dejó abierto el ticket 01:
+ * `resolveInbox` recibe el corte como parámetro **opcional**, así que omitirlo
+ * compila y significa «no hay vendedor», o sea bandeja de ventas vacía. Cuatro
+ * consultas de este archivo lo omitían y encender a Sebastián habría dejado su
+ * bandeja permanentemente en cero, sin que nada dejara de compilar.
+ *
+ * Con este tipo eso ya no se puede escribir: pedir la bandeja es pasar el corte.
+ */
+export type BandejaPedida = {
+  /** Cuál de las dos bandejas. */
+  inbox: Inbox;
+  /**
+   * `sales_agent_settings.activated_at` — cuándo se encendió el vendedor de la
+   * operación. `null` es «nunca se encendió», y entonces nada cae en ventas por
+   * no tener pedido. En producción hoy es `null`, y por eso la bandeja de
+   * ventas ni siquiera se ofrece.
+   */
+  activatedAt: Date | null;
+};
+
+/**
+ * La línea de corte tal como {@link resolveInbox} la espera: la activación de la
+ * operación y el nacimiento de **esta** conversación.
+ *
+ * Se arma por fila porque el nacimiento es de la fila; el `activated_at` es uno
+ * solo para toda la operación y se lee una vez.
+ */
+function corteDelVendedor(activatedAt: Date | null, bornAt: Date): SalesCutoff {
+  return { activatedAt, bornAt };
+}
 
 /**
  * Los pedidos de **un conjunto** de contactos, en la forma que el ruteo espera.
@@ -225,17 +284,20 @@ export async function loadOrderFactsByContact(
  * queda es ese aviso en `outbound_messages`, con el motivo dentro de su clave
  * de deduplicación. Leerlo de ahí reconstruye un hecho que pasó de verdad.
  *
- * `outbound_messages` no lleva operación y no la necesita: los `wa_id` que
- * recibe salen de una lista de contactos **ya acotada** por la consulta que la
- * llama. Y solo se leen los avisos al cliente, nunca los del admin: esos van al
- * teléfono del administrador y contarlos en el hilo del cliente sería contar
- * dos veces la misma escalada.
+ * `outbound_messages` no lleva operación, así que la acota `waIdOfOperation`:
+ * los `wa_id` que recibe ya salen de contactos de la operación, pero el filtro
+ * va **dentro del `where`** igual, que es como este repositorio trata el
+ * aislamiento en todas las demás consultas. Y solo se leen los avisos al
+ * cliente, nunca los del admin: esos van al teléfono del administrador —los 36
+ * de producción, todos al mismo número— y contarlos en el hilo del cliente sería
+ * contar dos veces la misma escalada.
  *
  * Quedan fuera las escaladas cuyo motivo no manda aviso al cliente
  * (`manual` y `agent_request`): de esas no queda rastro fechado en ninguna
  * parte, y esta función prefiere no mostrarlas a inventarles una fecha.
  */
 async function loadEscalationsByWaId(
+  op: Operation,
   waIds: readonly string[],
 ): Promise<Map<string, EscalationFacts[]>> {
   const porWaId = new Map<string, EscalationFacts[]>();
@@ -252,6 +314,7 @@ async function loadEscalationsByWaId(
       and(
         eq(outboundMessages.source, "escalation"),
         inArray(outboundMessages.toWaId, [...waIds]),
+        waIdOfOperation(op, outboundMessages.toWaId),
       ),
     )
     .orderBy(asc(outboundMessages.createdAt));
@@ -267,6 +330,139 @@ async function loadEscalationsByWaId(
     else porWaId.set(row.toWaId, [hecho]);
   }
   return porWaId;
+}
+
+/**
+ * **Las tres condiciones de `puedeEstarSinResponder`, dichas en SQL.**
+ *
+ * Es la única copia de la regla que existe fuera de `@wa/db`, y está acotada a
+ * propósito: son tres columnas —el modo agente, la asignación y la actividad—,
+ * ninguna decisión. Lo que decide sigue siendo la función pura, que corre sobre
+ * lo que esta consulta deja pasar; si esta se equivoca de más, la función lo
+ * corrige, y si se equivoca de menos deja fuera una conversación, que es por lo
+ * que están las tres condiciones escritas igual en los dos sitios.
+ *
+ * Existe porque decidir esto en TypeScript obliga a traerse las 1.760
+ * conversaciones de Guatemala en cada carga del Inbox: 573 ms contra 132, sobre
+ * la pantalla que Katherine abre todo el día.
+ *
+ * El `GREATEST` es el mismo de {@link lastActivityAt}, y el corte de días es la
+ * constante de `@wa/db`: acá no hay ningún 30 escrito a mano.
+ */
+function puedeEstarEnSQL(ahora: Date): SQL {
+  const desde = new Date(
+    ahora.getTime() - DIAS_SIN_RESPONDER * 24 * 60 * 60 * 1000,
+  );
+  return and(
+    eq(contacts.agentMode, false),
+    isNull(conversations.assignedUserId),
+    // En texto y con el `cast` puesto: en un `sql` crudo el parámetro viaja sin
+    // el tipo de la columna, y el driver no sabe serializar un `Date` suelto.
+    sql`${lastActivityAt} >= ${desde.toISOString()}::timestamptz`,
+  )!;
+}
+
+/**
+ * **Qué conversaciones de la operación están sin responder**, todas, no las que
+ * se ven.
+ *
+ * Se calcula sobre las 1.760 y no sobre las 200 que la lista carga, y esa es la
+ * diferencia entre un número y un adorno: el 20-ago-2026 las 200 más recientes
+ * por actividad cubren cinco días —del 15 al 20 de agosto— y **solo una de ellas
+ * tiene el agente apagado**. La conversación sin responder mejor rankeada está
+ * en el puesto 668. Contando sobre lo cargado, la tarjeta del Inbox decía 0
+ * mientras 35 clientes esperaban respuesta.
+ *
+ * La regla es de `@wa/db` y acá solo se cargan los hechos: tres consultas —las
+ * conversaciones con su contacto, la última respuesta por cliente y la última
+ * escalada por cliente—, ninguna por fila.
+ *
+ * La última respuesta se agrupa por `to_wa_id` y **no por `conversation_id`**:
+ * esa columna está en `null` en 316 de los 352 salientes manuales de producción,
+ * así que agrupar por ella cuenta como «nadie contestó» conversaciones donde una
+ * persona sí contestó —cuatro el 20-ago-2026, con el texto de la respuesta
+ * visible en la fila—.
+ */
+async function loadSinResponderIds(
+  op: Operation,
+  ahora: Date,
+): Promise<Set<string>> {
+  const [filas, respuestas, escaladas] = await Promise.all([
+    db
+      .select({
+        id: conversations.id,
+        waId: contacts.waId,
+        agentMode: contacts.agentMode,
+        assignedUserId: conversations.assignedUserId,
+        lastInboundAt: conversations.lastInboundAt,
+        lastOutboundAt: conversations.lastOutboundAt,
+        createdAt: conversations.createdAt,
+      })
+      .from(conversations)
+      .innerJoin(contacts, eq(conversations.contactId, contacts.id))
+      .where(and(ofOperation(op, conversations.operationId), puedeEstarEnSQL(ahora))),
+    db
+      .select({
+        toWaId: outboundMessages.toWaId,
+        ultima: sql<Date>`max(${outboundMessages.createdAt})`,
+      })
+      .from(outboundMessages)
+      .where(
+        and(
+          inArray(outboundMessages.source, [...SALIENTES_CONVERSACIONALES]),
+          waIdOfOperation(op, outboundMessages.toWaId),
+        ),
+      )
+      .groupBy(outboundMessages.toWaId),
+    db
+      .select({
+        toWaId: outboundMessages.toWaId,
+        dedupKey: outboundMessages.dedupKey,
+        createdAt: outboundMessages.createdAt,
+      })
+      .from(outboundMessages)
+      .where(
+        and(
+          eq(outboundMessages.source, "escalation"),
+          waIdOfOperation(op, outboundMessages.toWaId),
+        ),
+      ),
+  ]);
+
+  const respuestaPorWaId = new Map(
+    respuestas.map((r) => [r.toWaId, new Date(r.ultima)]),
+  );
+  // La misma lectura que `loadEscalationsByWaId`: solo el aviso al cliente, y
+  // solo el más reciente, que es lo único que la regla compara.
+  const escaladaPorWaId = new Map<string, Date>();
+  for (const fila of escaladas) {
+    if (escalationReasonFromDedupKey(fila.dedupKey) === null) continue;
+    const actual = escaladaPorWaId.get(fila.toWaId);
+    if (!actual || fila.createdAt > actual) {
+      escaladaPorWaId.set(fila.toWaId, fila.createdAt);
+    }
+  }
+
+  const ids = new Set<string>();
+  for (const fila of filas) {
+    const esperando = sinResponder(
+      {
+        lastInboundAt: fila.lastInboundAt,
+        lastConversationalOutboundAt: fila.waId
+          ? respuestaPorWaId.get(fila.waId) ?? null
+          : null,
+        agentMode: fila.agentMode,
+        assignedUserId: fila.assignedUserId,
+        lastEscalationAt: fila.waId
+          ? escaladaPorWaId.get(fila.waId) ?? null
+          : null,
+        lastActivityAt: actividadDe(fila),
+      },
+      ahora,
+    );
+    if (esperando) ids.add(fila.id);
+  }
+  return ids;
 }
 
 /**
@@ -309,7 +505,7 @@ async function releaseStaleAssignments(
  */
 async function conversationIdsOfInbox(
   op: Operation,
-  inbox: Inbox,
+  { inbox, activatedAt }: BandejaPedida,
   term: string | undefined,
 ): Promise<string[]> {
   const candidatas = await db
@@ -319,6 +515,7 @@ async function conversationIdsOfInbox(
       adReferralAt: conversations.adReferralAt,
       assignedUserId: conversations.assignedUserId,
       assignedAt: conversations.assignedAt,
+      createdAt: conversations.createdAt,
     })
     .from(conversations)
     .innerJoin(contacts, eq(conversations.contactId, contacts.id))
@@ -342,11 +539,12 @@ async function conversationIdsOfInbox(
       lastAdClickAt: fila.adReferralAt,
       orders: pedidos.get(fila.contactId) ?? [],
     };
-    if (resolveInbox(facts).inbox === inbox) elegidas.push(fila.id);
+    const corte = corteDelVendedor(activatedAt, fila.createdAt);
+    if (resolveInbox(facts, corte).inbox === inbox) elegidas.push(fila.id);
     if (
       fila.assignedUserId !== null &&
       fila.assignedAt !== null &&
-      inboxChangedSince(facts, fila.assignedAt)
+      inboxChangedSince(facts, fila.assignedAt, corte)
     ) {
       soltar.push(fila.id);
     }
@@ -373,25 +571,36 @@ export type ListConversationsOptions = {
    */
   pinnedId?: string;
   /**
-   * La bandeja que se quiere ver. `undefined` **no** significa «las dos»:
-   * significa que no hay dos, porque la operación no tiene vendedor
-   * configurado. Ahí no se deriva nada y la lista es byte por byte la de
-   * siempre — es el interruptor de la no-regresión de `sales_agent_settings`
-   * llevado hasta la pantalla.
+   * La bandeja que se quiere ver, con la línea de corte del vendedor.
+   * `undefined` **no** significa «las dos»: significa que no hay dos, porque la
+   * operación no tiene vendedor configurado. Ahí no se deriva nada y la lista es
+   * byte por byte la de siempre — es el interruptor de la no-regresión de
+   * `sales_agent_settings` llevado hasta la pantalla.
    */
-  inbox?: Inbox;
+  bandeja?: BandejaPedida;
 };
 
 /**
  * Lista del Inbox, ordenada por actividad real y acotada a una bandeja si se
  * pide una.
+ *
+ * **Trae las 200 más recientes y, además, todas las que están sin responder.**
+ * Las dos cosas, porque el corte por actividad las esconde: el 20-ago-2026 las
+ * 200 más recientes cubren cinco días y la conversación sin responder mejor
+ * rankeada está en el puesto 668. Sin esta unión, la tarjeta puede decir 35 y el
+ * filtro mostrar una sola fila — que es la misma clase de mentira que este lote
+ * vino a sacar del panel. Con ella, el número y las filas son el mismo conjunto.
+ *
+ * La unión **no se aplica al buscar**: buscando, la lista es el resultado de la
+ * búsqueda y nada más.
  */
 export async function listConversations(
   op: Operation,
   options: ListConversationsOptions = {},
 ): Promise<ConversationListItem[]> {
-  const { search, pinnedId, inbox } = options;
+  const { search, pinnedId, bandeja } = options;
   const term = search?.trim();
+  const ahora = new Date();
   const selection = {
     conversation: conversations,
     contact: contacts,
@@ -414,7 +623,7 @@ export async function listConversations(
   // Con bandeja, el conjunto se decide derivando y el `where` solo trae esos
   // ids; sin bandeja, es el filtro de siempre.
   const deLaBandeja =
-    inbox === undefined ? null : await conversationIdsOfInbox(op, inbox, term);
+    bandeja === undefined ? null : await conversationIdsOfInbox(op, bandeja, term);
   const alcance =
     deLaBandeja === null
       ? term
@@ -424,14 +633,53 @@ export async function listConversations(
         ? sql`false`
         : inArray(conversations.id, deLaBandeja.slice(0, CORTE_DE_LISTA));
 
-  const rows = await db
-    .select(selection)
-    .from(conversations)
-    .innerJoin(contacts, eq(conversations.contactId, contacts.id))
-    .leftJoin(users, eq(users.id, conversations.assignedUserId))
-    .where(and(ofOperation(op, conversations.operationId), alcance))
-    .orderBy(desc(lastActivityAt))
-    .limit(CORTE_DE_LISTA);
+  // Las dos en paralelo: la lista no depende de quién está sin responder, y
+  // encadenarlas le sumaría un viaje entero a la pantalla que más se abre.
+  const [rows, sinResponderDeLaOperacion] = await Promise.all([
+    db
+      .select(selection)
+      .from(conversations)
+      .innerJoin(contacts, eq(conversations.contactId, contacts.id))
+      .leftJoin(users, eq(users.id, conversations.assignedUserId))
+      .where(and(ofOperation(op, conversations.operationId), alcance))
+      .orderBy(desc(lastActivityAt))
+      .limit(CORTE_DE_LISTA),
+    loadSinResponderIds(op, ahora),
+  ]);
+
+  // Las que están esperando respuesta y quedaron fuera del corte por viejas.
+  // Con bandeja se acotan a la bandeja: una conversación de operaciones no
+  // aparece en la de ventas por estar sin responder.
+  const deLaBandejaSet = deLaBandeja === null ? null : new Set(deLaBandeja);
+  const yaEstan = new Set(rows.map((r) => r.conversation.id));
+  const rezagadas = term
+    ? []
+    : [...sinResponderDeLaOperacion].filter(
+        (id) =>
+          !yaEstan.has(id) && (deLaBandejaSet === null || deLaBandejaSet.has(id)),
+      );
+  if (rezagadas.length > 0) {
+    const extra = await db
+      .select(selection)
+      .from(conversations)
+      .innerJoin(contacts, eq(conversations.contactId, contacts.id))
+      .leftJoin(users, eq(users.id, conversations.assignedUserId))
+      .where(
+        and(
+          ofOperation(op, conversations.operationId),
+          inArray(conversations.id, rezagadas),
+        ),
+      );
+    rows.push(...extra);
+    // El orden lo pone la actividad, igual que el `ORDER BY` de arriba: las
+    // rezagadas son viejas y caen al final solas, pero ordenar acá deja de
+    // depender de eso.
+    rows.sort(
+      (a, b) =>
+        actividadDe(b.conversation).getTime() -
+        actividadDe(a.conversation).getTime(),
+    );
+  }
 
   // La conversación anclada también se verifica: el salto desde Pedidos trae un
   // id, y un id de otro país no puede colarse arriba de la lista.
@@ -460,22 +708,61 @@ export async function listConversations(
       dropi: null,
       shopify: null,
       assignedTo: assignedToOf(r.assigned),
-      routing: null,
+      sinResponder: sinResponderDeLaOperacion.has(r.conversation.id),
+      routing: { inbox: null, escalations: [] },
     }));
   }
 
-  // Fetch all dropi orders for these contacts, ordered so the most recent
-  // wins when we collapse to one summary per contact.
-  const dropiRows = await db
-    .select()
-    .from(dropiOrders)
-    .where(
-      and(
-        ofOperation(op, dropiOrders.operationId),
-        inArray(dropiOrders.contactId, contactIds),
-      ),
-    )
-    .orderBy(desc(dropiOrders.updatedAt));
+  // Los cuatro viajes que faltan van juntos: ninguno depende del otro, y en
+  // fila india cada uno le suma su ida y vuelta a la carga del Inbox.
+  //
+  // La bandeja de cada fila solo se deriva cuando hay bandeja: sin vendedor
+  // configurado la pantalla no la muestra, y cobrarle una consulta a Katherine
+  // por un dato que no se dibuja es la definición de regresión de rendimiento.
+  //
+  // **Las escaladas, en cambio, se cargan siempre.** Es la consulta que el
+  // comentario anterior decidió no cobrarle: son 93 filas leídas por un índice
+  // sobre `to_wa_id`, y a cambio Katherine ve marcadas las conversaciones en las
+  // que un agente pidió expresamente que mirara una persona. Sin esto no las ve,
+  // porque `resolveRowMark` solo corría con bandeja y sin vendedor no hay
+  // bandeja.
+  const [dropiRows, shopifyRows, pedidos, escaladas] = await Promise.all([
+    // Ordenados para que al colapsar a un resumen por contacto gane el más
+    // reciente.
+    db
+      .select()
+      .from(dropiOrders)
+      .where(
+        and(
+          ofOperation(op, dropiOrders.operationId),
+          inArray(dropiOrders.contactId, contactIds),
+        ),
+      )
+      .orderBy(desc(dropiOrders.updatedAt)),
+    // El pedido de tienda más reciente por contacto — de ahí salen las opciones
+    // de la plantilla para reabrir.
+    db
+      .select({
+        contactId: shopifyOrders.contactId,
+        orderId: shopifyOrders.orderId,
+        totalPrice: shopifyOrders.totalPrice,
+        receivedAt: shopifyOrders.receivedAt,
+        producto: sql<string>`coalesce(${shopifyOrders.rawPayload}->'line_items'->0->>'title', '')`,
+      })
+      .from(shopifyOrders)
+      .where(
+        and(
+          ofOperation(op, shopifyOrders.operationId),
+          inArray(shopifyOrders.contactId, contactIds),
+        ),
+      )
+      .orderBy(desc(shopifyOrders.receivedAt)),
+    bandeja === undefined ? null : loadOrderFactsByContact(op, contactIds),
+    loadEscalationsByWaId(
+      op,
+      rows.map((r) => r.contact.waId).filter((w): w is string => w !== null),
+    ),
+  ]);
 
   const byContact = new Map<string, DropiSummary>();
   for (const o of dropiRows) {
@@ -496,23 +783,6 @@ export async function listConversations(
     }
   }
 
-  // Most recent Shopify order per contact — feeds the reopen-template options.
-  const shopifyRows = await db
-    .select({
-      contactId: shopifyOrders.contactId,
-      orderId: shopifyOrders.orderId,
-      totalPrice: shopifyOrders.totalPrice,
-      receivedAt: shopifyOrders.receivedAt,
-      producto: sql<string>`coalesce(${shopifyOrders.rawPayload}->'line_items'->0->>'title', '')`,
-    })
-    .from(shopifyOrders)
-    .where(
-      and(
-        ofOperation(op, shopifyOrders.operationId),
-        inArray(shopifyOrders.contactId, contactIds),
-      ),
-    )
-    .orderBy(desc(shopifyOrders.receivedAt));
   const shopifyByContact = new Map<string, ShopifySummary>();
   for (const o of shopifyRows) {
     if (!o.contactId || shopifyByContact.has(o.contactId)) continue;
@@ -523,36 +793,28 @@ export async function listConversations(
     });
   }
 
-  // Lo derivado solo se calcula cuando hay bandeja: sin vendedor configurado la
-  // pantalla no lo muestra, y cobrarle tres consultas a Katherine por un dato
-  // que no se dibuja es la definición de regresión de rendimiento.
-  const pedidos =
-    inbox === undefined
-      ? null
-      : await loadOrderFactsByContact(op, contactIds);
-  const escaladas =
-    inbox === undefined
-      ? null
-      : await loadEscalationsByWaId(
-          rows.map((r) => r.contact.waId).filter((w): w is string => w !== null),
-        );
-
   return rows.map((r) => ({
     ...r,
     dropi: byContact.get(r.contact.id) ?? null,
     shopify: shopifyByContact.get(r.contact.id) ?? null,
     assignedTo: assignedToOf(r.assigned),
-    routing:
-      pedidos === null
-        ? null
-        : {
-            inbox: resolveInbox({
-              lastAdClickAt: r.conversation.adReferralAt,
-              orders: pedidos.get(r.contact.id) ?? [],
-            }).inbox,
-            escalations:
-              (r.contact.waId ? escaladas?.get(r.contact.waId) : null) ?? [],
-          },
+    sinResponder: sinResponderDeLaOperacion.has(r.conversation.id),
+    routing: {
+      inbox:
+        pedidos === null
+          ? null
+          : resolveInbox(
+              {
+                lastAdClickAt: r.conversation.adReferralAt,
+                orders: pedidos.get(r.contact.id) ?? [],
+              },
+              corteDelVendedor(
+                bandeja?.activatedAt ?? null,
+                r.conversation.createdAt,
+              ),
+            ).inbox,
+      escalations: (r.contact.waId ? escaladas.get(r.contact.waId) : null) ?? [],
+    },
   }));
 }
 
@@ -564,45 +826,75 @@ export async function listConversations(
  * que se dibuja en todas las pantallas del panel. Si solo apareciera estando ya
  * dentro, no serviría para que entres.
  *
- * Las tres vistas son las que el Inbox ya nombra: «necesitan atención» es el
- * `!agentMode && unread > 0` que la pantalla ya calcula, y «las lleva
- * Sebastián» es su `automatedCount`. No hay vocabulario nuevo acá.
+ * **Las tres vistas dicen su regla en el nombre**, que es de lo que trata el
+ * ticket 03. «Sin responder» es `sinResponder` (`@wa/db`), el mismo booleano que
+ * marca la fila y que cuenta la tarjeta del Inbox — un nombre por número. «En
+ * automático» es el agente llevando la conversación, y solo puede existir con
+ * vendedor encendido: es el opuesto exacto de «Respuesta manual», que la
+ * cabecera del hilo ya dice.
  */
 export type InboxViewCounts = {
-  needsAttention: number;
-  automated: number;
-  all: number;
+  sinResponder: number;
+  enAutomatico: number;
+  todas: number;
 };
 
+/**
+ * **Solo se llama con vendedor encendido.** El parámetro es la fila entera y no
+ * su `activated_at` justamente por eso: quien la llama tuvo que pasar antes por
+ * `salesAgentIsConfigured`, que es el único listón de «hay vendedor» del
+ * monorepo, y de ahí sale la fila que se pasa acá. Sin vendedor no hay bandeja
+ * de ventas, no hay vistas y esta consulta no corre.
+ *
+ * Es lo que le da sentido a «En automático»: `contacts.agent_mode` es un solo
+ * booleano que los flujos de Katherine también prenden —1.579 conversaciones de
+ * ella lo tienen en `true`—, así que contar el modo agente a secas contaría el
+ * trabajo de Katherine como trabajo del vendedor. Acotado a la bandeja de
+ * ventas, y existiendo la bandeja solo con vendedor encendido, el número dice lo
+ * que su nombre dice. No se parte la columna en dos: derivar alcanza mientras
+ * solo un agente esté encendido sobre el número.
+ */
 export async function countSalesInboxViews(
   op: Operation,
+  vendedor: SalesAgentSettings,
 ): Promise<InboxViewCounts> {
-  const filas = await db
-    .select({
-      contactId: conversations.contactId,
-      adReferralAt: conversations.adReferralAt,
-      agentMode: contacts.agentMode,
-      unreadCount: conversations.unreadCount,
-    })
-    .from(conversations)
-    .innerJoin(contacts, eq(conversations.contactId, contacts.id))
-    .where(ofOperation(op, conversations.operationId));
+  const ahora = new Date();
+  const [filas, sinResponderIds] = await Promise.all([
+    db
+      .select({
+        id: conversations.id,
+        contactId: conversations.contactId,
+        adReferralAt: conversations.adReferralAt,
+        createdAt: conversations.createdAt,
+        agentMode: contacts.agentMode,
+      })
+      .from(conversations)
+      .innerJoin(contacts, eq(conversations.contactId, contacts.id))
+      .where(ofOperation(op, conversations.operationId)),
+    loadSinResponderIds(op, ahora),
+  ]);
 
   const pedidos = await loadOrderFactsByContact(
     op,
     filas.map((f) => f.contactId),
   );
 
-  const counts: InboxViewCounts = { needsAttention: 0, automated: 0, all: 0 };
+  const counts: InboxViewCounts = { sinResponder: 0, enAutomatico: 0, todas: 0 };
   for (const fila of filas) {
-    const decision = resolveInbox({
-      lastAdClickAt: fila.adReferralAt,
-      orders: pedidos.get(fila.contactId) ?? [],
-    });
+    const decision = resolveInbox(
+      {
+        lastAdClickAt: fila.adReferralAt,
+        orders: pedidos.get(fila.contactId) ?? [],
+      },
+      corteDelVendedor(vendedor.activatedAt, fila.createdAt),
+    );
     if (decision.inbox !== "ventas") continue;
-    counts.all += 1;
-    if (fila.agentMode) counts.automated += 1;
-    else if (fila.unreadCount > 0) counts.needsAttention += 1;
+    counts.todas += 1;
+    if (fila.agentMode) counts.enAutomatico += 1;
+    // No es `else`: una conversación en automático no está sin responder —el
+    // agente la lleva—, y `sinResponder` ya lo dice por su cuenta. Escribirlo
+    // dos veces es cómo las dos reglas se separan.
+    if (sinResponderIds.has(fila.id)) counts.sinResponder += 1;
   }
   return counts;
 }
@@ -646,7 +938,7 @@ export async function getSalesContext(
   if (!row) return null;
 
   const escaladas = row.waId
-    ? await loadEscalationsByWaId([row.waId])
+    ? await loadEscalationsByWaId(op, [row.waId])
     : new Map<string, EscalationFacts[]>();
 
   return {
