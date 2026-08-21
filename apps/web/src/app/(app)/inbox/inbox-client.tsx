@@ -569,10 +569,6 @@ type Novedades = {
 
 const SIN_NOVEDADES: Novedades = { conversaciones: [], faltaAlguna: false };
 
-/** Qué filas están esperando respuesta, por id. */
-function idsEsperando(filas: readonly ChatItem[]): ReadonlySet<string> {
-  return new Set(filas.filter((f) => f.sinResponder).map((f) => f.id));
-}
 
 /**
  * **Apagar el «Tú:» cuando el evento prueba que quien escribió fue el cliente.**
@@ -672,30 +668,6 @@ export function InboxClient({
   const pedidaEnLaDireccion = params.get("c");
   const esVentas = bandeja === "ventas";
   const [items, setItems] = useState<ChatItem[]>(initial);
-  /**
-   * **En qué sección quedó cada fila la última vez que la lista se asentó.**
-   *
-   * Las secciones se agrupan por esto y **no por `it.sinResponder` en vivo**, y
-   * la diferencia no es un detalle: un mensaje entrante enciende «sin responder»
-   * (`aplicarEvento` lo mueve hacia arriba y con certeza), y agrupar en vivo
-   * haría saltar esa fila desde el fondo hasta la primera sección. Es
-   * exactamente el bug que PRO-12 sacó —la lista se reordena, el asesor abre la
-   * conversación equivocada— con otra ropa, y la prueba de aquel ticket lo
-   * agarra.
-   *
-   * Así que la agrupación es parte del **arreglo** de la lista, y el arreglo
-   * solo cambia cuando lo cambia el servidor o cuando el asesor se pone al día.
-   * Mientras tanto la fila se repinta donde está: la etiqueta ya dice que está
-   * esperando respuesta, y que además subiría de puesto lo dice el aviso de
-   * novedades, que es el que ya existe y el que reagrupa al tocarlo.
-   *
-   * **El filtro y el contador sí leen el campo en vivo**, y tienen que hacerlo:
-   * son preguntas del asesor sobre lo que es cierto ahora. Lo que se congela es
-   * dónde está dibujada la fila, no lo que la fila dice de sí misma.
-   */
-  const [esperandoAlAsentarse, setEsperandoAlAsentarse] = useState<
-    ReadonlySet<string>
-  >(() => idsEsperando(initial));
   const [novedades, setNovedades] = useState<Novedades>(SIN_NOVEDADES);
   const [search, setSearch] = useState(query);
   const [searching, startSearch] = useTransition();
@@ -811,8 +783,25 @@ export function InboxClient({
    */
   const urlDeLaBandeja = (term: string): string => {
     const proximos = new URLSearchParams(qsActual);
-    if (term) proximos.set("q", term);
-    else proximos.delete("q");
+    if (term) {
+      proximos.set("q", term);
+      /*
+        **Una búsqueda nueva suelta la conversación anclada.**
+        
+        `?c=` mete su conversación en la lista aunque quede fuera del corte, del
+        filtro o de la búsqueda: quien la abrió tiene derecho a verla. Pero el
+        buscador nunca lo limpiaba, así que la de la búsqueda anterior seguía
+        pegada arriba de la siguiente: buscabas 1234, la abrías, buscabas 456 y
+        salían 456 **y 1234**. Lo reportó la operación de Vorare.
+        
+        Al escribir un término nuevo ya no estás mirando la de antes, estás
+        buscando otra cosa. Limpiar la búsqueda **no** la suelta, porque ahí sí
+        volvés a la bandeja con lo que tenías abierto.
+      */
+      proximos.delete("c");
+    } else {
+      proximos.delete("q");
+    }
     const qs = proximos.toString();
     return qs ? `/inbox?${qs}` : "/inbox";
   };
@@ -906,19 +895,27 @@ export function InboxClient({
    *
    * `null` es «esta sección no se anuncia»: es una sola y es toda la lista.
    */
-  const esperandoRespuesta = visibleItems.filter((it) =>
-    esperandoAlAsentarse.has(it.id),
-  );
-  const elResto = visibleItems.filter(
-    (it) => !esperandoAlAsentarse.has(it.id),
-  );
-  const secciones: { nombre: string | null; filas: ChatItem[] }[] =
-    esperandoRespuesta.length > 0 && elResto.length > 0
-      ? [
-          { nombre: "Esperando respuesta", filas: esperandoRespuesta },
-          { nombre: "El resto", filas: elResto },
-        ]
-      : [{ nombre: null, filas: visibleItems }];
+  /**
+   * **La bandeja va por actividad, sin partirse en dos.**
+   *
+   * Hasta el 21-ago-2026 las que esperaban respuesta iban en una sección
+   * propia arriba de todo. Lo pidió cambiar la operación de Vorare y la
+   * medición le da la razón: de las 85 que esperaban respuesta, **65 tenían más
+   * de un mes**. Eran chats viejos que nadie iba a contestar, arriba todos los
+   * días, empujando hacia abajo lo de hoy — que es lo que de verdad se trabaja.
+   *
+   * **Y no se pierde nada al quitarla.** Una conversación sin responder
+   * *reciente* es reciente, así que sube igual por fecha: las 2 de esa semana
+   * seguían arriba solas. Lo único que cae son las viejas, que es justo lo que
+   * se buscaba. Las que esperan siguen a un toque, en el filtro «Sin responder»
+   * de la barra, con su cuenta.
+   *
+   * El servidor ya las manda ordenadas por actividad (`POR_ACTIVIDAD`), así que
+   * esto es dejar de reordenarlas acá.
+   */
+  const secciones: { nombre: string | null; filas: ChatItem[] }[] = [
+    { nombre: null, filas: visibleItems },
+  ];
 
   /**
    * El «ahora» con el que cada fila dice su tiempo, uno solo por render.
@@ -1037,7 +1034,6 @@ export function InboxClient({
   useEffect(() => {
     itemsRef.current = initial;
     setItems(initial);
-    setEsperandoAlAsentarse(idsEsperando(initial));
     setNovedades(SIN_NOVEDADES);
   }, [initial]);
 
@@ -1056,7 +1052,6 @@ export function InboxClient({
     // Ponerse al día reordena **y reagrupa**: son la misma acción del asesor
     // sobre el mismo arreglo, y dejar una sin la otra sería reordenar la lista
     // para que las secciones siguieran diciendo lo de antes.
-    setEsperandoAlAsentarse(idsEsperando(ordenadas));
     if (novedades.faltaAlguna) refrescar();
     setNovedades(SIN_NOVEDADES);
   }, [novedades.faltaAlguna, refrescar]);

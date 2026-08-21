@@ -209,9 +209,20 @@ Se aceptó a sabiendas que se pierde la confirmación de un vistazo.
    excepción: sale en 199 de las 200 filas. Lo informativo es la que alguien tomó
    a mano.
 
-**Las secciones se quedan y pierden el número:** «Esperando respuesta» y «El resto»
-a secas, porque el filtro ya lo lleva. La costura se queda: es lo que impide que
-las viejas sin responder se mezclen con lo de hoy.
+~~**Las secciones se quedan y pierden el número:** «Esperando respuesta» y «El
+resto» a secas.~~ **Retirado el 21-ago-2026 por la operación de Vorare**, y la
+medición le da la razón: de las 85 que esperaban respuesta, **65 tenían más de un
+mes**. Eran chats viejos que nadie iba a contestar, arriba todos los días,
+empujando hacia abajo lo que sí se trabaja.
+
+La bandeja va por actividad y no se parte. **Y no se pierde nada**, que es lo que
+lo vuelve una corrección y no un cambio de opinión: una conversación sin responder
+*reciente* es reciente, así que sube igual por fecha. Lo único que cae son las
+viejas. Las que esperan siguen a un toque, en el filtro, con su cuenta.
+
+La costura se había justificado como «lo que impide que las viejas sin responder se
+mezclen con lo de hoy». Puesta a prueba contra la operación real, era al revés: lo
+que hacía era ponerlas encima.
 
 **Lo que no cambia:** la planta de escritorio. El corte de dos chips es del
 teléfono; en escritorio la fila sigue mostrándolos todos. Vale la pena volver a

@@ -732,9 +732,9 @@ describe("de quién es la vista previa", () => {
   });
 });
 
-/** Los encabezados de sección, de arriba abajo. Ya sin cuenta: la lleva la
- *  barra de filtros, y el mismo número dos veces en la misma pantalla no
- *  informa el doble. */
+/** Los encabezados dentro de la lista. **Desde el 21-ago-2026 siempre está
+ *  vacío**, y por eso sigue existiendo: es lo que afirma que la bandeja no se
+ *  parte en dos. Ver el describe de abajo. */
 function seccionesDeLaLista(): string[] {
   return within(screen.getByRole("list"))
     .queryAllByRole("heading")
@@ -759,84 +759,69 @@ const SEIS_Y_TRES = [
   chat({ id: "c-espera-5", sinResponder: true, lastAt: "2026-07-02T09:00:00.000Z" }),
 ];
 
-describe("las secciones de la lista", () => {
-  it("llevan nombre, y la cuenta la lleva el filtro", () => {
-    // Hasta hoy la lista no tenía secciones: tenía un filtro. Un `h1` y cero
-    // `h2`, en la pantalla que más se abre del panel.
+describe("la bandeja va por actividad, sin partirse en dos", () => {
+  /*
+    Hasta el 21-ago-2026 las que esperaban respuesta iban en una sección propia
+    arriba de todo. Lo pidió cambiar la operación de Vorare y la medición le dio
+    la razón: de las 85 que esperaban respuesta, **65 tenían más de un mes**.
+    Chats viejos que nadie iba a contestar, arriba todos los días, empujando
+    hacia abajo lo que sí se trabaja.
+  */
+
+  it("no dibuja encabezados: la lista es una sola", () => {
     abrir(SEIS_Y_TRES);
 
-    expect(seccionesDeLaLista()).toEqual([
-      "Esperando respuesta",
-      "El resto",
-    ]);
+    expect(seccionesDeLaLista()).toEqual([]);
   });
 
-  it("las que esperan van primero, y dentro de cada una manda el servidor", () => {
+  it("las que esperan no suben: manda el orden del servidor", () => {
+    // Es el orden en el que llegan, que es por actividad. Las que esperan
+    // quedan repartidas entre las demás, cada una en la fecha que le toca.
     abrir(SEIS_Y_TRES);
 
     expect(ordenDeLaLista()).toEqual([
-      "c-espera-0", "c-espera-1", "c-espera-2",
-      "c-espera-3", "c-espera-4", "c-espera-5",
-      "c-resto-0", "c-resto-1", "c-resto-2",
+      "c-espera-0", "c-resto-0", "c-espera-1",
+      "c-espera-2", "c-resto-1", "c-espera-3",
+      "c-resto-2", "c-espera-4", "c-espera-5",
     ]);
   });
 
-  it("sin nadie esperando, la lista va plana", () => {
-    // «El resto · 3» a solas no nombra nada: sería un encabezado que dice
-    // «esto es una lista» encima de una lista.
-    abrir(TRES);
+  it("una que espera y es reciente sigue arriba, porque es reciente", () => {
+    // El argumento de que no se pierde nada al quitar la sección: lo que la
+    // subía era la fecha, no el grupo.
+    abrir(SEIS_Y_TRES);
 
-    expect(seccionesDeLaLista()).toEqual([]);
-    expect(ordenDeLaLista()).toEqual(["c-uno", "c-dos", "c-tres"]);
+    expect(ordenDeLaLista()[0]).toBe("c-espera-0");
   });
 
-  it("con la bandeja vacía tampoco hay encabezados que anunciar", () => {
+  it("y las que esperan desde julio caen al fondo, que es lo que se pedía", () => {
+    abrir(SEIS_Y_TRES);
+
+    expect(ordenDeLaLista().slice(-2)).toEqual(["c-espera-4", "c-espera-5"]);
+  });
+
+  it("con la bandeja vacía no hay nada que anunciar", () => {
     abrir([]);
 
     expect(seccionesDeLaLista()).toEqual([]);
     expect(screen.getByText("No hay conversaciones todavía.")).toBeInTheDocument();
   });
 
-  it("un filtro que deja un solo grupo apaga los encabezados, en vez de repetirse", async () => {
-    // «Sin responder» deja todas las filas en la primera sección: el encabezado
-    // diría lo mismo que el filtro que está tres centímetros más arriba, y el
-    // otro sería una sección vacía que no lleva a ninguna parte.
+  it("las que esperan siguen a un toque, en el filtro", async () => {
+    // Quitarles la sección no las esconde: el filtro las junta cuando el asesor
+    // decide mirarlas, que es la diferencia entre ofrecerlas y imponerlas.
     const user = userEvent.setup();
     abrir(SEIS_Y_TRES);
-    expect(seccionesDeLaLista()).toHaveLength(2);
 
     await user.click(filtro("Sin responder"));
 
-    expect(seccionesDeLaLista()).toEqual([]);
     expect(
       within(screen.getByRole("list")).getAllByRole("listitem"),
     ).toHaveLength(6);
-  });
-
-  it("un filtro que corta las dos secciones las conserva", async () => {
-    const user = userEvent.setup();
-    abrir([
-      chat({ id: "c-espera", sinResponder: true, confirmationStatus: "pending" }),
-      chat({ id: "c-espera-2", sinResponder: true }),
-      chat({ id: "c-resto", confirmationStatus: "pending" }),
-    ]);
-
-    await user.click(filtro("Por confirmar"));
-
-    expect(seccionesDeLaLista()).toEqual([
-      "Esperando respuesta",
-      "El resto",
-    ]);
+    expect(seccionesDeLaLista()).toEqual([]);
   });
 });
 
-/**
- * **La barra de filtros, que reemplazó al bloque de cinco tarjetas.**
- *
- * Eran dos cosas separadas diciendo lo mismo —una tarjeta «Sin responder: 35» y
- * un `<select>` con «Sin responder (35)» a diez centímetros—, y en 390 px no
- * caben las dos.
- */
 describe("la barra de filtros lleva la cuenta", () => {
   it("dice cuántas hay de cada vista, y cuál está puesta", () => {
     abrir(SEIS_Y_TRES);
@@ -870,9 +855,9 @@ describe("la barra de filtros lleva la cuenta", () => {
   });
 });
 
-describe("las secciones no mueven una fila bajo el cursor", () => {
+describe("un evento en vivo no mueve la fila bajo el cursor", () => {
   /**
-   * Dos esperando y dos no: la lista se parte, que es cuando se puede saltar.
+   * Dos esperando desde julio y dos de hoy: es la forma de la bandeja real.
    *
    * `c-nueva` va con el agente apagado porque es la que va a recibir el
    * entrante, y **un entrante no puede encender «sin responder» en una que
@@ -890,11 +875,10 @@ describe("las secciones no mueven una fila bajo el cursor", () => {
     }),
   ];
 
-  it("un entrante enciende la etiqueta sin sacar la fila de su sección", async () => {
-    // Es el bug de PRO-12 con otra ropa: un entrante enciende «sin responder»
-    // (`aplicarEvento` lo mueve hacia arriba y con certeza), y agrupar en vivo
-    // haría saltar esa fila desde el fondo hasta la primera sección — con el
-    // cursor encima, y con todo lo que hay en medio bajando un puesto.
+  it("un entrante enciende la etiqueta sin mover la fila", async () => {
+    // Es el bug de PRO-12: la fila no puede saltar de puesto con el cursor
+    // encima. La etiqueta sí cambia —la fila dice lo que es, donde está—, y
+    // reordenar es una decisión del asesor, no del stream.
     abrir(DOS_Y_DOS);
 
     act(() => {
@@ -917,13 +901,10 @@ describe("las secciones no mueven una fila bajo el cursor", () => {
     expect(ordenDeLaLista()).toEqual([
       "c-espera", "c-espera-2", "c-quieta", "c-nueva",
     ]);
-    expect(seccionesDeLaLista()).toEqual([
-      "Esperando respuesta",
-      "El resto",
-    ]);
+    expect(seccionesDeLaLista()).toEqual([]);
   });
 
-  it("y ponerse al día reordena y reagrupa, que es lo mismo pedido por el asesor", async () => {
+  it("y ponerse al día reordena por fecha, no por quién espera", async () => {
     const user = userEvent.setup();
     abrir(DOS_Y_DOS);
 
@@ -939,12 +920,11 @@ describe("las secciones no mueven una fila bajo el cursor", () => {
 
     await user.click(screen.getByRole("button", { name: /novedades/ }));
 
-    expect(seccionesDeLaLista()).toEqual([
-      "Esperando respuesta",
-      "El resto",
-    ]);
+    expect(seccionesDeLaLista()).toEqual([]);
+    // Acá se ve la queja del cliente resuelta: las dos que esperan desde julio
+    // caen al fondo, y arriba quedan las dos de hoy. Antes se sentaban encima.
     expect(ordenDeLaLista()).toEqual([
-      "c-nueva", "c-espera", "c-espera-2", "c-quieta",
+      "c-nueva", "c-quieta", "c-espera", "c-espera-2",
     ]);
   });
 });

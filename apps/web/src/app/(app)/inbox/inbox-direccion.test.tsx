@@ -53,12 +53,13 @@ const TRES = [
 function abrir({
   items = TRES,
   bandeja = null as "ventas" | "operaciones" | null,
+  query = "",
 } = {}) {
   return render(
     <InboxClient
       initial={items}
       approvedTemplates={[]}
-      query=""
+      query={query}
       op={OP}
       operationId={OPERACION}
       bandeja={bandeja}
@@ -205,6 +206,65 @@ describe("el filtro de la bandeja de operaciones", () => {
 
     expect(chatAbierto()).toBe("c-dos");
     expect(direccion()).toBe("/inbox?c=c-dos&v=sin-responder");
+  });
+});
+
+describe("el buscador", () => {
+  /**
+   * Lo reportó la operación de Vorare el 21-ago-2026: «cada vez que busco un
+   * número aparecen dos resultados, el que busqué y el de la búsqueda
+   * anterior». Buscar 1234, abrirla, buscar 456 → salían 456 **y 1234**.
+   *
+   * La causa era `?c=`: ancla su conversación en la lista aunque quede fuera
+   * del corte, del filtro o de la búsqueda, y el buscador nunca lo limpiaba.
+   * La de la búsqueda anterior seguía pegada arriba de la siguiente.
+   *
+   * **Se afirma sobre `router.replace` y no sobre la dirección**, y esa es la
+   * diferencia con el resto del archivo: abrir una conversación se escribe con
+   * la History API y no cuesta un render, pero buscar sí es un render de
+   * servidor —la búsqueda corre sobre TODAS las conversaciones, no sobre las
+   * 200 cargadas—, así que va por el router.
+   */
+  const buscador = () =>
+    screen.getByPlaceholderText("Buscar nombre, teléfono o mensaje…");
+
+  it("una búsqueda nueva suelta la conversación de la anterior", async () => {
+    const user = userEvent.setup();
+    abrir();
+    await user.click(screen.getByText("Cliente c-dos"));
+    expect(direccion()).toBe("/inbox?c=c-dos");
+
+    await user.type(buscador(), "456");
+
+    await vi.waitFor(() =>
+      expect(router.replace).toHaveBeenCalledWith("/inbox?q=456"),
+    );
+  });
+
+  it("limpiar la búsqueda no cierra lo que tenías abierto", async () => {
+    // La otra mitad: el ancla se suelta al **escribir** un término, no al
+    // borrarlo. Volver a la bandeja entera no es dejar de leer un chat.
+    const user = userEvent.setup();
+    irA("/inbox?c=c-dos&q=456");
+    abrir({ query: "456" });
+
+    await user.clear(buscador());
+
+    await vi.waitFor(() =>
+      expect(router.replace).toHaveBeenCalledWith("/inbox?c=c-dos"),
+    );
+  });
+
+  it("el filtro puesto sobrevive a buscar, que es lo que ya funcionaba", async () => {
+    const user = userEvent.setup();
+    abrir();
+    await user.click(filtro("Sin responder"));
+
+    await user.type(buscador(), "456");
+
+    await vi.waitFor(() =>
+      expect(router.replace).toHaveBeenCalledWith("/inbox?v=sin-responder&q=456"),
+    );
   });
 });
 
