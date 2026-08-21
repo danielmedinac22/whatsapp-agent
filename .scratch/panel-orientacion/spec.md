@@ -1,6 +1,6 @@
 # Spec · Orientación visual del panel
 
-Status: **entregado** · 20-ago-2026, en producción
+Status: niveles 1-3 **en producción** · nivel 4 **decidido**, pendiente de implementar
 
 Método: **`grill-design`** — cinco prototipos radicalmente distintos por pregunta, en un solo archivo HTML vivo, y el veredicto del usuario baja un nivel del árbol. Es el mismo método de [Pulido de interfaz](../ventas-pulido-ui/spec.md), y por la misma razón: son decisiones de diseño, y un agente que responde sus propias preguntas de diseño no está haciendo el ejercicio.
 
@@ -132,26 +132,94 @@ sobre el fondo y 4,54:1 sobre el riel.
 y 6,33:1. No hay nada que rederivar ahí. Está medido para que nadie lo vuelva a
 dudar.
 
-### Nivel 4 · El teléfono — ronda abierta (PRO-31)
+### Nivel 4 · El teléfono — veredicto: **Cajón, y la fila solo marca lo que pide acción**
 
-Los tres niveles se decidieron mirando una pantalla de escritorio. **Katherine
-trabaja desde el móvil**, cosa que se supo el 20-ago-2026, con el panel claro ya
-en producción.
+Cuatro rondas con el dueño del producto delante, el 20-ago-2026. Se abrió porque
+**Katherine trabaja desde el móvil y responde clientes desde ahí**, que era la
+salvedad que el spec tenía escrita para levantar el móvil del fuera de alcance.
 
-Hoy, debajo de `lg`, el marco cae a una columna y el menú conserva su formato
-vertical entero: son unos 620-680 px de navegación antes del primer contenido, y
-el campo de escribir queda a unas tres pantallas de scroll.
+Antes: 620-680 px de navegación apilada sobre el contenido, y el campo de escribir
+a unas tres pantallas de scroll.
 
-Dos de las tres preguntas ya están cerradas por las referencias y son trabajo, no
-diseño: el hilo va a pantalla completa con el campo de escribir fijo al fondo, y
-el menú vive en un cajón sobre el contenido en vez de apilado encima. Esconderlo
-es seguro **porque la línea de contexto ya existe**: el país vive en el contenido
-y no en el marco.
+**La planta es el cajón.** Barra de 52 px con el botón de menú, la bandera, el
+nombre de la operación y buscar. El menú se desliza **sobre** el contenido, y se
+abre con el botón o arrastrando desde el borde izquierdo, porque el pulgar no
+siempre llega a la esquina. Dentro conserva la forma de hoy: la operación arriba,
+después VENTAS, CONFIRMACIÓN y OPERACIÓN.
 
-**Lo que la ronda decide, y el punto más delicado:** si la fila del nivel 3
-aguanta en 390 px de ancho. Se eligió la más alta de las cinco, cambiando
-densidad por legibilidad, y esa elección se hizo sobre un supuesto que ya no
-vale. Cuando cambia el supuesto, el compromiso se vuelve a mirar.
+Se descartó la barra inferior, aunque ahorra un toque entre Inbox y Pedidos: cuesta
+una tira permanente en la pantalla que menos espacio tiene. Y se descartó esconder
+el cambio de operación dentro del título, que daba más contenido y era el patrón
+que nadie descubre solo.
+
+**El hilo es una pantalla completa**, con flecha de volver, el nombre del cliente
+y el campo de escribir fijo al fondo. **La cabecera no se va con el scroll**: saber
+a quién le escribís importa más que dos líneas de mensajes. Volver es el botón de
+atrás del navegador, porque la conversación ya vive en la URL.
+
+**Los cinco contadores desaparecen como bloque y el filtro lleva la cuenta:**
+`Todas 234 · Sin responder 35 · Por confirmar 27`. Eran dos cosas separadas
+diciendo lo mismo, y en 390 px no caben las dos. Fuera del filtro «en automático»,
+que sale en el 89,9% de las conversaciones.
+
+**La bandeja vacía se queda con el título y el cartel.** Sin filtro y sin
+contadores: un filtro sobre cero filas no filtra, y cinco ceros se leen como una
+avería.
+
+**La línea de contexto dice solo la bandeja** (`CONFIRMACIÓN`). La barra ya lleva
+el país. En escritorio el riel estaba a 78 px del título y la repetición no
+molestaba; en un teléfono están pegados.
+
+#### La fila, que era la pregunta que abrió el nivel
+
+**Dos chips como máximo, en una línea que no envuelve, con `+N` para el resto.**
+La fila más alta del nivel 3 no aguanta a 390 px, y el 77% de las filas lleva tres
+estados o más.
+
+**Y solo se dibujan los estados que piden hacer algo:** escalada, novedad, sin
+responder, por confirmar. Los demás no aparecen nunca. Medido sobre las 200 filas
+que la lista dibuja:
+
+| estado | frecuencia | qué se hace |
+| -- | -- | -- |
+| escalada | 1,8% | se dibuja |
+| novedad | 2,1% | se dibuja |
+| por confirmar | 10,5% | se dibuja |
+| sin responder | ~15% | se dibuja |
+| confirmado | 68,5% | **no se dibuja** |
+| ventana cerrada | 86% | **no se dibuja** |
+| en automático | 99,5% | **no se dibuja** |
+
+Un chip que llevan casi todas las filas no dice nada, y su ausencia informa más que
+su presencia. Una fila tranquila no lleva ninguno, y eso es lo que deja recorrer la
+bandeja con la vista, que es el problema que originó el mapa entero.
+
+Se aceptó a sabiendas que se pierde la confirmación de un vistazo.
+
+**Tres correcciones que valen también en escritorio:**
+
+1. **`Tú:` delante del preview cuando el último mensaje es nuestro.** En **874 de
+   1.770 conversaciones (49,4%)** la fila muestra lo que escribimos nosotros y se
+   lee igual que si lo hubiera escrito el cliente. Es una palabra, y separa «me
+   escribió y no le contesté» de «ya le contesté».
+2. **Se retiran `SIN PRODUCTO` y `asignada`.** El primero no se ha encendido ni una
+   vez: `product_recognition` es `NULL` en las 1.770. El segundo tampoco, porque
+   nadie usa la asignación. El nivel 3 los dibujó porque estaban en el código.
+3. **`EN AUTOMÁTICO` se invierte a `LO LLEVO YO`.** Marcaba la regla en vez de la
+   excepción: sale en 199 de las 200 filas. Lo informativo es la que alguien tomó
+   a mano.
+
+**Las secciones se quedan y pierden el número:** «Esperando respuesta» y «El resto»
+a secas, porque el filtro ya lo lleva. La costura se queda: es lo que impide que
+las viejas sin responder se mezclen con lo de hoy.
+
+**Lo que no cambia:** la planta de escritorio. El corte de dos chips es del
+teléfono; en escritorio la fila sigue mostrándolos todos. Vale la pena volver a
+mirarlo cuando esto lleve un tiempo corriendo, porque el argumento de «un chip que
+llevan todas no dice nada» no depende del ancho de la pantalla.
+
+**Y se cierra la banda muerta entre 1024 y 1280 px**, donde hoy hay barra lateral
+pero la lista y el hilo siguen apilados.
 
 ### Los prototipos, como referencia visual
 
