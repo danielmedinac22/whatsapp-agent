@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 /**
- * Los dos identificadores de Meta de la operación del riel.
+ * Los dos identificadores de Meta de la operación activa.
  *
  * `hasAdsToken` no es el token: es si el worker tiene uno. Son dos causas
  * distintas de «no salen anuncios» y se arreglan en lugares distintos —una acá,

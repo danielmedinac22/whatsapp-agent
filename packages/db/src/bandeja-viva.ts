@@ -178,7 +178,7 @@ export interface BandejaQueMira {
  * Es la misma frase que `esParaElPanel` en el worker, y no una copia: aquella
  * la llama. El stream ya filtra en el servidor —un evento que no sale no hay
  * que confiar en que nadie lo mire—, y esto es el cinturón del cliente, que
- * también hace falta: una pestaña puede quedar abierta mientras el riel cambia
+ * también hace falta: una pestaña puede quedar abierta mientras la barra cambia
  * de operación sin que el `EventSource` se vuelva a abrir.
  */
 export function esDeLaOperacion(

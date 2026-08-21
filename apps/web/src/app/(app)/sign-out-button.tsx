@@ -8,15 +8,19 @@ import { endSession } from "./frame-actions";
  * Cerrar sesión, con una pregunta en medio.
  *
  * **La pregunta no es cortesía, es que el clic es irreversible y el vecino de
- * abajo se usa veinte veces al día.** Plegar las barras y salir del panel
+ * al lado se usa veinte veces al día.** Plegar la barra y salir del panel
  * vivían a 6px uno del otro; fallar el chevrón por unos píxeles tiraba la
- * sesión y no había cómo deshacerlo. La separación en el riel baja los errores,
- * el diálogo los vuelve inofensivos.
+ * sesión y no había cómo deshacerlo. La separación baja los errores, el diálogo
+ * los vuelve inofensivos.
  *
- * Va con `<dialog>` nativo y `showModal()` a propósito: el riel tiene
+ * Aparece en los dos anchos de la barra: abierta, al lado del correo de quien
+ * está dentro —que es lo que la salida deshace—; plegada, al fondo de la tira,
+ * separada del chevrón por una raya.
+ *
+ * Va con `<dialog>` nativo y `showModal()` a propósito: la barra tiene
  * `overflow-y-auto`, así que cualquier globo posicionado dentro quedaría
- * recortado por la barra. El modal se dibuja en la capa superior del navegador,
- * fuera del recorte, y trae gratis el foco atrapado y el Escape.
+ * recortado. El modal se dibuja en la capa superior del navegador, fuera del
+ * recorte, y trae gratis el foco atrapado y el Escape.
  *
  * El foco arranca en Cancelar. Quien abrió esto por error sale con Enter.
  */
@@ -30,7 +34,7 @@ export function SignOutButton() {
     <>
       <button
         type="button"
-        className="op-rail-icon is-exit"
+        className="op-icon is-exit"
         title="Cerrar sesión"
         onClick={() => dialog.current?.showModal()}
       >

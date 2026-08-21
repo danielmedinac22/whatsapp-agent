@@ -6,7 +6,7 @@
  *
  * - *Segmento en la URL* (`/gt/inbox`): obligaba a mudar las ocho pantallas a
  *   una ruta dinámica y a tocar todos los `href`. La señal en pantalla ya la da
- *   el riel teñido — la barra de direcciones no tenía que cargarla. **Ninguna
+ *   la barra teñida — la de direcciones no tenía que cargarla. **Ninguna
  *   URL existente cambia**, y ese fue el criterio.
  * - *En la sesión de next-auth*: la elección quedaría dentro del JWT, así que
  *   cambiar de país exigiría reemitir la sesión.
@@ -47,7 +47,7 @@ export const PANEL_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
  *
  * **Sin cookie devuelve la única activa**, y eso es lo que mantiene a Guatemala
  * funcionando exactamente igual que antes del selector: hoy hay una sola
- * operación (`GT`, `active`), así que todo admin que nunca haya tocado el riel
+ * operación (`GT`, `active`), así que todo admin que nunca haya tocado el selector
  * ve lo mismo que veía. Una cookie que nombra una operación que ya no existe
  * cae al mismo puente en vez de dejar el panel muerto.
  */
@@ -61,7 +61,7 @@ export async function resolvePanelOperation(): Promise<Operation> {
  *
  * Lo usa el marco y solo el marco. Con dos operaciones activas y sin elección,
  * `resolvePanelOperation()` lanza —y tiene que lanzar—, pero el layout es el
- * que dibuja el riel con el que se elige: si lanzara ahí, el panel quedaría sin
+ * que dibuja el selector con el que se elige: si lanzara ahí, el panel quedaría sin
  * salida el día que Colombia se ponga `active`. El marco se dibuja igual y no
  * renderiza ninguna pantalla hasta que haya operación.
  */
@@ -80,7 +80,7 @@ export async function panelOperationIdCookie(): Promise<string | null> {
   return jar.get(PANEL_OPERATION_COOKIE)?.value ?? null;
 }
 
-/** Las operaciones del riel: todas, porque que exista el otro país es la mitad de lo que comunica. */
+/** Las operaciones del selector: todas, porque que exista el otro país es la mitad de lo que comunica. */
 export function listPanelOperations(): Promise<Operation[]> {
   return listOperations();
 }

@@ -5,8 +5,9 @@ import type { PanelOperationState } from "@wa/db";
  * Lo que el panel muestra cuando **no sabe** sobre qué operación trabajar.
  *
  * Es el estado que aparece el día que Colombia se ponga `active`, la primera vez
- * que cada admin entra: hay dos operaciones y nadie eligió todavía. El riel se
- * dibuja igual —está a la izquierda, con las dos— y acá va el porqué.
+ * que cada admin entra: hay dos operaciones y nadie eligió todavía. El selector
+ * de la barra se dibuja igual —y abierto, con las dos a la vista— y acá va el
+ * porqué.
  *
  * **Ninguna pantalla se renderiza mientras tanto.** No es una advertencia
  * encima del contenido: es *en lugar del* contenido. Mostrar el Inbox de un
@@ -40,9 +41,9 @@ export function ChooseOperation({ state }: { state: PanelOperationState }) {
             <p className="app-subtitle app-muted">
               Hay {activas.length} operaciones atendiendo (
               {activas.map((o) => o.name).join(" y ")}) y todavía no elegiste
-              ninguna. Elegila en el riel de la izquierda: todo lo que veas y
-              edites a partir de ahí —conversaciones, pedidos, plantillas,
-              configuración— es de esa operación y solo de esa.
+              ninguna. Elegila en el selector de arriba a la izquierda: todo lo
+              que veas y edites a partir de ahí —conversaciones, pedidos,
+              plantillas, configuración— es de esa operación y solo de esa.
             </p>
             {state.reason === "eleccion_desconocida" ? (
               <p className="app-subtitle text-[var(--color-warn)]">

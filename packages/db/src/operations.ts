@@ -45,8 +45,8 @@ export function invalidateOperationsCache(): void {
  * Todas las operaciones, activas e inactivas, por código de país.
  *
  * La caché guarda **la tabla entera y no solo las activas** desde el ticket 07:
- * el riel del panel muestra también las dormidas —que exista el otro país es la
- * mitad de lo que el riel comunica— y con dos cachés la lista del riel y la del
+ * el selector del panel muestra también las dormidas —que exista el otro país es
+ * la mitad de lo que comunica— y con dos cachés la lista del selector y la del
  * puente se desincronizaban en la ventana de 30 s. Las activas se derivan de
  * aquí, que son una o dos filas: filtrar cuesta nada.
  */
@@ -156,7 +156,7 @@ export interface PanelOperationDecision {
  *    puente no puede equivocarse de país: con dos activas devuelve `null` y
  *    quien llama falla. Silencioso solo cuando hay una sola, donde acertar es
  *    lo único posible.
- * 2. **Se puede elegir una operación `inactive`.** El riel las muestra —que
+ * 2. **Se puede elegir una operación `inactive`.** El selector las muestra —que
  *    exista el otro país es la mitad de lo que comunica— y configurar Colombia
  *    antes de activarla es justamente el trabajo que destraba el ticket 08.
  *    Lo que no puede pasar es *caer* en una inactiva sin elegirla: el puente
@@ -182,7 +182,7 @@ export function decidePanelOperation(input: {
   return { operation: sole, reason: "eleccion_desconocida" };
 }
 
-/** La decisión, con la tabla que la produjo — que es la que dibuja el riel. */
+/** La decisión, con la tabla que la produjo — que es la que llena el selector. */
 export interface PanelOperationState extends PanelOperationDecision {
   operations: Operation[];
 }
@@ -194,12 +194,12 @@ export interface PanelOperationState extends PanelOperationDecision {
  * Existe por un problema que apareció al probar el panel con las dos
  * operaciones activas, y que el mecanismo escrito en el ticket no cubría: con
  * dos activas y sin elección, `requirePanelOperation` lanza — y lo que lanza es
- * el layout, que es **el que dibuja el riel con el que se elige**. El panel
+ * el layout, que es **el que dibuja el selector con el que se elige**. El panel
  * quedaba muerto el día de la apertura de Colombia, sin ninguna forma de salir:
- * para elegir hacía falta un riel que no se podía dibujar hasta haber elegido.
+ * para elegir hacía falta una barra que no se podía dibujar hasta haber elegido.
  *
  * El marco usa esto y las pantallas siguen usando {@link requirePanelOperation}:
- * así el riel siempre se dibuja y **ninguna pantalla llega a renderizarse con
+ * así la barra siempre se dibuja y **ninguna pantalla llega a renderizarse con
  * una operación adivinada**. Elegir por el admin seguiría siendo el error que
  * esta migración existe para hacer imposible; lo que cambia es que ahora hay
  * dónde elegir.

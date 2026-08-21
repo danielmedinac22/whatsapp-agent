@@ -117,7 +117,7 @@ export async function getSalesAgentSettings(
  * La caché de PRO-15, y la única de las cuatro que guarda un **interruptor**.
  *
  * Un render del Inbox leía esta fila dos veces —el marco pregunta si hay
- * vendedor para dibujar el riel, la pantalla pregunta lo mismo para decidir si
+ * vendedor para dibujar la barra, la pantalla pregunta lo mismo para decidir si
  * hay dos bandejas— y las dos consultas traían la misma fila con la misma
  * distancia de por medio. Sigue siendo un solo listón (`salesAgentIsConfigured`)
  * leído desde un solo accesor: lo que cambia es que el segundo lector encuentra

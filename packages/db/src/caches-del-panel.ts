@@ -8,7 +8,7 @@ import { kapsoConnection } from "./schema";
  *
  * Un render del Inbox hacía trece consultas y cuatro de ellas traían datos que
  * cambian una vez al mes: las plantillas aprobadas de WhatsApp, la URL base de
- * los archivos de logística, los teléfonos del riel de operaciones y la
+ * los archivos de logística, los teléfonos del selector de operación y la
  * configuración del vendedor. Cada una paga la distancia entera —el panel corre
  * en Vercel y cruza el país hasta Postgres— para traer lo mismo que el render
  * anterior.
@@ -82,15 +82,15 @@ export function invalidateAssetsBaseUrlCache(op?: OperationId): void {
 export const CACHE_DEL_VENDEDOR_MS = 5_000;
 
 // ────────────────────────────────────────────────────────────────────────────
-// El riel de operaciones
+// El selector de operación
 // ────────────────────────────────────────────────────────────────────────────
 
 /**
- * Los teléfonos del riel: **la tabla entera, no una operación**.
+ * Los teléfonos del selector: **la tabla entera, no una operación**.
  *
- * Es deliberado y es la misma forma de {@link listOperations}. El riel del
- * panel dibuja todas las operaciones con su número —que exista el otro país es
- * la mitad de lo que el riel comunica—, así que acotarlo a una operación sería
+ * Es deliberado y es la misma forma de {@link listOperations}. El selector del
+ * panel lista todas las operaciones con su número —que exista el otro país es la
+ * mitad de lo que comunica—, así que acotarlo a una operación sería
  * acotarlo a lo que no muestra. Por eso esta no es una `OperationScopedCache`:
  * no hay clave de operación que llevar, y ponerle una sería llavear por algo
  * que la consulta no filtra, que es la mentira que la clave existe para evitar.
@@ -124,7 +124,7 @@ export function invalidateConnectionPhonesCache(): void {
 }
 
 /**
- * El teléfono de una operación, derivado de la lista del riel.
+ * El teléfono de una operación, derivado de la lista del selector.
  *
  * Se deriva y no se consulta por la misma razón que `listActiveOperations`
  * deriva de `listOperations`: dos consultas para la misma tabla son dos cachés

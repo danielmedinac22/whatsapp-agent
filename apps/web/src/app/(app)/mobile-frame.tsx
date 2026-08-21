@@ -13,11 +13,11 @@ import { usePathname, useSearchParams } from "next/navigation";
  * apilada antes del primer título: en un teléfono de 844px, cuatro quintos de
  * la pantalla para llegar a saber en qué pantalla estás.
  *
- * **No dibuja un segundo menú.** El riel y la columna llegan como `children`,
- * renderizados en el servidor, y este componente solo los mete dentro de un
- * elemento que en el teléfono está fuera de pantalla y en escritorio no tiene
- * caja (`display: contents`). Un menú duplicado es un menú que se
- * desincroniza, y además duplicaría las consultas que lo alimentan.
+ * **No dibuja un segundo menú.** La barra llega como `children`, renderizada en
+ * el servidor, y este componente solo la mete dentro de un elemento que en el
+ * teléfono está fuera de pantalla y en escritorio no tiene caja
+ * (`display: contents`). Un menú duplicado es un menú que se desincroniza, y
+ * además duplicaría las consultas que lo alimentan.
  *
  * De aquí sale **todo lo interactivo del marco y nada más**: qué abre y qué
  * cierra el cajón. Lo que el cajón muestra lo decide el servidor.
@@ -69,7 +69,7 @@ export function MobileFrame({
 }: {
   /** Lo que dice la barra: la bandera y el nombre de la operación activa. */
   barra: React.ReactNode;
-  /** El riel y la columna, tal cual los dibuja el servidor. */
+  /** La barra de la operación, tal cual la dibuja el servidor. */
   children: React.ReactNode;
 }) {
   const [abierto, setAbierto] = useState(false);
@@ -160,8 +160,8 @@ export function MobileFrame({
     };
   }, [abierto]);
 
-  // Ensanchar la ventana hasta escritorio deja el cajón sin sitio: el riel y la
-  // columna vuelven a la retícula y «abierto» deja de significar algo.
+  // Ensanchar la ventana hasta escritorio deja el cajón sin sitio: la barra
+  // vuelve a la retícula y «abierto» deja de significar algo.
   useEffect(() => {
     const ancha = window.matchMedia("(min-width: 1024px)");
     const alCambiar = () => {

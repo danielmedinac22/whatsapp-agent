@@ -2,7 +2,7 @@
 
 /* ── El sistema visual del panel: claro, un solo juego de tokens ───────────
    El árbol de diseño se cerró el 20-ago-2026 y el veredicto del nivel 1 fue
-   **Claro**: fondo claro en todo, riel y menú incluidos. Los valores de aquí
+   **Claro**: fondo claro en todo, barra y menú incluidos. Los valores de aquí
    abajo no se eligen en este archivo, salen del «contrato de nombres» de
    `.scratch/panel-orientacion/spec.md`, que es el que reparte los nombres
    entre los tres worktrees que corren a la vez.
@@ -19,9 +19,9 @@
    `rgba()` nuevo: un `rgba()` suelto es un color que nadie va a encontrar. */
 
 @theme {
-  /* Superficies, de la más oscura a la más clara. El riel es la más oscura y
-     por eso es la que manda: un color que llega a AA sobre el riel llega en
-     todas las demás. */
+  /* Superficies, de la más oscura a la más clara. La barra plegada es la más
+     oscura y por eso es la que manda: un color que llega a AA sobre ella llega
+     en todas las demás. */
   --color-bg: #f4f6f5;
   --color-rail: #e8edeb;
   --color-menu: #eef1f0;
@@ -119,25 +119,29 @@
 }
 
 @layer components {
-  /* ── El marco: riel de operaciones, columna de módulos, contenido ────────
-     El tinte (`--op*`) lo declara el layout sobre `.app-frame` y **solo lo
-     usan las dos barras**. El contenido conserva la paleta neutra: si el
-     acento siguiera al país, el color de «confirmado» dejaría de significar
-     una cosa sola.
+  /* ── El marco: barra de la operación, contenido ──────────────────────────
+     El tinte (`--op*`) lo declara el layout sobre `.app-frame` y **solo lo usa
+     la barra**. El contenido conserva la paleta neutra: si el acento siguiera
+     al país, el color de «confirmado» dejaría de significar una cosa sola.
 
-     **Debajo de `lg` el marco tiene dos filas y no cuatro**: la barra de 52px
-     y el contenido. Las dos barras siguen en el árbol, pero dentro de
-     `.app-drawer`, que está fuera de flujo — así que no ocupan ni un píxel
-     hasta que alguien abre el cajón. Es el veredicto del nivel 4, y lo que
-     compra son los 620-680px de navegación apilada que había antes de llegar
-     al primer título. */
+     **Son dos columnas y no tres.** El riel de operaciones —78px de baldosas,
+     una por país— se fue: cambiar de operación lo hace ahora la cabecera de la
+     columna, que es un selector. Lo que queda es una sola barra con dos
+     anchos, 216px abierta y 46px plegada, y en las dos el contenido gana esos
+     78px.
+
+     **Debajo de `lg` el marco tiene dos filas**: la barra de 52px y el
+     contenido. La columna sigue en el árbol, pero dentro de `.app-drawer`, que
+     está fuera de flujo — así que no ocupa ni un píxel hasta que alguien abre
+     el cajón. Es el veredicto del nivel 4, y lo que compra son los 620-680px
+     de navegación apilada que había antes de llegar al primer título. */
 
   .app-frame {
     @apply grid min-h-screen grid-cols-1 lg:h-screen lg:overflow-hidden;
   }
 
   .app-frame[data-bars="open"] {
-    @apply lg:grid-cols-[78px_216px_1fr];
+    @apply lg:grid-cols-[216px_1fr];
   }
 
   .app-frame[data-bars="collapsed"] {
@@ -155,9 +159,8 @@
      `.is-open`) y `.app-scrim` (con `.is-on`).
 
      Nada de esto existe en escritorio: la barra y el velo se apagan en `lg`,
-     y el cajón se vuelve `display: contents` para que el riel y la columna
-     vuelvan a ser hijos directos de la retícula. Es lo que hace que el
-     escritorio no cambie ni un píxel, que es criterio de aceptación. */
+     y el cajón se vuelve `display: contents` para que la barra vuelva a ser
+     hija directa de la retícula. */
 
   .app-topbar {
     background: var(--color-card);
@@ -199,9 +202,9 @@
     pointer-events: auto;
   }
 
-  /* El cajón lleva dentro **el riel y la columna tal cual**, sin una segunda
-     copia del menú: un menú duplicado es un menú que se desincroniza. Fuera
-     de flujo, así que cerrado no ocupa nada.
+  /* El cajón lleva dentro **la columna tal cual**, sin una segunda copia del
+     menú: un menú duplicado es un menú que se desincroniza. Fuera de flujo,
+     así que cerrado no ocupa nada.
 
      `visibility: hidden` y no solo `translateX(-100%)`: desplazado fuera de
      la pantalla el menú seguiría siendo alcanzable con el tabulador y seguiría
@@ -249,10 +252,10 @@
   }
 
   @media (min-width: 1024px) {
-    /* Sin caja: el riel y la columna vuelven a ser hijos directos de la
-       retícula de `.app-frame`, y sus dos plantas —`78px 216px 1fr` y
-       `46px 1fr`— siguen valiendo. `visibility` se hereda a través de
-       `display: contents`, así que hay que devolverla. */
+    /* Sin caja: la barra vuelve a ser hija directa de la retícula de
+       `.app-frame`, y sus dos plantas —`216px 1fr` y `46px 1fr`— siguen
+       valiendo. `visibility` se hereda a través de `display: contents`, así
+       que hay que devolverla. */
     .app-drawer {
       display: contents;
       visibility: visible;
@@ -267,12 +270,6 @@
     .app-drawer .op-column {
       @apply flex-1;
     }
-
-    .app-drawer .op-rail {
-      /* El riel dentro del cajón conserva su tira horizontal: es donde se
-         cambia de operación, y en el teléfono es la única forma de hacerlo. */
-      @apply flex-none;
-    }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -283,36 +280,37 @@
     }
   }
 
-  .op-rail {
+  /* ── La barra plegada ────────────────────────────────────────────────────
+     46px: la bandera del país, los iconos de la pantalla actual y la salida.
+     Es lo que queda del riel, con una baldosa en vez de una por país — la
+     lista de países vive ahora en el selector, que solo existe con la barra
+     abierta.
+
+     `hidden` de base y `lg:flex` solo con las barras plegadas: en el teléfono
+     no hay nada que plegar, hay un cajón, y la tira ahí sería un segundo menú
+     más corto. */
+
+  .op-strip {
     background:
       linear-gradient(180deg, var(--op-faint), transparent 40%),
       var(--color-rail);
     border-color: var(--color-border-strong);
-    @apply flex flex-row items-center gap-2.5 overflow-x-auto border-b px-3 py-2.5 lg:h-screen lg:flex-col lg:overflow-x-visible lg:overflow-y-auto lg:border-b-0 lg:border-r lg:px-2.5 lg:py-3.5;
+    @apply hidden h-screen flex-col items-center gap-1.5 overflow-y-auto border-r px-[7px] py-3;
   }
 
-  .op-rail.is-tight {
-    @apply gap-1.5 lg:px-[7px] lg:py-3;
+  .app-frame[data-bars="collapsed"] .op-strip {
+    @apply lg:flex;
   }
 
-  .op-tile {
-    background: var(--color-card);
-    @apply relative flex h-14 w-14 flex-none flex-col items-center justify-center gap-1 rounded-[15px] border transition hover:border-[var(--color-border-strong)];
-  }
-
-  .op-tile.is-tight {
-    @apply h-8 w-8 gap-0 rounded-[10px];
-  }
-
-  .op-tile.is-dormant {
-    @apply border-dashed opacity-60;
-  }
-
-  .op-tile[aria-pressed="true"] {
-    border-color: var(--op);
+  /* La baldosa del país **es el botón que despliega la barra**: plegada no hay
+     sitio para el selector, así que donde vive el país es también por donde se
+     llega a cambiarlo. Va siempre encendida —dibuja la operación activa, que
+     es la única que dibuja— y por eso no tiene estado apagado. */
+  .op-strip-tile {
     background: var(--op-soft);
+    border-color: var(--op);
     box-shadow: 0 0 0 1px var(--op-line), var(--shadow-panel);
-    @apply opacity-100;
+    @apply flex h-8 w-8 flex-none items-center justify-center rounded-[10px] border transition hover:brightness-[0.97];
   }
 
   /* La bandera del país que no está activo va apagada: el color de la bandera
@@ -322,7 +320,7 @@
   .op-flag {
     /* «Tenue» y no «suave»: la bandera de Guatemala tiene una franja blanca y
        la baldosa también es blanca, así que esta línea es lo único que separa
-       una de otra. «Suave» daba 2,61:1 sobre el riel y no llegaba a los 3:1
+       una de otra. «Suave» daba 2,61:1 sobre la barra y no llegaba a los 3:1
        que pide un objeto gráfico. */
     border: 1px solid var(--color-text-dim);
     @apply inline-block flex-none rounded-[2px];
@@ -330,49 +328,41 @@
     transition: filter 0.18s;
   }
 
-  .op-tile[aria-pressed="true"] .op-flag,
+  .op-strip .op-flag,
   .op-column-head .op-flag,
-  .app-topbar .op-flag {
+  .app-topbar .op-flag,
+  .op-pick[aria-current="true"] .op-flag,
+  .op-pick:hover .op-flag {
     filter: none;
   }
 
-  .op-tile-code {
-    color: var(--color-text-dim);
-    @apply text-[10px] font-bold tracking-wider;
-  }
-
-  .op-tile[aria-pressed="true"] .op-tile-code {
-    color: var(--op);
-  }
-
-  .op-rail-icon {
+  .op-icon {
     @apply flex h-[30px] w-8 flex-none items-center justify-center rounded-lg border border-transparent text-[var(--color-text-dim)] transition hover:border-[var(--color-border-strong)] hover:bg-[var(--color-hover)] hover:text-[var(--color-text)];
   }
 
-  .op-rail-icon[aria-current="page"] {
+  .op-icon[aria-current="page"] {
     border-color: var(--op-line);
     background: var(--op-soft);
     color: var(--op);
   }
 
-  /* Plegar las barras es un gesto de escritorio: en el teléfono no hay barras
-     que plegar, hay un cajón que se abre y se cierra. El botón y su raya no
-     bajan de `lg`. */
+  /* Plegar la barra es un gesto de escritorio: en el teléfono no hay barra que
+     plegar, hay un cajón que se abre y se cierra. El botón no baja de `lg`. */
   .op-fold {
     background: var(--color-card);
     @apply hidden h-6 w-6 flex-none items-center justify-center rounded-[7px] border text-[var(--color-text-dim)] transition lg:flex hover:border-[var(--op-line)] hover:text-[var(--color-text)];
   }
 
-  /* La raya entre salir y plegar. Los 6px que había antes no alcanzaban: el
-     chevrón se falla hacia arriba, y arriba estaba la salida. */
-  .op-rail-sep {
+  /* La raya entre salir y plegar, en la tira. Los 6px que había antes no
+     alcanzaban: el chevrón se falla hacia arriba, y arriba estaba la salida. */
+  .op-sep {
     background: var(--color-border-strong);
-    @apply my-2 hidden h-px w-5 flex-none lg:block;
+    @apply my-2 h-px w-5 flex-none;
   }
 
-  /* Rojo solo al pasar por encima. Un icono rojo permanente al fondo del riel
-     se lee como alarma de la operación, que es justo lo que no es. */
-  .op-rail-icon.is-exit:hover {
+  /* Rojo solo al pasar por encima. Un icono rojo permanente al fondo de la
+     barra se lee como alarma de la operación, que es justo lo que no es. */
+  .op-icon.is-exit:hover {
     border-color: color-mix(in srgb, var(--color-danger) 42%, transparent);
     background: var(--state-escalada-bg);
     color: var(--color-danger);
@@ -410,18 +400,88 @@
     @apply flex flex-col px-3 py-3 lg:h-screen lg:overflow-y-auto lg:border-r lg:px-3 lg:py-4;
   }
 
-  /* Con las barras plegadas la columna **se sigue dibujando**, y solo se
-     esconde en escritorio. Antes el layout la omitía del árbol, y eso en el
-     teléfono dejaba el cajón sin menú: plegar es una preferencia que se toma
-     en el escritorio y viaja en una cookie hasta el móvil, donde no
-     significa nada. */
+  /* Con la barra plegada la columna **se sigue dibujando**, y solo se esconde
+     en escritorio. Antes el layout la omitía del árbol, y eso en el teléfono
+     dejaba el cajón sin menú: plegar es una preferencia que se toma en el
+     escritorio y viaja en una cookie hasta el móvil, donde no significa
+     nada. */
   .app-frame[data-bars="collapsed"] .op-column {
     @apply lg:hidden;
   }
 
   .op-column-head {
     border-color: var(--op-line);
-    @apply mb-3 flex items-start gap-2.5 border-b px-0.5 pb-3;
+    @apply mb-3 flex items-start gap-1 border-b pb-3;
+  }
+
+  /* ── El selector de operación ────────────────────────────────────────────
+     La cabecera de la columna es también con qué se cambia de país, y eso es
+     lo que dejó al riel sin trabajo.
+
+     La lista se despliega **en el flujo**, empujando el menú hacia abajo, y no
+     flotando encima: la columna tiene `overflow-y-auto` y cualquier globo
+     posicionado dentro saldría recortado por la barra — el mismo motivo por el
+     que salir de la sesión pregunta con un `<dialog>`.
+
+     El chevrón solo se dibuja cuando hay a dónde cambiar. Con una sola
+     operación la cabecera es exactamente lo que era: un rótulo. */
+
+  .op-picker {
+    @apply min-w-0 flex-1;
+  }
+
+  .op-picker-face {
+    @apply flex w-full items-start gap-2.5 rounded-[10px] px-1 py-1 text-left;
+  }
+
+  .op-picker-face.is-tap {
+    @apply transition hover:bg-[var(--op-soft)];
+  }
+
+  .op-picker-name {
+    color: var(--color-text);
+    @apply flex items-center gap-1 text-sm font-semibold;
+  }
+
+  .op-picker-caret {
+    color: var(--color-text-dim);
+    @apply h-3.5 w-3.5 flex-none transition-transform;
+  }
+
+  .op-picker-caret.is-open {
+    @apply rotate-180;
+  }
+
+  .op-picker-meta {
+    color: var(--color-text-dim);
+    @apply mt-0.5 block truncate text-[10px] uppercase tracking-wider;
+  }
+
+  /* El número que atiende, junto al color: es el dato que hace el error
+     irreversible —es lo que le sale al cliente— y lo que protege de que el
+     tinte se vuelva papel tapiz con el uso diario. */
+  .op-picker-phone {
+    color: var(--op);
+    @apply mt-1 block truncate text-[11.5px] font-semibold tabular-nums;
+  }
+
+  .op-picker-phone.is-missing {
+    color: var(--color-warn);
+  }
+
+  .op-picker-list {
+    background: var(--color-card);
+    border-color: var(--color-border-strong);
+    box-shadow: var(--shadow-panel);
+    @apply mt-1.5 flex flex-col gap-0.5 rounded-[11px] border p-1;
+  }
+
+  .op-pick {
+    @apply flex w-full items-center gap-2 rounded-lg px-2 py-1.5 transition hover:bg-[var(--color-hover)];
+  }
+
+  .op-pick[aria-current="true"] {
+    background: var(--op-soft);
   }
 
   .op-group-label {
@@ -487,9 +547,9 @@
 
   /* **En el teléfono la línea dice solo la bandeja.** La barra de arriba ya
      lleva la bandera y el nombre de la operación, y a 390px las dos cosas
-     quedan pegadas diciendo lo mismo. En escritorio no cambia nada: allá el
-     riel está a 78px del título y la repetición no molesta, que es
-     exactamente lo que decidió la ronda.
+     quedan pegadas diciendo lo mismo. En escritorio no cambia nada: allá la
+     barra queda lejos del título —y puede estar plegada— así que la
+     repetición no molesta, que es exactamente lo que decidió la ronda.
 
      Son dos textos y no uno recortado con CSS porque el país y la bandeja
      viven en el mismo nodo de texto, y a un nodo de texto no se le puede dar

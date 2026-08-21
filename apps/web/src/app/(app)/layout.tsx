@@ -10,22 +10,22 @@ import { operationTint } from "@wa/shared";
 import { resolveAccess } from "@/access/resolve";
 import { resolvePanelBars, resolvePanelOperationState } from "@/lib/operation";
 import { ChooseOperation } from "./choose-operation";
+import { Flag } from "./flag";
 import { MobileFrame } from "./mobile-frame";
 import { NAV_HREFS } from "./nav";
 import type { SalesNav } from "./module-nav";
 import {
-  Flag,
   OperationColumn,
-  OperationRail,
-  type RailOperation,
-} from "./operation-rail";
+  OperationStrip,
+  type BarOperation,
+} from "./operation-bar";
 
 /**
- * El marco del panel: el riel de operaciones, el tinte del país activo y la
+ * El marco del panel: la barra de la operación, el tinte del país activo y la
  * navegación anidada dentro.
  *
  * **El tinte muere aquí.** Las variables `--op*` se declaran en este elemento y
- * las usan el riel y la columna; el contenido conserva siempre la paleta
+ * las usa la barra; el contenido conserva siempre la paleta
  * neutra. Si `--color-ink` siguiera al país, cada botón primario cambiaría de
  * color y el verde dejaría de significar «confirmado» — justo en Guatemala,
  * que es lo que factura. Es la decisión 1 del nivel 1 y la razón por
@@ -37,12 +37,12 @@ import {
  * pasarla por contexto la volvería invisible en la firma de las consultas, que
  * es justo lo que este trabajo vino a evitar.
  *
- * **Debajo de `lg` las dos barras no se apilan sobre el contenido: entran en un
- * cajón** (`<MobileFrame>`), y arriba queda una barra de 52px. Es el veredicto
- * del nivel 4. El riel y la columna se siguen dibujando **acá, en el
- * servidor**, y viajan como `children`: el cajón es un envoltorio y no un
- * segundo menú, así que no hay dos árboles de navegación que mantener de
- * acuerdo ni dos veces las consultas que los alimentan.
+ * **Debajo de `lg` la barra no se apila sobre el contenido: entra en un cajón**
+ * (`<MobileFrame>`), y arriba queda una barra de 52px. Es el veredicto del
+ * nivel 4. La columna se sigue dibujando **acá, en el servidor**, y viaja como
+ * `children`: el cajón es un envoltorio y no un segundo menú, así que no hay
+ * dos árboles de navegación que mantener de acuerdo ni dos veces las consultas
+ * que los alimentan.
  */
 export default async function AppLayout({
   children,
@@ -53,10 +53,10 @@ export default async function AppLayout({
   if (!session) redirect("/login");
 
   // **Sin lanzar, a propósito.** El marco tiene que dibujarse aunque no haya
-  // operación elegida: es el que trae el riel con el que se elige. Si esto
+  // operación elegida: es el que trae el selector con el que se elige. Si esto
   // lanzara —como lanza `resolvePanelOperation()` en las pantallas—, el día que
   // Colombia se ponga `active` el panel quedaría sin salida: para elegir haría
-  // falta un riel que no se podría dibujar hasta haber elegido.
+  // falta una barra que no se podría dibujar hasta haber elegido.
   const [state, bars] = await Promise.all([
     resolvePanelOperationState(),
     resolvePanelBars(),
@@ -65,11 +65,11 @@ export default async function AppLayout({
   const operations = state.operations;
 
   // El número de cada operación sale de su conexión de WhatsApp. Una sola
-  // consulta para todo el riel: son una o dos filas, y el índice único de la
-  // `0021` garantiza una conexión por operación.
+  // consulta para todo el selector: son una o dos filas, y el índice único de
+  // la `0021` garantiza una conexión por operación.
   //
   // **Y desde PRO-15 esa consulta casi nunca viaja.** Es la hermana de
-  // `listOperations`: las dos dibujan el riel, las dos traen una o dos filas que
+  // `listOperations`: las dos dibujan la barra, las dos traen una o dos filas que
   // cambian cuando alguien conecta un número, y las dos las paga cada render de
   // cada una de las siete pantallas. La invalida `invalidateKapsoConnectionCache`
   // en el worker, que es quien escribe.
@@ -78,7 +78,7 @@ export default async function AppLayout({
     connections.map((c) => [c.operationId, c.phone]),
   );
 
-  const entries: RailOperation[] = operations.map((operation) => ({
+  const entries: BarOperation[] = operations.map((operation) => ({
     operation,
     phone: phoneByOperation.get(operation.id) ?? null,
   }));
@@ -135,9 +135,9 @@ export default async function AppLayout({
   const tint = active
     ? operationTint(active.countryCode)
     : {
-        // `--op` también pinta texto (el código del país en la baldosa, el
-        // módulo activo), así que el neutro de reserva tiene que ser un color
-        // de texto: «tenue» da 4,54:1 sobre el riel y «suave» 2,85:1.
+        // `--op` también pinta texto (el número de la operación, el módulo
+        // activo), así que el neutro de reserva tiene que ser un color de
+        // texto: «tenue» da 4,54:1 sobre la barra y «suave» 2,85:1.
         base: "var(--color-text-dim)",
         line: "var(--color-border-strong)",
         soft: "color-mix(in srgb, var(--color-text-soft) 14%, transparent)",
@@ -147,7 +147,11 @@ export default async function AppLayout({
   return (
     <div
       className="app-frame"
-      data-bars={active ? bars : "collapsed"}
+      // **Sin operación elegida la barra va abierta**, y no plegada como antes:
+      // plegada son 46px sin selector, y el panel se quedaría sin forma de
+      // elegir. Con el riel daba igual —las baldosas sobrevivían al plegado—;
+      // con el selector dentro de la columna, no.
+      data-bars={active ? bars : "open"}
       style={
         {
           "--op": tint.base,
@@ -166,34 +170,34 @@ export default async function AppLayout({
             </>
           ) : (
             // Sin operación elegida la barra no inventa un nombre: dice lo que
-            // hay que hacer, y el cajón lleva dentro el riel con el que se hace.
+            // hay que hacer, y el cajón lleva dentro el selector con el que se
+            // hace.
             <span className="truncate text-[var(--color-text-dim)]">
               Elegí una operación
             </span>
           )
         }
       >
-        <OperationRail
-          entries={entries}
-          activeId={active?.id ?? null}
-          bars={bars}
-          allowed={allowed}
-          sales={sales}
-        />
-        {/* **La columna se dibuja aunque las barras estén plegadas**, y es
-            `globals.css` quien la esconde —solo en escritorio— con
-            `.app-frame[data-bars="collapsed"] .op-column`. Omitirla del árbol
-            dejaba el cajón del teléfono sin menú: plegar es una preferencia
-            que se toma en una pantalla grande y viaja en una cookie hasta el
-            móvil, donde no significa nada. */}
+        {/* Las dos caras de la misma barra, las dos en el árbol: cuál se ve la
+            decide `globals.css` por `data-bars`, y solo en escritorio. La tira
+            no existe debajo de `lg` —en el teléfono no hay nada plegado, hay un
+            cajón— y la columna sí, siempre: plegar es una preferencia que se
+            toma en una pantalla grande y viaja en una cookie hasta el móvil,
+            donde no significa nada. */}
         {activeEntry ? (
-          <OperationColumn
+          <OperationStrip
             entry={activeEntry}
             allowed={allowed}
-            email={session.user.email}
             sales={sales}
           />
         ) : null}
+        <OperationColumn
+          entries={entries}
+          active={activeEntry}
+          allowed={allowed}
+          email={session.user.email}
+          sales={sales}
+        />
       </MobileFrame>
 
       <main className="app-main">

@@ -47,7 +47,7 @@ export async function loadVendedorScreen(): Promise<VendedorScreen> {
   const operation = await resolvePanelOperation();
   const [settings, phone] = await Promise.all([
     getSalesAgentSettings(operation),
-    // El mismo lector que el riel del marco, y por eso cacheado igual: dos
+    // El mismo lector que la barra del marco, y por eso cacheado igual: dos
     // consultas a `kapso_connection` desde el panel eran dos cachés que se
     // desincronizan la primera vez que alguien toque una (PRO-15).
     connectionPhoneOf(operation.id),

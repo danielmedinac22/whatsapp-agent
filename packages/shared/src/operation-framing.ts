@@ -11,7 +11,7 @@
  * (`ventas-pulido-ui/01`), y trae tres decisiones que no son estéticas:
  *
  * 1. **El tinte muere en el borde del marco.** Estas variables se aplican al
- *    riel y a la columna de navegación, nunca al contenido. Si el acento
+ *    barra de la operación, nunca al contenido. Si el acento
  *    siguiera al país, cada botón primario cambiaría de color y el verde
  *    dejaría de significar «confirmado» — justo en Guatemala, que es lo que
  *    factura. Es el patrón de Slack (el tema tiñe la barra, no los mensajes),
@@ -26,7 +26,7 @@
  *    peligro, son pares.
  *
  * **Los dos tonos se oscurecieron el 20-ago-2026** (decisión 2 de esa tarde) al
- * pasar el panel a fondo claro. Medidos contra el riel `#e8edeb`, que es la
+ * pasar el panel a fondo claro. Medidos contra `#e8edeb` —la barra plegada—, que es la
  * superficie más oscura de la paleta y por eso la que manda, el violeta
  * `#a78bfa` daba 2,30:1 y el cian `#38bdf8` 1,81:1: fallaban tanto el listón de
  * texto (4,5:1) como el de componente (3:1). Los valores de ahora dan 6,00:1 y
@@ -70,7 +70,7 @@ const TINTS: Readonly<Record<string, string>> = {
  * es lo que rompería el mecanismo entero el día que alguien dé de alta el
  * tercero sin pasar por aquí.
  *
- * Los cuatro llegan a AA sobre el riel, la superficie más oscura de la paleta:
+ * Los cuatro llegan a AA sobre `#e8edeb`, la superficie más oscura de la paleta:
  * 5,10:1, 5,99:1, 6,02:1 y 8,75:1.
  */
 const SPARE_TINTS: readonly string[] = [

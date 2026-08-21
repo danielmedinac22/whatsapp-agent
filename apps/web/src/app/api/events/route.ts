@@ -14,7 +14,7 @@ export async function GET(req: Request) {
 
   // No pasa por `workerFetch` porque el SSE necesita el `signal` y el cuerpo en
   // streaming, pero la elección de operación viaja igual: el snapshot inicial
-  // reporta la conexión de la operación del riel, no la de la única activa.
+  // reporta la conexión de la operación elegida, no la de la única activa.
   const operationId = await panelOperationIdCookie();
   const upstream = await fetch(`${WORKER_URL}/api/events`, {
     headers: {

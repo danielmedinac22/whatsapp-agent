@@ -982,7 +982,7 @@ describe("los tres números de «sin responder» dicen lo mismo", () => {
 describe("la línea de contexto", () => {
   it("dice en qué operación y en qué bandeja está, encima del título", () => {
     // En la pantalla desde la que salen mensajes a clientes de Guatemala, el
-    // único indicio del país era una bandera de 8×30 px en un riel que se
+    // único indicio del país era una bandera de 8×30 px en una barra que se
     // pliega.
     abrir();
 

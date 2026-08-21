@@ -623,7 +623,7 @@ export function InboxClient({
    * Baja desde `page.tsx`, que ya tiene la fila entera (`resolvePanelOperation`).
    * Hasta hoy el cliente solo recibía `operationId`, así que en la pantalla
    * desde la que salen mensajes a Guatemala el único indicio del país era una
-   * bandera de 8×30 px en un riel que además se pliega.
+   * bandera de 8×30 px en una barra que además se pliega.
    */
   op: { name: string; countryCode: string };
   /**
@@ -633,7 +633,7 @@ export function InboxClient({
    * Es lo que impide que un entrante de Colombia mueva la bandeja de Guatemala.
    * El stream ya filtra en el servidor —un evento que no sale no hay que
    * confiar en que nadie lo mire—, y esto es el cinturón de acá: la pestaña
-   * puede quedar abierta mientras el riel cambia de operación sin que el
+   * puede quedar abierta mientras la barra cambia de operación sin que el
    * `EventSource` se vuelva a abrir.
    */
   operationId: string | null;

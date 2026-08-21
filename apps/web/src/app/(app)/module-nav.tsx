@@ -183,16 +183,15 @@ function NavLink({ item, current }: { item: NavItem; current: boolean }) {
 }
 
 /**
- * La misma navegación reducida a iconos, para el riel plegado de 46px.
+ * La misma navegación reducida a iconos, para la barra plegada de 46px.
  *
  * Muestra **solo el módulo de la pantalla abierta**, que es lo que decidió la
- * ronda 3: plegado se conserva el país, que existe el otro, y la navegación de
- * donde uno está. Lo que se pierde son los nombres de las pantallas. Si la ruta
- * actual no es de ningún grupo, cae al primero que el rol alcance en vez de
- * quedarse en blanco — un riel sin navegación no es un colapso, es una
- * mutilación.
+ * ronda 3: plegada se conserva el país y la navegación de donde uno está. Lo
+ * que se pierde son los nombres de las pantallas. Si la ruta actual no es de
+ * ningún grupo, cae al primero que el rol alcance en vez de quedarse en blanco
+ * — una barra sin navegación no es un colapso, es una mutilación.
  *
- * Las vistas no bajan aquí: son tres contadores sin sitio en 46px, y plegado lo
+ * Las vistas no bajan aquí: son tres contadores sin sitio en 46px, y plegada lo
  * que se conserva es a dónde ir, no cuánto hay.
  */
 export function ModuleNavIcons({
@@ -220,7 +219,7 @@ export function ModuleNavIcons({
           <Link
             key={item.href}
             href={item.href}
-            className="op-rail-icon"
+            className="op-icon"
             aria-current={current ? "page" : undefined}
             title={`${group.label} · ${item.label}`}
           >

@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 
 export default async function AgentPage() {
   // La pantalla de configuración edita la de **una** operación: la que el admin
-  // eligió en el riel. Antes editaba la fila global `id = 1` — que es
+  // eligió en el selector. Antes editaba la fila global `id = 1` — que es
   // Guatemala, y por tanto el país equivocado en cuanto exista el segundo.
   const op = await resolvePanelOperation();
   const [settings, templates, conversations] = await Promise.all([

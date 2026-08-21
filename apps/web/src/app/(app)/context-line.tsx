@@ -7,7 +7,7 @@
  * la está mirando.
  *
  * **Vive en el contenido y no en el marco, y esa es toda la razón por la que
- * existe.** El riel se pliega (`.app-frame[data-bars="collapsed"]`) y ahí la
+ * existe.** La barra se pliega (`.app-frame[data-bars="collapsed"]`) y ahí la
  * placa del país se pierde: en la pantalla desde la que salen mensajes a
  * Guatemala, el único indicio del país era una bandera de 8×30 px en una barra
  * que se puede cerrar. Lo que no se puede plegar es el título de la pantalla,
@@ -17,7 +17,8 @@
  * nombre de operación—, que es el veredicto del nivel 4. Ahí el país no se
  * perdió: lo lleva la barra de 52px, a dos centímetros de este mismo texto, y a
  * 390px las dos cosas quedan pegadas diciendo lo mismo. En escritorio no cambia
- * nada, porque allá el riel está a 78px del título y la repetición no molesta.
+ * nada, porque allá la barra queda lejos del título y la repetición no
+ * molesta.
  *
  * **`pantalla` es el módulo del menú, no el nombre de la pantalla** — «Ventas»,
  * «Confirmación», «Operación», los `label` de `NAV_GROUPS`. Repetir el `h1` dos
@@ -31,10 +32,12 @@
 /**
  * Los degradados de las banderas que sabemos dibujar.
  *
- * **Es la misma tabla que la del riel** (`operation-rail.tsx`), duplicada a
- * sabiendas: allá es privada del módulo y ese archivo tiene otro dueño en esta
- * tanda. Unificarla es trabajo de una sola línea el día que las dos ramas estén
- * juntas, y hasta entonces duplicarla es más barato que coordinar un export.
+ * **Es la misma tabla que la de la barra** (`flag.tsx`), duplicada a sabiendas:
+ * allá la bandera nace apagada —así es como la barra distingue el país que no
+ * está activo— y acá el único país que se dibuja es el activo, así que el
+ * `filter: none` de abajo es inline y hay una prueba que lo afirma. Unificarlas
+ * es mover ese `none` a `globals.css` y reescribir esa prueba; hasta que valga
+ * la pena, la tabla duplicada son cuatro líneas.
  */
 const FLAGS: Readonly<Record<string, string>> = {
   GT: "linear-gradient(90deg,#4997d0 0 33.3%,#fff 33.3% 66.6%,#4997d0 66.6%)",
@@ -42,14 +45,13 @@ const FLAGS: Readonly<Record<string, string>> = {
 };
 
 /**
- * La bandera, por el mismo mecanismo del riel: un `span` con `.op-flag` y el
+ * La bandera, por el mismo mecanismo de la barra: un `span` con `.op-flag` y el
  * degradado de fondo. No es un emoji — un emoji de bandera se dibuja distinto en
  * cada sistema y en Windows no se dibuja.
  *
- * `filter: none` en línea porque `.op-flag` nace apagada: en el riel el apagado
- * distingue el país que **no** está activo, y acá el único país que se dibuja es
- * el activo. El sitio limpio para esto sería `.app-context .op-flag` en
- * `globals.css`, que es de otra rama en esta tanda.
+ * `filter: none` en línea porque `.op-flag` nace apagada: en el selector el
+ * apagado distingue el país que **no** está activo, y acá el único país que se
+ * dibuja es el activo.
  */
 function Flag({ code }: { code: string }) {
   const gradient = FLAGS[code.toUpperCase()];
@@ -58,7 +60,7 @@ function Flag({ code }: { code: string }) {
       aria-hidden
       className="op-flag h-[11px] w-4"
       // Un país sin bandera dibujada no se queda en blanco: toma el tinte de su
-      // propia operación, igual que en el riel.
+      // propia operación, igual que en la barra.
       style={{ background: gradient ?? "var(--op)", filter: "none" }}
     />
   );

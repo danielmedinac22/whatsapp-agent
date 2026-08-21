@@ -19,7 +19,8 @@ import {
  *
  * **Primero país, módulo dentro.** Decisión 4 del nivel 1: el módulo va anidado
  * en la operación, nunca al lado. Por eso los grupos viven aquí, dentro de la
- * columna que cuelga del riel, y no son una segunda barra hermana.
+ * columna que cuelga del selector de operación, y no son una segunda barra
+ * hermana.
  *
  * Ojo con el idioma: «Operación» como grupo de este menú es la configuración
  * del país —la conexión de WhatsApp, la tienda, la logística—, y «operaciones»
@@ -33,7 +34,8 @@ import {
  * Cuelgan del enlace de Conversaciones y llevan contador **a propósito**:
  * decisión 1 del nivel 2, el contador tiene que verse desde afuera de la
  * bandeja, porque si solo aparece estando ya adentro no sirve para que entres.
- * Es el mismo criterio por el que el riel le ganó al filo de color en el nivel 1.
+ * Es el mismo criterio por el que la placa de país le ganó al filo de color en
+ * el nivel 1.
  *
  * **Cada vista se llama como la regla que calcula.** «Sin responder» es
  * literalmente eso —el cliente escribió y nadie le contestó—, y «En automático»
