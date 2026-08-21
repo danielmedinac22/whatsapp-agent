@@ -44,7 +44,15 @@ const KATHERINE = "u-katherine";
  * La bandeja abierta en la segunda conversación, con el vendedor configurado
  * —que es lo que enciende el botón de «trabajarla yo»—.
  */
-function abrirBandeja(items = [chat({ id: "c-uno" }), chat({ id: "c-dos" })]) {
+function abrirBandeja(
+  // `agentMode: false` explícito: estas pruebas empujan el botón de OFF a ON, y
+  // la conversación con lo mínimo puesto está en automático, que es la norma de
+  // producción (199 de cada 200).
+  items = [
+    chat({ id: "c-uno", agentMode: false }),
+    chat({ id: "c-dos", agentMode: false }),
+  ],
+) {
   // La conversación abierta viene de la dirección, que es donde vive desde
   // PRO-11: es lo mismo que llegar por un enlace o recargar la página.
   irA("/inbox?c=c-dos");
@@ -63,21 +71,34 @@ function abrirBandeja(items = [chat({ id: "c-uno" }), chat({ id: "c-dos" })]) {
   return items;
 }
 
+/** Un botón de la barra de filtros, que lleva su cuenta pegada al nombre. */
+function filtro(nombre: string): HTMLElement {
+  return screen.getByRole("button", {
+    name: new RegExp(`^${nombre}\\s+\\d+$`),
+  });
+}
+
+/** La cuenta que muestra un filtro. */
+function cuentaDelFiltro(nombre: string): string {
+  return filtro(nombre).textContent!.replace(nombre, "").trim();
+}
+
 /** Deja la pantalla como la deja el asesor antes de tocar un botón. */
 async function medioEscritoYFiltrado(user: ReturnType<typeof userEvent.setup>) {
   const borrador = await screen.findByPlaceholderText("Escribe un mensaje…");
   await user.type(borrador, "ya te confirmo la gu");
-  await user.selectOptions(
-    screen.getByRole("combobox"),
-    "sin_responder",
-  );
+  await user.click(filtro("Sin responder"));
   return borrador;
 }
 
 /** Lo que el asesor tiene que seguir viendo después de tocar cualquier botón. */
 async function nadaSeMovio(borrador: HTMLElement) {
   expect(borrador).toHaveValue("ya te confirmo la gu");
-  expect(screen.getByRole("combobox")).toHaveValue("sin_responder");
+  // El filtro puesto sigue puesto. Lo dice el botón marcado de la barra, que es
+  // lo que reemplazó al selector.
+  expect(
+    screen.getByRole("button", { pressed: true }).textContent,
+  ).toMatch(/^Sin responder/);
   // El chat abierto sigue siendo el mismo, y no el primero de la lista.
   expect(screen.getByText("+502555c-dos")).toBeInTheDocument();
 }
@@ -104,18 +125,22 @@ describe("Agente ON/OFF", () => {
       chat({ id: "c-dos", contactId: "k-mismo", agentMode: false }),
     ]);
 
+    // Las dos filas lo dicen antes de tocar nada: el agente está apagado en el
+    // contacto, así que las dos llevan la etiqueta.
+    const lista = screen.getByRole("list");
+    expect(within(lista).getAllByText("lo llevo yo")).toHaveLength(2);
+
     await user.click(screen.getByRole("button", { name: /Agente: OFF/ }));
     await screen.findByRole("button", { name: /Agente: ON/ });
 
-    // La otra fila lo dice también, y ahora lo dice **escrito**: hasta el
-    // 20-ago-2026 el modo agente era un icono de chispas sin texto y su
-    // contrario la palabra «manual» en cada fila que no lo estaba. Marcar todas
-    // las filas es no marcar ninguna, así que solo se marca la que sí.
-    const lista = screen.getByRole("list");
+    // Y las dos dejan de decirlo. **La etiqueta informa por su ausencia**: desde
+    // el nivel 4 marca la excepción —la que alguien apartó a mano—, porque «en
+    // automático» salía en 199 de cada 200 filas y marcar casi todas es no
+    // marcar ninguna. Es la fila de al lado la que prueba que el cambio es del
+    // contacto y no de la conversación.
     await waitFor(() =>
-      expect(within(lista).getAllByText("en automático")).toHaveLength(2),
+      expect(within(lista).queryAllByText("lo llevo yo")).toHaveLength(0),
     );
-    expect(within(lista).queryAllByText("manual")).toHaveLength(0);
   });
 
   it("no cambia la fila si el servidor no pudo escribirla", async () => {
@@ -175,10 +200,10 @@ describe("«la trabajo yo»", () => {
       chat({ id: "c-dos", sinResponder: true }),
     ]);
 
-    expect(await screen.findByText("Sin responder (2)")).toBeInTheDocument();
+    expect(cuentaDelFiltro("Sin responder")).toBe("2");
     await user.click(screen.getByRole("button", { name: /Trabajarla yo/ }));
 
-    expect(await screen.findByText("Sin responder (1)")).toBeInTheDocument();
+    await waitFor(() => expect(cuentaDelFiltro("Sin responder")).toBe("1"));
   });
 });
 
@@ -201,13 +226,13 @@ describe("marcar confirmación", () => {
     await nadaSeMovio(borrador);
   });
 
-  it("mueve el contador de la tarjeta, que se lee de la misma lista", async () => {
+  it("mueve el contador del filtro, que se lee de la misma lista", async () => {
     const user = userEvent.setup();
     abrirBandeja();
 
     await user.click(screen.getByRole("button", { name: /sin clasificar/ }));
     await user.click(screen.getByText("confirmado"));
 
-    expect(await screen.findByText("Confirmadas (1)")).toBeInTheDocument();
+    await waitFor(() => expect(cuentaDelFiltro("Confirmadas")).toBe("1"));
   });
 });

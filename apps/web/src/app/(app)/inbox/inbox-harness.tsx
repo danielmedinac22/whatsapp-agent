@@ -65,25 +65,38 @@ export function direccion(): string {
   return direccionActual;
 }
 
-/** El botón Atrás del navegador. */
-export function atras() {
+/** Retroceder en el historial. Sin `act`: lo pone quien lo llama. */
+function retroceder() {
   if (pila.length < 2) return;
   pila.pop();
   direccionActual = pila[pila.length - 1]!;
+  avisarDeLaDireccion();
+}
+
+/** El botón Atrás del navegador, pulsado desde fuera de React. */
+export function atras() {
   act(() => {
-    avisarDeLaDireccion();
+    retroceder();
   });
 }
 
 /** Lo que el hilo le pide al navegador para bajar la vista. */
 export const scrollTo = vi.fn();
 
-/** El router de Next, con los métodos que la bandeja llama. */
+/**
+ * El router de Next, con los métodos que la bandeja llama.
+ *
+ * `back` **hace algo**, y no es un capricho: la flecha de volver del hilo en el
+ * teléfono es `router.back()`, que en el navegador es `history.back()` — el
+ * mismo botón que el gesto del sistema. Un espía que no retrocede dejaría la
+ * prueba afirmando que el botón existe, que es justo lo que no hace falta
+ * afirmar.
+ */
 export const router = {
   refresh: vi.fn(),
   replace: vi.fn(),
   push: vi.fn(),
-  back: vi.fn(),
+  back: vi.fn(retroceder),
   forward: vi.fn(),
   prefetch: vi.fn(),
 };
@@ -278,7 +291,14 @@ export function chat(over: Partial<ChatItem> = {}): ChatItem {
     novedadReason: null,
     orderNumber: null,
     producto: null,
-    agentMode: false,
+    /**
+     * **En automático, que es la norma y no la excepción**: 199 de cada 200
+     * conversaciones de producción las lleva el vendedor. La fila lo dice al
+     * revés desde el nivel 4 —marca «lo llevo yo» cuando *no* lo está—, así que
+     * una conversación con lo mínimo puesto tiene que ser una que nadie apartó:
+     * si no, cada fixture limpio arrastraría una etiqueta que no pidió.
+     */
+    agentMode: true,
     deliveryFailed: false,
     preview: "hola",
     unread: 0,
@@ -292,7 +312,8 @@ export function chat(over: Partial<ChatItem> = {}): ChatItem {
     dropiPdfUrl: null,
     assignedTo: null,
     sinResponder: false,
-    mark: null,
+    escalada: false,
+    previewEsNuestro: false,
     ...over,
   };
 }
