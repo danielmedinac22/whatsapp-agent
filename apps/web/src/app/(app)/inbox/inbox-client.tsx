@@ -1778,6 +1778,9 @@ function ConversationPane({
   // agente se puede pulsar dos veces seguidas. Un POST a la vez.
   const [agentBusy, setAgentBusy] = useState(false);
   const [reopenSending, setReopenSending] = useState<string | null>(null);
+  /* En el teléfono las plantillas que no se pueden enviar arrancan plegadas: ver
+     el comentario del pie. En escritorio no se usa, porque ahí caben todas. */
+  const [verNoDisponibles, setVerNoDisponibles] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   /**
    * Si el asesor va al pie del hilo o se subió a leer. Arranca en `true`:
@@ -2172,21 +2175,44 @@ function ConversationPane({
             </div>
           )}
         {windowState === "closed" ? (
-          <div className="space-y-2">
+          /*
+            **El pie no puede comerse la conversación.** Con la ventana cerrada
+            este bloque trae el aviso más una tarjeta por plantilla, y sin límite
+            dejaba el hilo en un fragmento de burbuja a 390 px: unos 500 px de pie
+            sobre una pantalla de 844.
+
+            Se arregla con la misma regla que la fila del nivel 4: **no gastar
+            pantalla en lo que no te deja actuar.** Casi siempre solo una de las
+            plantillas es enviable —las demás explican que les falta un pedido de
+            Shopify o una novedad de Dropi—, así que en el teléfono esas arrancan
+            plegadas detrás de su cuenta. En escritorio se ven todas, que es como
+            estaba.
+
+            El tope de altura es el cinturón: aunque un día haya seis enviables,
+            el hilo conserva más de la mitad de la pantalla.
+          */
+          <div className="max-h-[46svh] space-y-2 overflow-y-auto lg:max-h-none lg:overflow-visible">
             <div className="rounded-lg border border-[var(--color-border)] bg-[var(--state-espera-bg)] p-3 text-xs leading-5 text-[var(--state-espera-fg)]">
-              ⏳ <strong>Ventana de 24h cerrada.</strong> El cliente lleva más
-              de 24 horas sin escribir y WhatsApp solo permite reabrir con una
-              plantilla aprobada por Meta. Cuando responda, el chat libre se
-              habilita de nuevo.
+              ⏳ <strong>Ventana de 24h cerrada.</strong>{" "}
+              <span className="hidden lg:inline">
+                El cliente lleva más de 24 horas sin escribir y WhatsApp solo
+                permite reabrir con una plantilla aprobada por Meta. Cuando
+                responda, el chat libre se habilita de nuevo.
+              </span>
+              <span className="lg:hidden">
+                Solo se puede reabrir con una plantilla.
+              </span>
             </div>
             <div className="space-y-2">
               {reopenOptions.map((opt) => (
                 <div
                   key={opt.templateName}
-                  className={`flex items-start justify-between gap-3 rounded-lg border p-2.5 ${
+                  className={`items-start justify-between gap-3 rounded-lg border p-2.5 lg:flex ${
                     opt.sendable
-                      ? "border-[var(--color-border)]"
-                      : "border-[var(--color-border)] opacity-50"
+                      ? "flex border-[var(--color-border)]"
+                      : `border-[var(--color-border)] opacity-50 ${
+                          verNoDisponibles ? "flex" : "hidden"
+                        }`
                   }`}
                 >
                   <div className="min-w-0 flex-1">
@@ -2212,6 +2238,17 @@ function ConversationPane({
                   </button>
                 </div>
               ))}
+              {/* Solo en el teléfono, y solo si hay algo plegado que mostrar. */}
+              {reopenOptions.some((o) => !o.sendable) && (
+                <button
+                  onClick={() => setVerNoDisponibles((v) => !v)}
+                  className="w-full rounded-lg border border-[var(--color-border)] px-2.5 py-2 text-xs font-medium text-[var(--color-text-dim)] lg:hidden"
+                >
+                  {verNoDisponibles
+                    ? "Ocultar las que no se pueden enviar"
+                    : `${reopenOptions.filter((o) => !o.sendable).length} no se pueden enviar todavía`}
+                </button>
+              )}
             </div>
           </div>
         ) : (
