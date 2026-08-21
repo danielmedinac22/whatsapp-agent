@@ -1345,6 +1345,11 @@ export function InboxClient({
                   it={it}
                   ahora={ahora}
                   abierta={selected?.id === it.id}
+                  // Sin `?c=` la lista abre igualmente la primera —es lo que
+                  // hace el escritorio y no cambia—, pero en el teléfono esa
+                  // conversación **no está abierta**: el hilo no se ve. Una
+                  // fila resaltada diría que sí.
+                  soloEnEscritorio={pedidaEnLaDireccion === null}
                   onAbrir={abrirConversacion}
                 />
               ))}
@@ -1427,11 +1432,18 @@ function FilaDeConversacion({
   it,
   ahora,
   abierta,
+  soloEnEscritorio,
   onAbrir,
 }: {
   it: ChatItem;
   ahora: Date;
   abierta: boolean;
+  /**
+   * Si esta fila está abierta **solo porque es la primera**, y no porque la
+   * dirección la nombre. En el teléfono eso no se resalta: ahí la lista es la
+   * pantalla y no hay ninguna conversación abierta hasta que se toca una.
+   */
+  soloEnEscritorio: boolean;
   onAbrir: (it: ChatItem) => void;
 }) {
   // La ventana cerrada **no la saca de la cuenta**: un lead de hace treinta
@@ -1471,7 +1483,9 @@ function FilaDeConversacion({
       onClick={() => onAbrir(it)}
       className={`mb-0.5 cursor-pointer rounded-lg border px-3 py-2 transition ${
         abierta
-          ? "border-[var(--color-ink)] bg-[var(--color-ink-wash)]"
+          ? soloEnEscritorio
+            ? "border-transparent lg:border-[var(--color-ink)] lg:bg-[var(--color-ink-wash)]"
+            : "border-[var(--color-ink)] bg-[var(--color-ink-wash)]"
           : "border-transparent hover:bg-[var(--color-hover)]"
       }`}
     >
@@ -2004,7 +2018,11 @@ function ConversationPane({
     */
     <div className="app-card flex h-full min-h-0 flex-col overflow-hidden rounded-none border-0 lg:rounded-lg lg:border">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border)] px-3 py-3 lg:px-4">
-        <div className="flex min-w-0 flex-1 items-center gap-1.5">
+        {/* `basis-full` en el teléfono: el nombre se lleva el primer renglón
+            entero y los botones bajan al siguiente. Compartiéndolo, el nombre
+            se recortaba a «Víctor C…» a 390 px, y saber a quién le estás
+            escribiendo es justo lo que la cabecera fija vino a garantizar. */}
+        <div className="flex min-w-0 flex-1 basis-full items-center gap-1.5 lg:basis-auto">
           {/*
             **Volver es el botón de atrás del navegador**, no un estado nuevo: la
             conversación abierta vive en `?c=` desde PRO-11, así que la flecha y
