@@ -5,7 +5,6 @@ import {
   isSalesEscalation,
   parseRecognitionOutcome,
   resolveProductRecognition,
-  resolveRowMark,
   salesThreadEvents,
   type SalesContextFacts,
 } from "@wa/db";
@@ -116,72 +115,6 @@ describe("cómo se lee la columna del resultado", () => {
     // inventarle un estado a una fila que alguien escribió por otra vía.
     expect(parseRecognitionOutcome("quizas")).toBeNull();
     expect(parseRecognitionOutcome("")).toBeNull();
-  });
-});
-
-describe("qué marca la fila de la bandeja", () => {
-  it("una conversación limpia no se marca: marcar todo es no marcar nada", () => {
-    expect(
-      resolveRowMark({
-        ...sinVenta,
-        adReferralAt: dia(3),
-        productIdentified: true,
-        recognitionOutcome: "resolved",
-      }),
-    ).toBeNull();
-  });
-
-  it("la de Katherine, sin anuncio ni escaladas, tampoco se marca", () => {
-    expect(resolveRowMark(sinVenta)).toBeNull();
-  });
-
-  it("se marca la que llegó por anuncio y no tuvo ni un candidato", () => {
-    expect(
-      resolveRowMark({
-        ...sinVenta,
-        adReferralAt: dia(3),
-        recognitionOutcome: "unknown",
-      }),
-    ).toBe("sin_identificar");
-  });
-
-  it("la ambigua se marca distinto, porque le pide al asesor lo contrario", () => {
-    // «Ambiguo» se resuelve desempatando en el chat; «sin producto» se resuelve
-    // cargando el anuncio en el catálogo, que es otra pantalla. Una sola marca
-    // para las dos manda al asesor a hacer lo que no es.
-    expect(resolveRowMark(ambigua)).toBe("ambiguo");
-  });
-
-  it("la escalada gana sobre el producto sin identificar: es una sola cosa que hacer", () => {
-    expect(
-      resolveRowMark({
-        ...sinVenta,
-        adReferralAt: dia(3),
-        recognitionOutcome: "unknown",
-        escalations: [{ at: dia(4), reason: "sales_product_unidentified" }],
-      }),
-    ).toBe("escalada");
-  });
-
-  it("la escalada gana también sobre la duda entre candidatos", () => {
-    expect(
-      resolveRowMark({
-        ...ambigua,
-        escalations: [{ at: dia(4), reason: "sales_product_unidentified" }],
-      }),
-    ).toBe("escalada");
-  });
-
-  it("una conversación con producto reconocido que igual se escaló se marca escalada", () => {
-    expect(
-      resolveRowMark({
-        ...sinVenta,
-        adReferralAt: dia(3),
-        productIdentified: true,
-        recognitionOutcome: "resolved",
-        escalations: [{ at: dia(4), reason: "sales_human_requested" }],
-      }),
-    ).toBe("escalada");
   });
 });
 

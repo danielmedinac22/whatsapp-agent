@@ -158,41 +158,27 @@ export function resolveProductRecognition(
   return facts.adReferralAt === null ? "sin_anuncio" : "sin_identificar";
 }
 
-/**
- * Lo que la **fila** de la bandeja marca del reconocimiento, o `null` si no
- * marca nada.
+/*
+ * **Acá vivían `RowMark` y `resolveRowMark`, y se fueron con PRO-33.**
  *
- * Decisión 3 del nivel 2, textual: *la fila solo marca el reconocimiento cuando
- * NO es limpio; marcar todo es no marcar nada*. Por eso `identificado` y
- * `sin_anuncio` devuelven `null`: una bandeja donde todas las filas llevan
- * insignia es una bandeja sin insignias.
+ * Decían qué marcaba la fila de la bandeja del reconocimiento, con tres
+ * valores: `escalada`, `ambiguo` y `sin_identificar`. El veredicto del nivel 4
+ * dejó la fila marcando **solo lo que pide hacer algo**, y las dos marcas del
+ * reconocimiento se retiraron de ella. No por frecuentes: por lo contrario. En
+ * las 1.770 conversaciones de producción `product_recognition` es `NULL` y
+ * `ad_referral_at` también, así que ninguna de las dos se encendió nunca —
+ * estaban dibujadas porque estaban escritas.
  *
- * `escalada` gana sobre los otros dos porque es lo que le toca hacer a un
- * humano ahora; el producto sin identificar es el motivo más frecuente de la
- * escalada y repetirlo al lado sería decir dos veces lo mismo.
+ * Sin ellas la función se quedaba con una sola rama viva, `escalations.length >
+ * 0`, que es un booleano con una unión de un solo miembro por encima. La lista
+ * del Inbox lo calcula ahora en su `page.tsx`, donde ya tenía las escaladas en
+ * la mano.
  *
- * `ambiguo` y `sin_identificar` son marcas distintas y **no un matiz**: la
- * primera pide desempatar entre los candidatos, ahí mismo, en el chat; la
- * segunda pide ir a cargar el anuncio al catálogo, que es otra pantalla.
- * Mostrarlas iguales manda al asesor a hacer lo que no es, y es exactamente lo
- * que pasaba antes de la `0026`.
- *
- * Solo mira los hechos que decide, y no la ficha entera, para que la lista del
- * Inbox no tenga que resolver nombres de candidatos que la fila no dibuja.
+ * **Lo que la cascada dudó no se perdió**: {@link salesThreadEvents} lo sigue
+ * contando en el hilo, con su fecha, que es donde de verdad se lee — y
+ * {@link resolveProductRecognition}, que es quien lo decide, sigue acá porque
+ * es de quien salen esos eventos.
  */
-export type RowMark = "escalada" | "ambiguo" | "sin_identificar";
-
-export function resolveRowMark(
-  facts: Pick<
-    SalesContextFacts,
-    "adReferralAt" | "productIdentified" | "recognitionOutcome" | "escalations"
-  >,
-): RowMark | null {
-  if (facts.escalations.length > 0) return "escalada";
-  const recognition = resolveProductRecognition(facts);
-  if (recognition === "ambiguo") return "ambiguo";
-  return recognition === "sin_identificar" ? "sin_identificar" : null;
-}
 
 /**
  * Un momento del contexto de venta, para intercalar en el hilo.

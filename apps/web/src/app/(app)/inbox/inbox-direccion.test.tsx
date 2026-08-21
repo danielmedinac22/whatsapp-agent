@@ -75,10 +75,27 @@ function chatAbierto(): string {
     .textContent!.replace("+502555", "");
 }
 
-/** Lo que el selector está mostrando, tal cual se lee. */
-function loQueDiceElSelector(): string {
-  const select = screen.getByRole("combobox") as HTMLSelectElement;
-  return select.selectedOptions[0]?.textContent?.trim() ?? "";
+/**
+ * **Un botón de la barra de filtros**, por su nombre. Lleva la cuenta pegada,
+ * así que su nombre accesible es «Por confirmar 0».
+ */
+function filtro(nombre: string): HTMLElement {
+  return screen.getByRole("button", {
+    name: new RegExp(`^${nombre}\\s+\\d+$`),
+  });
+}
+
+/** El filtro que está puesto, tal cual se lee. */
+function filtroPuesto(): string {
+  return screen
+    .getByRole("button", { pressed: true })
+    .textContent!.replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Cuántas filas se están viendo. */
+function cuantasFilas(): number {
+  return within(screen.getByRole("list")).getAllByRole("listitem").length;
 }
 
 describe("la conversación abierta", () => {
@@ -147,31 +164,35 @@ describe("el filtro de la bandeja de operaciones", () => {
     const user = userEvent.setup();
     const { unmount } = abrir();
 
-    await user.selectOptions(screen.getByRole("combobox"), "pending");
-    expect(loQueDiceElSelector()).toBe("Pendientes (0)");
+    await user.click(filtro("Por confirmar"));
+    expect(filtroPuesto()).toBe("Por confirmar 0");
 
     unmount();
     abrir();
 
-    expect(loQueDiceElSelector()).toBe("Pendientes (0)");
+    expect(filtroPuesto()).toBe("Por confirmar 0");
   });
 
   it("viaja en el enlace, que es lo que lo hace sobrevivir a salir y volver", async () => {
     const user = userEvent.setup();
     abrir();
 
-    await user.selectOptions(screen.getByRole("combobox"), "confirmed");
+    await user.click(filtro("Confirmadas"));
 
     expect(direccion()).toBe("/inbox?v=confirmadas");
   });
 
-  it("las tarjetas de arriba filtran por el mismo camino", async () => {
+  it("la barra reemplazó a las tarjetas y filtra por el mismo camino", async () => {
+    // Las tres tarjetas que filtraban y el selector eran dos controles para un
+    // solo estado. Ahora es uno, y sigue escribiendo la dirección igual: el
+    // token de `?v=` no cambió, así que un enlace de ayer sigue significando lo
+    // mismo mañana.
     const user = userEvent.setup();
     abrir();
 
-    await user.click(screen.getByRole("button", { name: /Por confirmar/ }));
+    await user.click(filtro("Por confirmar"));
 
-    expect(loQueDiceElSelector()).toBe("Pendientes (0)");
+    expect(filtroPuesto()).toBe("Por confirmar 0");
     expect(direccion()).toBe("/inbox?v=pendientes");
   });
 
@@ -180,7 +201,7 @@ describe("el filtro de la bandeja de operaciones", () => {
     abrir();
     await user.click(screen.getByText("Cliente c-dos"));
 
-    await user.selectOptions(screen.getByRole("combobox"), "sin_responder");
+    await user.click(filtro("Sin responder"));
 
     expect(chatAbierto()).toBe("c-dos");
     expect(direccion()).toBe("/inbox?c=c-dos&v=sin-responder");
@@ -231,13 +252,18 @@ describe("cambiar de bandeja", () => {
     expect(filas[0]!.className).toContain("var(--color-ink)");
   });
 
-  it("el selector nunca queda en blanco mientras la lista filtra", () => {
+  it("la barra nunca queda en blanco mientras la lista filtra", () => {
     // «En automático» solo existe en ventas. Antes sobrevivía al salto a
     // operaciones: el selector se quedaba vacío —esa opción no está ahí— y la
     // lista seguía filtrando, así que faltaban filas sin poder ver por qué.
+    //
+    // Y ahora hay un segundo camino al mismo blanco: «En automático» **salió de
+    // la barra** —lo lleva el 89,9% de las conversaciones y no decide nada—,
+    // pero la barra lateral sigue enlazando a él. Por eso se ofrece cuando está
+    // puesto: quien llega por ese enlace ve qué filtro tiene y con qué salir.
     irA("/inbox?b=ventas&v=en-automatico");
     const { rerender } = abrir({ items: DE_VENTAS, bandeja: "ventas" });
-    expect(loQueDiceElSelector()).toBe("En automático (2)");
+    expect(filtroPuesto()).toBe("En automático 2");
 
     // El parámetro se conserva a propósito: es el caso duro —el botón Atrás del
     // navegador, o un enlace viejo—, y cubre de una vez las dos causas del
@@ -245,12 +271,21 @@ describe("cambiar de bandeja", () => {
     // dirección un valor que esta bandeja no ofrece.
     saltarA(rerender, "/inbox?v=en-automatico", TRES, "operaciones");
 
-    expect(loQueDiceElSelector()).toBe("Todas (3)");
-    // Y lo que el selector dice es lo que la lista hace: las tres se ven.
-    expect(screen.getByText("3/3")).toBeInTheDocument();
+    expect(filtroPuesto()).toBe("Todas 3");
+    // Y lo que la barra dice es lo que la lista hace: las tres se ven.
+    expect(cuantasFilas()).toBe(3);
+  });
+
+  it("«en automático» no ocupa sitio en la barra si no está puesto", () => {
+    // Sale en el 89,9% de las conversaciones: un número que casi siempre dice
+    // «casi todas» no decide nada, y en 390 px cada botón cuesta.
+    irA("/inbox?b=ventas");
+    abrir({ items: DE_VENTAS, bandeja: "ventas" });
+
+    expect(filtroPuesto()).toBe("Todas 2");
     expect(
-      within(screen.getByRole("list")).getAllByRole("listitem"),
-    ).toHaveLength(3);
+      screen.queryByRole("button", { name: /^En automático/ }),
+    ).toBeNull();
   });
 
   it("un filtro que la bandeja no ofrece no la deja vacía sin explicación", () => {
@@ -258,7 +293,7 @@ describe("cambiar de bandeja", () => {
     irA("/inbox?v=pendientes&b=ventas");
     abrir({ items: DE_VENTAS, bandeja: "ventas" });
 
-    expect(loQueDiceElSelector()).toBe("Todas (2)");
-    expect(screen.getByText("2/2")).toBeInTheDocument();
+    expect(filtroPuesto()).toBe("Todas 2");
+    expect(cuantasFilas()).toBe(2);
   });
 });

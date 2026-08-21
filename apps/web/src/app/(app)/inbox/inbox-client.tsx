@@ -16,7 +16,6 @@ import { buildReopenOptions, type ReopenOption } from "@/lib/reopen";
 import {
   escalationPhrase,
   isSalesEscalation,
-  type RowMark,
   type SalesThreadEvent,
 } from "@wa/db/sales-context";
 import {
@@ -30,6 +29,7 @@ import { tiempoCompleto, tiempoRelativo } from "./tiempo-relativo";
 import {
   AlertCircle,
   AlertTriangle,
+  ArrowLeft,
   Bot,
   Building2,
   Check,
@@ -47,7 +47,6 @@ import {
   Sparkles,
   Truck,
   Undo2,
-  UserRound,
   X,
   XCircle,
 } from "lucide-react";
@@ -111,10 +110,31 @@ export type ChatItem = {
    */
   sinResponder: boolean;
   /**
-   * Lo que la fila marca del reconocimiento, o `null` si no marca nada — que es
-   * el caso limpio y el de siempre. Lo decide `resolveRowMark` en el servidor.
+   * El vendedor pasó la conversación a una persona. Lo decide el servidor sobre
+   * las escaladas de la conversación (`page.tsx`).
+   *
+   * **Era `mark: RowMark | null`**, con tres valores: `escalada`, `ambiguo` y
+   * `sin_identificar`. Los dos últimos no se dibujan más —ver
+   * {@link ESTADOS_DE_LA_FILA}—, y sin ellos `resolveRowMark` se quedaba con
+   * una sola rama viva: una unión de un solo miembro es un booleano con pasos
+   * de más. Se retiró de `@wa/db` con este ticket.
    */
-  mark: RowMark | null;
+  escalada: boolean;
+  /**
+   * **El último mensaje lo escribimos nosotros**, así que {@link ChatItem.preview}
+   * es nuestro y la fila lo dice con «Tú:».
+   *
+   * En 874 de las 1.770 conversaciones (49,4%) la vista previa es nuestra y se
+   * leía igual que si la hubiera escrito el cliente: Katherine no podía separar
+   * «me escribió y no le contesté» de «ya le contesté» sin abrir la
+   * conversación.
+   *
+   * Lo deriva el servidor de `last_outbound_at > last_inbound_at`, y no es una
+   * aproximación: la vista previa y la fecha del saliente se escriben **en la
+   * misma sentencia** (`huellaDelSaliente`, en el worker), así que la más
+   * reciente de las dos fechas dice de quién es el texto.
+   */
+  previewEsNuestro: boolean;
 };
 
 type FilterKey =
@@ -131,97 +151,164 @@ type FilterKey =
   | "automated";
 
 /**
- * **Los estados de la fila, cada uno con su nombre escrito.**
+ * **Los estados de la fila: solo los que piden hacer algo, cada uno con su
+ * nombre escrito.**
  *
- * Es el veredicto del nivel 3 hecho tabla. Hasta hoy la fila codificaba sus
- * estados de tres maneras distintas y ninguna decía nada: «sin responder» era
- * una rayita roja de dos píxeles a la izquierda, «en automático» un icono de
- * chispas sin texto, y el reconocimiento tres pastillas de tres colores. Quien
- * no se hubiera aprendido el código no podía recorrer la bandeja con la vista,
- * que es literalmente lo que el dueño del producto reportó.
+ * Del nivel 3 se conserva el aspecto —relleno, 800, versalitas, y **ningún
+ * estado codificado solo con color**, que fue criterio de aceptación— y cambia
+ * lo único que el nivel 4 puso en duda: **cuáles se dibujan**. No lo decidió el
+ * gusto, lo decidió la medición del 20-ago-2026 sobre las 200 filas que la
+ * lista trae:
  *
- * **Ningún estado se codifica solo con color**, y por eso cada fila lleva el
- * nombre: fue criterio de aceptación de la ronda y es lo que hizo ganar esta
- * variante sobre las cuatro que dependían de aprenderse un matiz. El color
- * acompaña; los cinco pares están medidos entre 5,25:1 y 6,33:1 sobre AA.
+ * | estado | sale en | se dibuja |
+ * | -- | -- | -- |
+ * | lo llevo yo | 0,5% | sí |
+ * | escalada | 1,8% | sí |
+ * | novedad | 2,1% | sí |
+ * | por confirmar | 10,5% | sí |
+ * | sin responder | ~15% | sí |
+ * | confirmado | 68,5% | **no** |
+ * | ventana cerrada | 86% | **no** |
+ * | en automático | 99,5% | **no** |
  *
- * **Una fila con dos estados los muestra los dos.** No hay «el más importante»:
- * una escalada que además espera respuesta es las dos cosas, y elegir una
- * escondería justo la que hace falta. Lo que cuesta —la fila más alta de las
- * cinco variantes, tres líneas con dos estados— se aceptó a sabiendas.
+ * **Un chip que llevan casi todas las filas no dice nada: su ausencia informa
+ * más que su presencia.** Los tres de abajo le estaban disputando el sitio a
+ * los de arriba, que son los que mandan a hacer algo y son justamente los más
+ * raros. Una fila tranquila no lleva ninguno —es más agresivo de lo que suena—
+ * y eso es lo que deja recorrer la bandeja con la vista, que es el problema que
+ * originó el mapa entero. Se aceptó a sabiendas que se pierde la confirmación
+ * de un vistazo.
  *
- * El orden es el de lectura: primero lo que le pide algo a una persona, al
- * final lo que va solo.
+ * Los tres que dejan de dibujarse **no dejan de existir**: «confirmado» y la
+ * guía siguen en la tira de detalle, que en el teléfono no se dibuja y en
+ * escritorio sí.
+ *
+ * `en automático` no se retiró: **se invirtió**. Marcaba la regla —199 de 200
+ * filas— en vez de la excepción, y lo informativo es la conversación que
+ * alguien tomó a mano.
+ *
+ * `sin producto` y `ambiguo` sí se retiraron enteras, y no por frecuentes sino
+ * al revés: **no se han encendido nunca**. `product_recognition` es `NULL` en
+ * las 1.770 conversaciones de producción y `ad_referral_at` también, así que
+ * las dos marcas del reconocimiento eran código dibujando algo que no existe.
+ * El nivel 3 las puso porque estaban escritas, no porque aparecieran. Lo que la
+ * cascada dudó **se sigue contando en el hilo** (`SalesEventLine`), que es
+ * donde además está fechado.
+ *
+ * `frecuencia` no es documentación: es lo que ordena la tira cuando hay más de
+ * dos y el teléfono tiene que elegir. Ver {@link estadosDeLaFila}.
  */
 const ESTADOS_DE_LA_FILA: readonly {
   label: string;
   title: string;
   /** El modificador de `.state-chip`. Los nombres los fija el spec. */
   modificador: string;
+  /** En qué % de las filas sale. Medido el 20-ago-2026 sobre las 200. */
+  frecuencia: number;
   lo: (it: ChatItem) => boolean;
 }[] = [
   {
-    label: "sin responder",
-    title: "El cliente escribió y todavía nadie le contestó",
-    modificador: "state-chip--espera",
-    // Lo deriva el servidor y **no se recalcula acá**: ver `sinResponderCount`.
-    lo: (it) => it.sinResponder,
+    /**
+     * **La vuelta de «en automático».** El vendedor lleva 199 de cada 200
+     * conversaciones, así que marcarlas era marcarlas todas; lo que hay que
+     * mirar es la que alguien apartó para llevarla a mano.
+     *
+     * `.state-chip--mio` lo crea PRO-32 y comparte el tinte de `--auto`: es el
+     * mismo eje —quién la lleva— dicho por su otra punta.
+     *
+     * **`&& !it.sinResponder` es un desvío de la tabla del spec, y sale de una
+     * medición que aquella no podía hacer.** «Sin responder» **implica** que el
+     * agente está apagado: es la primera de las tres condiciones de
+     * `puedeEstarSinResponder` (`@wa/db`), `if (facts.agentMode) return false`.
+     * Así que las dos etiquetas salen juntas siempre, y sin esto «lo llevo yo»
+     * —que ordena primero, por rara— le comería uno de los dos puestos del
+     * teléfono a «sin responder», que es justo lo que hay que ver: la etiqueta
+     * más importante de la bandeja se iría al `+N` en el 15% de las filas.
+     *
+     * El 0,5% medido cuenta las 200 más recientes; la lista dibuja además
+     * **todas** las que están sin responder, y ese segundo conjunto es entero
+     * de agente apagado. Con la resta, la etiqueta vuelve a decir lo que su
+     * frecuencia promete: la conversación que una persona lleva **y que no
+     * está esperando a nadie**.
+     *
+     * Es la misma regla que esta tira ya aplica dos veces más: «novedad» calla
+     * la pastilla de logística y «por confirmar» calla la de confirmación. El
+     * mismo hecho dicho dos veces no informa el doble.
+     */
+    label: "lo llevo yo",
+    title: "El vendedor automático está apagado: esta la lleva una persona",
+    modificador: "state-chip--mio",
+    frecuencia: 0.5,
+    lo: (it) => !it.agentMode && !it.sinResponder,
   },
   {
     label: "escalada",
     title: "El vendedor pasó esta conversación a un asesor",
     modificador: "state-chip--escalada",
-    lo: (it) => it.mark === "escalada",
+    frecuencia: 1.8,
+    lo: (it) => it.escalada,
   },
   {
     label: "novedad",
     title: "La logística reportó una novedad en la entrega",
     modificador: "state-chip--novedad",
+    frecuencia: 2.1,
     // El estado `novedad` y la bandera son dos caminos al mismo hecho: la
     // novedad puede seguir viva con la guía ya en otro estado.
     lo: (it) => it.dropiHasNovedad || it.dropiStatus === "novedad",
   },
   {
-    label: "sin producto",
-    title:
-      "Llegó por un anuncio y no hubo ni un candidato — hay que cargar el anuncio en el catálogo",
-    modificador: "state-chip--sin-producto",
-    lo: (it) => it.mark === "sin_identificar",
-  },
-  {
     /**
-     * **«Ambiguo» y «sin producto» son dos marcas y no una**, porque le piden
-     * al asesor cosas opuestas: la primera se resuelve desempatando dentro del
-     * chat, la segunda cargando el anuncio en el catálogo, que es otra
-     * pantalla. Hasta la `0026` las dos dejaban la misma huella en la base y la
-     * fila no podía separarlas.
+     * El mismo hecho que la pastilla «pendiente» de la tira de detalle, que por
+     * eso deja de dibujarse cuando esta se enciende: dicho dos veces en la
+     * misma fila no informa el doble.
      *
-     * **El contrato de nombres fija cinco modificadores y esta es la sexta
-     * marca**, así que comparte el tinte de «sin producto» —las dos son el
-     * reconocimiento que no llegó— y se separa por el nombre escrito, que es
-     * justo el canal que el veredicto puso por delante del color. Queda
-     * avisado: si la ronda quiere un par propio, sale del spec y no de acá.
+     * Comparte el tinte de «sin responder» —las dos son cosas que esperan— y se
+     * separan por el nombre, que es el canal que el veredicto puso por delante
+     * del color.
      */
-    label: "ambiguo",
-    title:
-      "El anuncio apunta a varios productos y el vendedor no pudo elegir — hay que desempatar en el chat",
-    modificador: "state-chip--sin-producto",
-    lo: (it) => it.mark === "ambiguo",
+    label: "por confirmar",
+    title: "El pedido todavía no está confirmado",
+    modificador: "state-chip--espera",
+    frecuencia: 10.5,
+    lo: (it) => it.confirmationStatus === "pending",
   },
   {
-    label: "en automático",
-    title: "La lleva el vendedor automático",
-    // Solo se marca cuando lo está: «manual» era una etiqueta en cada fila que
-    // no lo estaba, y marcar todas las filas es no marcar ninguna.
-    modificador: "state-chip--auto",
-    lo: (it) => it.agentMode,
+    label: "sin responder",
+    title: "El cliente escribió y todavía nadie le contestó",
+    modificador: "state-chip--espera",
+    frecuencia: 15,
+    // Lo deriva el servidor y **no se recalcula acá**: ver `sinResponderCount`.
+    lo: (it) => it.sinResponder,
   },
 ];
 
-/** Las etiquetas que le tocan a una fila, en el orden de la tabla. */
-function estadosDe(it: ChatItem) {
-  return ESTADOS_DE_LA_FILA.filter((e) => e.lo(it));
+/**
+ * **Las etiquetas que le tocan a una fila, de la más rara a la más común.**
+ *
+ * El orden **es** la regla del corte y no una preferencia de lectura: en el
+ * teléfono la fila muestra dos, y las que se quedan son las menos frecuentes
+ * porque son las que más dicen. Una fila con «sin responder» y «escalada»
+ * enseña la escalada: sin responder hay 35, escaladas hay 4.
+ *
+ * Es puro y se prueba solo, que es la única forma de afirmar la regla sin
+ * medir píxeles: ver `inbox-lista.test.tsx`.
+ */
+export function estadosDeLaFila(it: ChatItem) {
+  return ESTADOS_DE_LA_FILA.filter((e) => e.lo(it)).sort(
+    (a, b) => a.frecuencia - b.frecuencia,
+  );
 }
+
+/**
+ * Cuántas etiquetas caben en la fila del teléfono.
+ *
+ * Dos, con `+N` para el resto, y en una línea que **no envuelve**. El 77% de las
+ * filas lleva tres estados o más, así que la fila del nivel 3 —la más alta de
+ * las cinco que se probaron— no cabe a 390 px. En escritorio no hay corte: la
+ * fila las sigue mostrando todas.
+ */
+export const ETIQUETAS_EN_EL_TELEFONO = 2;
 
 /**
  * **El filtro de la lista, tal como viaja en `?v=`.**
@@ -244,12 +331,19 @@ const VISTA_DEL_FILTRO: Record<FilterKey, string | null> = {
   automated: "en-automatico",
 };
 
-/** Cómo se llama cada filtro en el selector. */
+/**
+ * Cómo se llama cada filtro en la barra.
+ *
+ * «Pendientes» pasa a **«Por confirmar»**, que es como se llamaba la tarjeta que
+ * contaba lo mismo y como lo llama la fila. El nombre corto existía porque el
+ * filtro era un `<select>` que competía por ancho con un contador; ahora es una
+ * fila de botones que envuelve, así que cada uno puede llamarse por su nombre.
+ */
 const ETIQUETA_DEL_FILTRO: Record<FilterKey, string> = {
   all: "Todas",
-  pending: "Pendientes",
+  pending: "Por confirmar",
   confirmed: "Confirmadas",
-  not_confirmed: "No conf.",
+  not_confirmed: "No confirmadas",
   sin_responder: "Sin responder",
   automated: "En automático",
 };
@@ -285,6 +379,30 @@ const FILTROS_DE_OPERACIONES: readonly FilterKey[] = [
 
 function filtrosDeLaBandeja(esVentas: boolean): readonly FilterKey[] {
   return esVentas ? FILTROS_DE_VENTAS : FILTROS_DE_OPERACIONES;
+}
+
+/**
+ * **Los filtros que la barra ofrece, que ya no son todos los que acepta.**
+ *
+ * «En automático» sale de la barra: lo lleva el 89,9% de las conversaciones, y
+ * un número que casi siempre dice «casi todas» no decide nada. Es el mismo
+ * argumento con el que el chip se retiró de la fila.
+ *
+ * **Pero sigue siendo un filtro válido**, porque la barra lateral enlaza a él
+ * (`nav.ts`, `?v=en-automatico`) y ese archivo es de otro ticket. Sacarlo del
+ * todo dejaría el enlace filtrando en silencio; dejarlo fuera de la barra
+ * mientras la lista filtra es el bug que PRO-11 ya cerró —el selector en blanco
+ * y las filas faltando sin poder ver por qué—. Así que se ofrece **solo cuando
+ * está puesto**: nunca ocupa sitio de más, y quien llega por el enlace ve qué
+ * filtro tiene y con qué botón salir.
+ */
+function filtrosQueSeOfrecen(
+  esVentas: boolean,
+  puesto: FilterKey,
+): readonly FilterKey[] {
+  return filtrosDeLaBandeja(esVentas).filter(
+    (f) => f !== "automated" || puesto === "automated",
+  );
 }
 
 /** El filtro que pide la dirección, acotado a lo que esta bandeja ofrece. */
@@ -454,6 +572,39 @@ const SIN_NOVEDADES: Novedades = { conversaciones: [], faltaAlguna: false };
 /** Qué filas están esperando respuesta, por id. */
 function idsEsperando(filas: readonly ChatItem[]): ReadonlySet<string> {
   return new Set(filas.filter((f) => f.sinResponder).map((f) => f.id));
+}
+
+/**
+ * **Apagar el «Tú:» cuando el evento prueba que quien escribió fue el cliente.**
+ *
+ * `aplicarEvento` no sabe de este campo —la instantánea del evento trae tres
+ * cosas y ninguna es la dirección del mensaje—, así que sin esto una fila que
+ * decía «Tú:» seguiría diciéndolo con el texto del cliente encima, que es
+ * exactamente la confusión que la palabra vino a deshacer.
+ *
+ * **La regla es la de {@link aplicarEvento} con `sinResponder`, calcada**: se
+ * mueve en un solo sentido y solo con certeza. El contador de no leídos sube en
+ * un único sitio de todo el worker —la ingesta de un entrante—, así que verlo
+ * subir *prueba* que el cliente acaba de escribir. Hacia el otro lado no se
+ * toca: que la vista previa vuelva a ser nuestra lo dice el servidor, que es
+ * quien compara las dos fechas.
+ *
+ * Lo que cuesta equivocarse hacia ese otro lado es una fila que muestra nuestro
+ * mensaje sin el «Tú:» hasta el próximo render del servidor. Al revés —el
+ * «Tú:» encima del texto del cliente— es la mentira, y es la que esto cierra.
+ */
+function apagandoElTuSiEscribioElCliente(
+  filas: readonly ChatItem[],
+  antesDelEvento: readonly ChatItem[],
+  conversationId: string,
+): ChatItem[] {
+  const antes = antesDelEvento.find((f) => f.id === conversationId);
+  if (!antes) return [...filas];
+  return filas.map((f) =>
+    f.id === conversationId && f.unread > antes.unread
+      ? { ...f, previewEsNuestro: false }
+      : f,
+  );
 }
 
 export function InboxClient({
@@ -682,7 +833,6 @@ export function InboxClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, query, router, qsActual]);
   const automatedCount = items.filter((item) => item.agentMode).length;
-  const unreadCount = items.reduce((sum, item) => sum + item.unread, 0);
   const pendingCount = items.filter(
     (item) => item.confirmationStatus === "pending",
   ).length;
@@ -708,8 +858,6 @@ export function InboxClient({
    * servidor.
    */
   const sinResponderCount = items.filter((item) => item.sinResponder).length;
-
-  const assignedCount = items.filter((item) => item.assignedTo !== null).length;
 
   const contadorDelFiltro: Record<FilterKey, number> = {
     all: items.length,
@@ -822,8 +970,13 @@ export function InboxClient({
         }
         return;
       }
-      itemsRef.current = decision.filas;
-      setItems(decision.filas);
+      const filas = apagandoElTuSiEscribioElCliente(
+        decision.filas,
+        itemsRef.current,
+        decision.conversationId,
+      );
+      itemsRef.current = filas;
+      setItems(filas);
       // La fila se actualizó **en su sitio**. Que tendría que haber subido lo
       // dice el aviso, y reordenar lo decide el asesor: entrar un mensaje de
       // otro cliente, que todo baje un puesto y abrir la conversación
@@ -941,8 +1094,70 @@ export function InboxClient({
     [refrescar],
   );
 
+  /**
+   * **Cuántos píxeles del fondo de la ventana tapa el teclado del teléfono.**
+   *
+   * En el teléfono el hilo es una capa `fixed` de borde a borde y el campo de
+   * escribir va pegado a su fondo. Eso solo funciona con el teclado cerrado: al
+   * abrirse, el navegador encoge el *viewport visual* pero no el de maquetación,
+   * así que un elemento fijo al fondo se queda **debajo del teclado** — y
+   * escribir es a lo que Katherine viene a esta pantalla.
+   *
+   * `visualViewport` es lo que dice cuánto se encogió. La alternativa era
+   * `interactive-widget=resizes-content` en el `<meta viewport>`, que vive en
+   * `layout.tsx` y es de otro ticket; esto además funciona sin depender de que
+   * ese cambio llegue.
+   *
+   * Vale cero en escritorio y en cualquier navegador sin la API, que es
+   * exactamente el comportamiento de antes.
+   */
+  const [tapadoPorElTeclado, setTapadoPorElTeclado] = useState(0);
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const medir = () => {
+      const tapado = Math.max(
+        0,
+        Math.round(window.innerHeight - vv.height - vv.offsetTop),
+      );
+      // Solo cuando de verdad cambia: `scroll` del viewport visual se dispara
+      // en cada píxel de arrastre, y esto cuelga de un render de la bandeja.
+      setTapadoPorElTeclado((antes) => (antes === tapado ? antes : tapado));
+    };
+    medir();
+    vv.addEventListener("resize", medir);
+    vv.addEventListener("scroll", medir);
+    return () => {
+      vv.removeEventListener("resize", medir);
+      vv.removeEventListener("scroll", medir);
+    };
+  }, []);
+
+  /**
+   * **En el teléfono, si se está mirando el hilo o la lista.**
+   *
+   * Lo dice `?c=`, que es donde la conversación abierta ya vivía desde PRO-11:
+   * no hace falta estado nuevo, y volver es el botón de atrás del navegador sin
+   * que nadie tenga que programarlo. Sin `?c=` la lista abre igualmente la
+   * primera conversación —es lo que hace el escritorio y no cambia—, pero en el
+   * teléfono eso no puede tapar la pantalla: entrar al Inbox es ver la bandeja,
+   * no el chat de quien escribió último.
+   */
+  const hiloAbierto = pedidaEnLaDireccion !== null && selected !== null;
+
   return (
-    <div className="app-page flex min-h-[calc(100vh-46px)] flex-col gap-3 xl:h-[calc(100vh-46px)] xl:min-h-0">
+    /*
+      **El corte del lado a lado pasa de `xl` (1280) a `lg` (1024).** Entre esos
+      dos anchos había una banda muerta: barra lateral desplegada, sitio de
+      sobra, y la lista y el hilo igualmente apilados uno debajo del otro.
+
+      Debajo de `lg` esta pantalla ya no apila nada: **la lista es la pantalla**
+      y el hilo es otra, encima. Por eso el alto deja de fijarse acá —era lo que
+      convertía la lista en una ventana de 55vh con scroll propio— y el marco
+      corre en el flujo del documento, que es como se lee una lista en un
+      teléfono.
+    */
+    <div className="app-page flex flex-col gap-3 lg:h-[calc(100vh-46px)] lg:min-h-0">
       <header className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           {/*
@@ -967,68 +1182,76 @@ export function InboxClient({
           </p>
         </div>
         {/*
-          Cuatro tarjetas en ventas y cinco en confirmación, **y las columnas
-          son siempre tantas como tarjetas**: una rejilla de cuatro con cinco
-          hijos deja la quinta sola en una segunda fila, que es como se veía
-          antes de este arreglo.
+          **El filtro lleva la cuenta, y el bloque de cinco tarjetas desaparece.**
 
-          Las dos que cambian dicen por qué. «Por confirmar» no existe en
-          ventas: una conversación con pedido ya no está en esta bandeja, así
-          que el contador valdría cero siempre — ruido donde debería haber
-          señal. Y «Modo agente» sale de ventas porque la barra lateral ya lo
-          dice a 20 cm de aquí, con el nombre del vendedor y su contador; el
-          mismo número dos veces en la misma pantalla no informa, distrae.
+          Eran dos cosas separadas diciendo lo mismo —«Sin responder: 35» en una
+          tarjeta y «Sin responder (35)» en el selector de al lado—, y en 390 px
+          no caben las dos. Las tres tarjetas que filtraban eran además las
+          únicas que hacían algo; las otras dos, «Sin leer» y «Modo agente»,
+          eran números que nadie podía usar para llegar a ninguna parte.
+
+          **Envuelve, no desliza**: fue veredicto explícito de la ronda. Un
+          carrusel horizontal esconde opciones detrás de un gesto que no se
+          anuncia, y acá hay tres o cinco, no veinte.
+
+          Y no se dibuja con la bandeja vacía. Un filtro sobre cero filas no
+          filtra, y cinco ceros seguidos se leen como una avería.
         */}
-        <div
-          className={`grid grid-cols-2 gap-2 ${esVentas ? "lg:grid-cols-4" : "lg:grid-cols-5"}`}
-        >
-          <SummaryCard
-            label="Conversaciones"
-            value={String(items.length)}
-            active={filter === "all"}
-            onClick={() => ponerFiltro("all")}
-          />
-          <SummaryCard label="Sin leer" value={String(unreadCount)} />
-          {!esVentas && (
-            <SummaryCard label="Modo agente" value={String(automatedCount)} />
-          )}
-          {esVentas ? (
-            <SummaryCard label="Asignadas" value={String(assignedCount)} />
-          ) : (
-            <SummaryCard
-              label="Por confirmar"
-              value={String(pendingCount)}
-              accent={pendingCount > 0 ? "text-[var(--color-warn)]" : undefined}
-              active={filter === "pending"}
-              onClick={() => ponerFiltro("pending")}
-            />
-          )}
-          {/* El mismo nombre y la misma regla que la vista de la barra: un
-              nombre por número. Antes decía «Necesita atención» acá y
-              «Necesitan atención» allá, y contaban cosas distintas. */}
-          <SummaryCard
-            label="Sin responder"
-            value={String(sinResponderCount)}
-            accent={
-              sinResponderCount > 0 ? "text-[var(--color-danger)]" : undefined
-            }
-            active={filter === "sin_responder"}
-            onClick={() => ponerFiltro("sin_responder")}
-          />
-        </div>
+        {items.length > 0 && (
+          <div
+            role="group"
+            aria-label="Filtrar la bandeja"
+            className="flex flex-wrap items-center gap-1.5"
+          >
+            {filtrosQueSeOfrecen(esVentas, filter).map((f) => {
+              const activo = filter === f;
+              // El realce de «Sin responder» es el mismo que tenía su tarjeta y
+              // por lo mismo: solo cuando hay alguna. Un rojo permanente sobre
+              // un cero es el aviso que nadie mira.
+              const urgente =
+                !activo && f === "sin_responder" && sinResponderCount > 0;
+              return (
+                <button
+                  key={f}
+                  type="button"
+                  aria-pressed={activo}
+                  onClick={() => ponerFiltro(f)}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs font-semibold transition ${
+                    activo
+                      ? "border-[var(--color-ink)] bg-[var(--color-ink)] text-[var(--color-card)]"
+                      : urgente
+                        ? "border-[var(--state-espera-fg)] bg-[var(--state-espera-bg)] text-[var(--state-espera-fg)]"
+                        : "border-[var(--color-border)] bg-[var(--color-card)] text-[var(--color-text-dim)] hover:border-[var(--color-border-strong)] hover:bg-[var(--color-hover)]"
+                  }`}
+                >
+                  {/* El espacio es del nombre accesible y no del dibujo —lo
+                      que separa las dos cajas es el `gap`—: sin él un lector de
+                      pantalla lee «Todas3». */}
+                  {ETIQUETA_DEL_FILTRO[f]}{" "}
+                  <span className="font-extrabold tabular-nums opacity-70">
+                    {contadorDelFiltro[f]}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </header>
 
-      <div className="grid min-h-0 flex-1 gap-3 xl:grid-cols-[336px_1fr]">
-        {/* Debajo de xl la altura la fija el viewport, no el contenido: sin esto
-            las 200 conversaciones estiran la lista y el hilo queda 21.000 px
-            más abajo. min-w-0 deja que el `truncate` de cada fila funcione. */}
+      <div className="grid min-h-0 gap-3 lg:flex-1 lg:grid-cols-[336px_1fr]">
         {/*
           **La lista comparte el fondo de la pantalla y el hilo va sobre
           blanco**, y eso —y no un borde grueso ni un espacio— es lo que las
           separa. Es el criterio del nivel 2, y por eso este `aside` dejó de ser
           `.app-card`: dos tarjetas lado a lado se leían como un continuo.
+
+          El alto y el scroll propio son de `lg` para arriba, donde la lista es
+          una columna dentro de una pantalla que no scrollea. En el teléfono la
+          lista **es** la pantalla y scrollea con el documento: encerrarla en
+          55vh era lo que dejaba el campo de escribir a tres pantallas de
+          distancia. `min-w-0` deja que el `truncate` de cada fila funcione.
         */}
-        <aside className="flex h-[55vh] min-h-[320px] min-w-0 flex-col overflow-hidden rounded-lg xl:h-auto xl:min-h-[520px]">
+        <aside className="flex min-w-0 flex-col rounded-lg lg:h-auto lg:min-h-[520px] lg:overflow-hidden">
           <div className="flex flex-col gap-2 border-b border-[var(--color-border)] px-3 py-2.5">
             <div className="relative">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--color-text-soft)]" />
@@ -1049,34 +1272,18 @@ export function InboxClient({
                 </button>
               )}
             </div>
-            <div className="flex min-w-0 items-center justify-between gap-2">
-            <p className="shrink-0 text-sm font-semibold">
-              {query ? (searching ? "Buscando…" : "Resultados") : "Conversaciones"}
-            </p>
-            {/* min-w-0 en el contenedor y shrink-0 en el contador: el selector
-                es lo único que puede encoger. Sin esto, una opción larga —«Las
-                lleva Sebastián (99)»— empuja el «99/115» fuera de la tarjeta. */}
-            <div className="flex min-w-0 items-center gap-2">
-              {/* Las opciones salen de la MISMA lista de la que sale el filtro
-                  que `?v=` acepta (`filtrosDeLaBandeja`). Mientras fueron dos
-                  listas podían discrepar, y discrepaban: al cambiar de bandeja
-                  el selector se quedaba en blanco mientras la lista filtraba. */}
-              <select
-                value={filter}
-                onChange={(e) => ponerFiltro(e.target.value as FilterKey)}
-                className="h-9 min-w-0 rounded-md border border-[var(--color-border)] bg-[var(--color-card)] px-2 text-xs text-[var(--color-text-dim)] outline-none transition hover:border-[var(--color-border-strong)] focus:border-[var(--color-ink)] lg:h-7"
-              >
-                {filtrosDeLaBandeja(esVentas).map((f) => (
-                  <option key={f} value={f}>
-                    {ETIQUETA_DEL_FILTRO[f]} ({contadorDelFiltro[f]})
-                  </option>
-                ))}
-              </select>
-              <span className="shrink-0 rounded-md border border-[var(--color-border)] bg-[var(--color-card)] px-2 py-1 text-xs text-[var(--color-text-dim)]">
-                {visibleItems.length}/{items.length}
-              </span>
-            </div>
-            </div>
+            {/*
+              **El selector se fue con las tarjetas**, y el contador `n/m` con
+              él: los tres decían lo mismo que la barra de filtros de arriba, y
+              dos controles para un solo estado es cómo se llega a que discrepen.
+              Lo que queda es lo que el selector no decía: si la lista que se
+              está mirando es la bandeja o el resultado de una búsqueda.
+            */}
+            {query && (
+              <p className="text-sm font-semibold">
+                {searching ? "Buscando…" : "Resultados"}
+              </p>
+            )}
           </div>
           {/*
             **El aviso de novedades.** La lista no se reordena sola: la fila que
@@ -1099,7 +1306,7 @@ export function InboxClient({
               · ponerse al día
             </button>
           )}
-          <ul className="flex-1 overflow-y-auto p-2">
+          <ul className="p-2 lg:flex-1 lg:overflow-y-auto">
           {visibleItems.length === 0 && (
             <li className="p-4 text-center text-sm text-[var(--color-text-dim)]">
               {query && items.length === 0
@@ -1123,13 +1330,13 @@ export function InboxClient({
                       y sin achicarla acá: es el mismo encabezado de sección que
                       el resto del panel, y que el Inbox por fin tenga uno es
                       justo lo que el diagnóstico echaba de menos. */}
-                  <h2 className="app-section">
-                    {seccion.nombre}
-                    <span className="font-normal text-[var(--color-text-dim)]">
-                      {" "}
-                      · {seccion.filas.length}
-                    </span>
-                  </h2>
+                  {/* **Sin la cuenta.** La llevaba porque no había dónde
+                      ponerla; ahora la barra de filtros de arriba dice cuántas
+                      hay de cada cosa, y repetirlo acá es el mismo número dos
+                      veces en la misma pantalla. La costura sí se queda: es lo
+                      que impide que las viejas sin responder se mezclen con lo
+                      de hoy. */}
+                  <h2 className="app-section">{seccion.nombre}</h2>
                 </li>
               )}
               {seccion.filas.map((it) => (
@@ -1138,8 +1345,11 @@ export function InboxClient({
                   it={it}
                   ahora={ahora}
                   abierta={selected?.id === it.id}
-                  sellerConfigured={sellerName !== null}
-                  currentUserId={currentUserId}
+                  // Sin `?c=` la lista abre igualmente la primera —es lo que
+                  // hace el escritorio y no cambia—, pero en el teléfono esa
+                  // conversación **no está abierta**: el hilo no se ve. Una
+                  // fila resaltada diría que sí.
+                  soloEnEscritorio={pedidaEnLaDireccion === null}
                   onAbrir={abrirConversacion}
                 />
               ))}
@@ -1148,7 +1358,31 @@ export function InboxClient({
         </ul>
         </aside>
 
-        <section className="flex h-[80vh] min-h-[420px] min-w-0 flex-col xl:h-auto xl:min-h-0">
+        {/*
+          **El hilo es una pantalla completa en el teléfono, y una columna en
+          escritorio.** Es el mismo componente: lo único que cambia es el marco.
+
+          Encima de todo y no debajo de la barra: el hilo trae su propia
+          cabecera con la flecha de volver y el nombre del cliente, así que la
+          barra de la aplicación repetiría un renglón de cromo en la pantalla
+          que menos espacio tiene.
+
+          El `padding-bottom` es lo que el teclado tapa. Ver
+          {@link tapadoPorElTeclado}: sin él, el campo de escribir queda detrás
+          del teclado justo cuando se lo va a usar.
+        */}
+        <section
+          style={
+            hiloAbierto && tapadoPorElTeclado > 0
+              ? { paddingBottom: tapadoPorElTeclado }
+              : undefined
+          }
+          className={
+            hiloAbierto
+              ? "fixed inset-0 z-30 flex flex-col bg-[var(--color-surface)] lg:static lg:z-auto lg:min-w-0 lg:bg-transparent lg:pb-0"
+              : "hidden min-w-0 flex-col lg:flex"
+          }
+        >
         {selected ? (
           <ConversationPane
             key={selected.id}
@@ -1175,30 +1409,41 @@ export function InboxClient({
  *
  * Tres renglones, y en ese orden por una razón cada uno:
  *
- * 1. **quién y cuándo** — el tiempo pegado al nombre, como en WhatsApp, que es
- *    donde el asesor ya lo busca;
- * 2. **qué dijo** — la vista previa, y el contador de no leídos a su derecha;
- * 3. **cómo está** — las etiquetas de estado, cada una con su nombre escrito,
- *    y detrás el detalle del pedido, más callado.
+ * 1. **quién, cuánto y cuándo** — el nombre, lo que no se ha leído y el tiempo,
+ *    como en WhatsApp, que es donde el asesor ya lo busca;
+ * 2. **qué dijo, y quién lo dijo** — la vista previa a lo ancho, con «Tú:»
+ *    delante cuando el último mensaje es nuestro;
+ * 3. **qué hay que hacer** — las etiquetas, y solo las que piden algo.
  *
- * Con dos estados son tres líneas y **es la fila más alta de las cinco
- * variantes que se probaron**: entran menos filas en pantalla y se eligió
- * legibilidad sobre densidad, a sabiendas. Apretarla para que entren más es
- * desandar el veredicto.
+ * El tercer renglón es donde el nivel 4 cambió la fila del nivel 3, y no de
+ * aspecto: **de contenido**. Antes llevaba todo lo que la conversación era —los
+ * estados, la ventana, quién la trabaja, la confirmación, la guía, la
+ * entrega—, y a 390 px eso no cabe: el 77% de las filas lleva tres estados o
+ * más. Ahora, en el teléfono, lleva **dos como máximo y en una sola línea**,
+ * con `+N` detrás y solo de lo que pide acción; el resto no se dibuja. En
+ * escritorio la fila sigue mostrándolo todo, que es lo que el veredicto dejó
+ * escrito: el corte de dos chips es del teléfono.
+ *
+ * **Una fila tranquila no lleva ningún renglón de etiquetas**, y ahí es donde
+ * esto se paga y se cobra: entran muchas más conversaciones en una pantalla, y
+ * se pierde la confirmación de un vistazo.
  */
 function FilaDeConversacion({
   it,
   ahora,
   abierta,
-  sellerConfigured,
-  currentUserId,
+  soloEnEscritorio,
   onAbrir,
 }: {
   it: ChatItem;
   ahora: Date;
   abierta: boolean;
-  sellerConfigured: boolean;
-  currentUserId: string | null;
+  /**
+   * Si esta fila está abierta **solo porque es la primera**, y no porque la
+   * dirección la nombre. En el teléfono eso no se resalta: ahí la lista es la
+   * pantalla y no hay ninguna conversación abierta hasta que se toca una.
+   */
+  soloEnEscritorio: boolean;
   onAbrir: (it: ChatItem) => void;
 }) {
   // La ventana cerrada **no la saca de la cuenta**: un lead de hace treinta
@@ -1207,20 +1452,56 @@ function FilaDeConversacion({
   // poder escribir suelto.
   const ventanaCerrada =
     it.sinResponder && windowStateOf(it.lastInboundAt) === "closed";
-  const estados = estadosDe(it);
+  const estados = estadosDeLaFila(it);
+  /** Las que el teléfono no dibuja, y que el `+N` cuenta. */
+  const deMas = estados.slice(ETIQUETAS_EN_EL_TELEFONO);
+  /**
+   * Si hay algo en la tira de detalle, que solo se dibuja en escritorio.
+   *
+   * Hace falta saberlo por adelantado para no dejar un renglón vacío con su
+   * margen encima de cada fila tranquila del teléfono, que es justo lo que este
+   * ticket vino a recuperar: sitio.
+   */
+  // «Por confirmar» ya es una etiqueta de estado, así que la pastilla
+  // «pendiente» sería el mismo hecho dos veces en la misma tira — el trato que
+  // «novedad» y la pastilla de logística ya tenían entre ellas.
+  const detalleDeConfirmacion =
+    it.confirmationStatus !== "unknown" && it.confirmationStatus !== "pending";
+  const guiaDeDetalle =
+    it.dropiStatus !== null &&
+    it.dropiStatus !== "unknown" &&
+    it.dropiStatus !== "novedad"
+      ? it.dropiStatus
+      : null;
+  const hayDetalle =
+    ventanaCerrada ||
+    detalleDeConfirmacion ||
+    guiaDeDetalle !== null ||
+    it.deliveryFailed;
   return (
     <li
       onClick={() => onAbrir(it)}
       className={`mb-0.5 cursor-pointer rounded-lg border px-3 py-2 transition ${
         abierta
-          ? "border-[var(--color-ink)] bg-[var(--color-ink-wash)]"
+          ? soloEnEscritorio
+            ? "border-transparent lg:border-[var(--color-ink)] lg:bg-[var(--color-ink-wash)]"
+            : "border-[var(--color-ink)] bg-[var(--color-ink-wash)]"
           : "border-transparent hover:bg-[var(--color-hover)]"
       }`}
     >
-      <div className="flex items-baseline justify-between gap-2">
-        <p className="truncate font-medium text-[var(--color-text)]">
+      <div className="flex items-baseline gap-2">
+        <p className="min-w-0 flex-1 truncate font-medium text-[var(--color-text)]">
           {it.name}
         </p>
+        {/* **El contador sube al primer renglón**, con el nombre y el tiempo:
+            los tres son «de quién y cuándo». Abajo le estaba robando ancho a la
+            vista previa, que a 390 px es lo que hace falta leer entero — y más
+            ahora, que además puede empezar con «Tú:». */}
+        {it.unread > 0 && (
+          <span className="shrink-0 rounded-md bg-[var(--color-ink)] px-1.5 py-0.5 text-[11px] font-semibold text-[var(--color-card)]">
+            {it.unread}
+          </span>
+        )}
         {/*
           **El tiempo se dice en relativo**, y esto es lo que arregla la mentira
           más vieja de esta lista: la bandeja mezcla a propósito las 200 más
@@ -1241,67 +1522,82 @@ function FilaDeConversacion({
         </span>
       </div>
 
-      <div className="mt-0.5 flex items-center justify-between gap-2">
-        <p className="truncate text-xs text-[var(--color-text-dim)]">
-          {it.preview ?? "—"}
-        </p>
-        {it.unread > 0 && (
-          <span className="shrink-0 rounded-md bg-[var(--color-ink)] px-1.5 py-0.5 text-[11px] font-semibold text-[var(--color-card)]">
-            {it.unread}
-          </span>
-        )}
-      </div>
+      {/*
+        **«Tú:» cuando el último mensaje es nuestro.** Es una palabra, y separa
+        «me escribió y no le contesté» de «ya le contesté» sin abrir la
+        conversación — que era imposible en 874 de las 1.770 filas, la mitad de
+        la bandeja. `.row-prev-mine` la fija el contrato de nombres.
+      */}
+      <p className="mt-0.5 truncate text-xs text-[var(--color-text-dim)]">
+        {it.previewEsNuestro && <span className="row-prev-mine">Tú:</span>}
+        {it.previewEsNuestro ? " " : ""}
+        {it.preview ?? "—"}
+      </p>
 
-      {/* Los estados primero y el detalle detrás, en la misma tira: lo que se
-          recorre con la vista va delante de lo que se lee al detenerse. */}
-      <div className="mt-1.5 flex flex-wrap items-center gap-1">
-        {estados.map((e) => (
-          <span
-            key={e.label}
-            title={e.title}
-            className={`state-chip ${e.modificador}`}
-          >
-            {e.label}
+      {/*
+        **La tira: los estados delante y el detalle detrás.**
+
+        En el teléfono no envuelve y solo lleva dos estados, con `+N`; el detalle
+        entero no se dibuja. En escritorio envuelve y va todo, que es la fila de
+        siempre. `lg:contents` es lo que deja que el detalle desaparezca en
+        bloque sin meter una caja intermedia que rompa la tira.
+
+        El renglón no existe cuando no hay nada que poner en él: sin esto, cada
+        fila tranquila del teléfono pagaría el margen de una tira vacía.
+      */}
+      {(estados.length > 0 || hayDetalle) && (
+        <div
+          className={`mt-1.5 items-center gap-1 overflow-hidden lg:flex lg:flex-wrap lg:overflow-visible ${
+            estados.length > 0 ? "flex" : "hidden"
+          }`}
+        >
+          {estados.map((e, i) => (
+            <span
+              key={e.label}
+              title={e.title}
+              className={`state-chip ${e.modificador} ${
+                i >= ETIQUETAS_EN_EL_TELEFONO ? "hidden lg:inline-flex" : ""
+              }`}
+            >
+              {e.label}
+            </span>
+          ))}
+          {deMas.length > 0 && (
+            <span
+              title={`También: ${deMas.map((e) => e.label).join(", ")}`}
+              className="chip-more lg:hidden"
+            >
+              +{deMas.length}
+            </span>
+          )}
+          <span className="hidden lg:contents">
+            {ventanaCerrada && (
+              <span
+                title="El cliente lleva más de 24 horas sin escribir: WhatsApp solo permite reabrir con una plantilla"
+                className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] uppercase ${DETALLE_ESPERA}`}
+              >
+                <Clock className="h-3 w-3" />
+                ventana cerrada
+              </span>
+            )}
+            {detalleDeConfirmacion && (
+              <ConfirmationChip status={it.confirmationStatus} />
+            )}
+            {/* «Novedad» ya es una etiqueta de estado: acá la pastilla de
+                logística sería el mismo hecho dicho dos veces en la misma tira. */}
+            {guiaDeDetalle !== null && <DropiChip status={guiaDeDetalle} />}
+            {it.deliveryFailed && (
+              <span
+                title="El último mensaje que enviamos no se entregó — revisa si el número es válido"
+                className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] uppercase ${DETALLE_MAL}`}
+              >
+                <AlertCircle className="h-3 w-3" />
+                no entregado
+              </span>
+            )}
           </span>
-        ))}
-        {ventanaCerrada && (
-          <span
-            title="El cliente lleva más de 24 horas sin escribir: WhatsApp solo permite reabrir con una plantilla"
-            className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] uppercase ${DETALLE_ESPERA}`}
-          >
-            <Clock className="h-3 w-3" />
-            ventana cerrada
-          </span>
-        )}
-        {/* Sin vendedor configurado la fila es la de siempre: la asignación no
-            se puede tomar, así que tampoco se enseña. */}
-        {sellerConfigured && it.assignedTo && (
-          <span
-            title={`La está trabajando ${it.assignedTo.label}`}
-            className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] uppercase ${DETALLE_BIEN}`}
-          >
-            <UserRound className="h-3 w-3" />
-            {it.assignedTo.id === currentUserId
-              ? "la trabajo yo"
-              : it.assignedTo.label}
-          </span>
-        )}
-        <ConfirmationChip status={it.confirmationStatus} />
-        {/* «Novedad» ya es una etiqueta de estado: acá la pastilla de logística
-            sería el mismo hecho dicho dos veces en la misma tira. */}
-        {it.dropiStatus &&
-          it.dropiStatus !== "unknown" &&
-          it.dropiStatus !== "novedad" && <DropiChip status={it.dropiStatus} />}
-        {it.deliveryFailed && (
-          <span
-            title="El último mensaje que enviamos no se entregó — revisa si el número es válido"
-            className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] uppercase ${DETALLE_MAL}`}
-          >
-            <AlertCircle className="h-3 w-3" />
-            no entregado
-          </span>
-        )}
-      </div>
+        </div>
+      )}
     </li>
   );
 }
@@ -1451,6 +1747,9 @@ function ConversationPane({
    */
   suscribirse: (fn: (ev: WaEvent) => void) => () => void;
 }) {
+  // Solo para volver: en el teléfono el hilo tapa la lista, y salir es
+  // retroceder en el historial, que es donde `?c=` ya está escrito.
+  const router = useRouter();
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [events, setEvents] = useState<WireEvent[]>([]);
   const [seller, setSeller] = useState<string>("El vendedor");
@@ -1706,11 +2005,43 @@ function ConversationPane({
   };
 
   return (
-    <div className="app-card flex h-full min-h-0 flex-col overflow-hidden">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border)] px-4 py-3">
-        <div>
-          <p className="text-base font-semibold">{chat.name}</p>
-          <p className="text-xs text-[var(--color-text-dim)]">+{chat.to}</p>
+    /*
+      **En el teléfono el hilo va a sangre**: es la pantalla entera, y una
+      tarjeta redondeada con borde dejaría cuatro esquinas de fondo a la vista.
+      De `lg` para arriba vuelve a ser la tarjeta de siempre, que es lo que la
+      separa de la lista.
+
+      La cabecera y el compositor **no se van con el scroll** y eso ya estaba
+      resuelto: son hijos `flex-none` de una columna con `overflow-hidden`, y el
+      único que scrollea es el hilo. Lo que faltaba era que esta caja midiera la
+      ventana en vez de 80vh dentro de una página que scrollea.
+    */
+    <div className="app-card flex h-full min-h-0 flex-col overflow-hidden rounded-none border-0 lg:rounded-lg lg:border">
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border)] px-3 py-3 lg:px-4">
+        {/* `basis-full` en el teléfono: el nombre se lleva el primer renglón
+            entero y los botones bajan al siguiente. Compartiéndolo, el nombre
+            se recortaba a «Víctor C…» a 390 px, y saber a quién le estás
+            escribiendo es justo lo que la cabecera fija vino a garantizar. */}
+        <div className="flex min-w-0 flex-1 basis-full items-center gap-1.5 lg:basis-auto">
+          {/*
+            **Volver es el botón de atrás del navegador**, no un estado nuevo: la
+            conversación abierta vive en `?c=` desde PRO-11, así que la flecha y
+            el gesto del sistema hacen exactamente lo mismo y no se pueden
+            desincronizar. En escritorio no hay a dónde volver: la lista está al
+            lado.
+          */}
+          <button
+            type="button"
+            onClick={() => router.back()}
+            aria-label="Volver a la bandeja"
+            className="-ml-1.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-[var(--color-text-dim)] transition hover:bg-[var(--color-hover)] lg:hidden"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <div className="min-w-0">
+            <p className="truncate text-base font-semibold">{chat.name}</p>
+            <p className="text-xs text-[var(--color-text-dim)]">+{chat.to}</p>
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {sellerConfigured && (
@@ -2073,58 +2404,6 @@ function SalesEventLine({
       </span>
     </div>
   );
-}
-
-function SummaryCard({
-  label,
-  value,
-  accent,
-  active,
-  onClick,
-}: {
-  label: string;
-  value: string;
-  accent?: string;
-  active?: boolean;
-  onClick?: () => void;
-}) {
-  const clickable = typeof onClick === "function";
-  const className = `app-card min-w-[132px] px-3 py-2 text-left transition ${
-    clickable ? "cursor-pointer" : ""
-  } ${
-    active
-      ? "border-[var(--color-ink)] bg-[var(--color-ink-wash)]"
-      : clickable
-        ? "hover:border-[var(--color-border-strong)] hover:bg-[var(--color-hover)]"
-        : ""
-  }`;
-  const inner = (
-    <>
-      {/* `.app-label` es exactamente esto —el rótulo de un dato— y es adonde
-          fueron a parar los textos que estaban en el tono «suave», que da
-          2,85:1 y dejó de ser color de texto. */}
-      <p className="app-label">{label}</p>
-      {/*
-        Un solo color y no dos apilados. Con `text-[var(--color-text)] ${accent}`
-        el que gana lo decide **el orden en la hoja generada**, no el orden en el
-        atributo: medido el 20-ago-2026 sobre el CSS compilado, `--color-warn`
-        salía después de `--color-text` y `--color-danger` antes, así que «Por
-        confirmar» se pintaba de ámbar y «Sin responder» se quedaba en negro. El
-        contador que este repo ya pagó caro no puede depender de eso.
-      */}
-      <p className={`mt-1 text-xl font-semibold ${accent ?? "text-[var(--color-text)]"}`}>
-        {value}
-      </p>
-    </>
-  );
-  if (clickable) {
-    return (
-      <button type="button" onClick={onClick} className={className}>
-        {inner}
-      </button>
-    );
-  }
-  return <div className={className}>{inner}</div>;
 }
 
 function DropiChip({ status }: { status: DropiStatus }) {

@@ -22,7 +22,12 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => useSearchParamsFingido(),
 }));
 
-import { InboxClient } from "./inbox-client";
+import {
+  ETIQUETAS_EN_EL_TELEFONO,
+  estadosDeLaFila,
+  InboxClient,
+  type ChatItem,
+} from "./inbox-client";
 import { tiempoRelativo } from "./tiempo-relativo";
 import {
   chat,
@@ -89,6 +94,32 @@ function fila(id: string): HTMLElement {
   return within(screen.getByRole("list"))
     .getByText(`Cliente ${id}`)
     .closest("li")!;
+}
+
+/**
+ * **Un botón de la barra de filtros**, por su nombre.
+ *
+ * La barra reemplazó a la vez al bloque de cinco tarjetas y al `<select>`: los
+ * dos decían lo mismo y en 390 px no caben los dos. Cada botón lleva su cuenta
+ * pegada, así que el nombre accesible es «Sin responder 6».
+ */
+function filtro(nombre: string): HTMLElement {
+  return screen.getByRole("button", {
+    name: new RegExp(`^${nombre}\\s+\\d+$`),
+  });
+}
+
+/** La cuenta que muestra un filtro. */
+function cuentaDelFiltro(nombre: string): string {
+  return filtro(nombre).textContent!.replace(nombre, "").trim();
+}
+
+/** El filtro que está puesto, tal como se lee. */
+function filtroPuesto(): string {
+  return screen
+    .getByRole("button", { pressed: true })
+    .textContent!.replace(/\s+/g, " ")
+    .trim();
 }
 
 /**
@@ -188,7 +219,7 @@ describe("un mensaje entrante", () => {
 
     expect(await screen.findByText(/1 conversación con novedades/)).toBeInTheDocument();
     expect(ordenDeLaLista()).toEqual(["c-uno", "c-dos", "c-tres"]);
-    expect(screen.getByText("3/3")).toBeInTheDocument();
+    expect(cuentaDelFiltro("Todas")).toBe("3");
   });
 
   it("un acuse de lectura no cambia la lista ni avisa de nada", async () => {
@@ -500,6 +531,99 @@ function etiquetasDe(id: string): string[] {
   );
 }
 
+/**
+ * **La regla del corte: solo lo que pide hacer algo, y en el teléfono dos.**
+ *
+ * Es lógica pura y por eso se prueba contra la función y no contra píxeles: el
+ * corte a dos lo aplica el CSS —en escritorio la fila las sigue mostrando
+ * todas— y una prueba en jsdom no puede ver un `display:none` de una media
+ * query. Lo que sí decide esta función, y es lo que el veredicto votó, es
+ * **cuáles hay y en qué orden**: mostrar dos sin decidir cuáles no es una regla.
+ */
+describe("qué etiquetas le tocan a una fila", () => {
+  const nombres = (it: ChatItem) => estadosDeLaFila(it).map((e) => e.label);
+
+  /**
+   * **La fila más cargada que se puede armar, que lleva cuatro y no cinco.**
+   *
+   * Las etiquetas son cinco, pero dos de ellas **no pueden salir juntas**: «sin
+   * responder» implica el agente apagado (`puedeEstarSinResponder`, en
+   * `@wa/db`) y «lo llevo yo» es precisamente eso, así que la segunda se calla
+   * cuando está la primera. El techo real de la tira es cuatro.
+   *
+   * Está escrito acá porque es lo que hace que el `+N` de la fila tenga el
+   * número que tiene, y porque una prueba que pidiera cinco estaría pidiendo un
+   * estado que la base no puede producir.
+   */
+  const LA_MAS_CARGADA = chat({
+    id: "c-cargada",
+    agentMode: false,
+    escalada: true,
+    dropiHasNovedad: true,
+    confirmationStatus: "pending",
+    sinResponder: true,
+  });
+
+  it("una fila sin nada que hacer no lleva ninguna", () => {
+    // Es más agresivo de lo que suena, y es exactamente lo que deja recorrer la
+    // bandeja con la vista: lo que se ve son las que piden algo.
+    expect(nombres(chat())).toEqual([]);
+  });
+
+  it("las ordena de la más rara a la más común, que es el criterio del corte", () => {
+    expect(nombres(LA_MAS_CARGADA)).toEqual([
+      "escalada",
+      "novedad",
+      "por confirmar",
+      "sin responder",
+    ]);
+  });
+
+  it("con la fila más cargada, el teléfono enseña dos y cuenta dos", () => {
+    const todas = nombres(LA_MAS_CARGADA);
+
+    expect(todas.slice(0, ETIQUETAS_EN_EL_TELEFONO)).toEqual([
+      "escalada",
+      "novedad",
+    ]);
+    expect(todas.length - ETIQUETAS_EN_EL_TELEFONO).toBe(2);
+  });
+
+  it("«lo llevo yo» se calla cuando la fila ya dice «sin responder»", () => {
+    // La segunda implica la primera: `sinResponder` exige el agente apagado. Sin
+    // esta resta, «lo llevo yo» —que ordena primero, por rara— le comería uno de
+    // los dos puestos del teléfono a la etiqueta que hay que ver.
+    expect(nombres(chat({ agentMode: false, sinResponder: true }))).toEqual([
+      "sin responder",
+    ]);
+    expect(nombres(chat({ agentMode: false }))).toEqual(["lo llevo yo"]);
+  });
+
+  it("los dos que enseña son los menos frecuentes, no los dos primeros", () => {
+    // «Sin responder» sale en el 15% de las filas y «escalada» en el 1,8%: la
+    // que hay que mirar es la escalada, aunque haya más filas de la otra. Un
+    // orden de lectura fijo se habría quedado con la equivocada.
+    expect(
+      nombres(chat({ sinResponder: true, escalada: true })).slice(
+        0,
+        ETIQUETAS_EN_EL_TELEFONO,
+      ),
+    ).toEqual(["escalada", "sin responder"]);
+  });
+
+  it("y la fila lo dibuja: el «+N» dice cuántas quedaron fuera", () => {
+    abrir([LA_MAS_CARGADA]);
+
+    expect(within(fila("c-cargada")).getByText("+2")).toBeInTheDocument();
+  });
+
+  it("con dos o menos no hay «+N» que poner", () => {
+    abrir([chat({ id: "c-dos-estados", sinResponder: true, escalada: true })]);
+
+    expect(within(fila("c-dos-estados")).queryByText(/^\+\d+$/)).toBeNull();
+  });
+});
+
 describe("las etiquetas de estado", () => {
   it("ningún estado se codifica solo con color: los cinco llevan su nombre", () => {
     // Era criterio de aceptación de la ronda y es lo que hizo ganar esta
@@ -507,46 +631,50 @@ describe("las etiquetas de estado", () => {
     // `border-l-2 border-l-red-400/60`, una rayita roja y nada más.
     abrir([
       chat({ id: "c-espera", sinResponder: true }),
-      chat({ id: "c-auto", agentMode: true }),
-      chat({ id: "c-escalada", mark: "escalada" }),
+      chat({ id: "c-mio", agentMode: false }),
+      chat({ id: "c-escalada", escalada: true }),
       chat({ id: "c-novedad", dropiHasNovedad: true }),
-      chat({ id: "c-sinprod", mark: "sin_identificar" }),
+      chat({ id: "c-porconfirmar", confirmationStatus: "pending" }),
     ]);
 
     expect(etiquetasDe("c-espera")).toEqual(["sin responder"]);
-    expect(etiquetasDe("c-auto")).toEqual(["en automático"]);
+    expect(etiquetasDe("c-mio")).toEqual(["lo llevo yo"]);
     expect(etiquetasDe("c-escalada")).toEqual(["escalada"]);
     expect(etiquetasDe("c-novedad")).toEqual(["novedad"]);
-    expect(etiquetasDe("c-sinprod")).toEqual(["sin producto"]);
+    expect(etiquetasDe("c-porconfirmar")).toEqual(["por confirmar"]);
   });
 
-  it("una fila con dos estados muestra los dos", () => {
-    // No hay «el más importante»: una escalada que además espera respuesta es
-    // las dos cosas, y elegir una escondería justo la que hace falta.
-    abrir([chat({ id: "c-dos-estados", sinResponder: true, mark: "escalada" })]);
-
-    expect(etiquetasDe("c-dos-estados")).toEqual([
-      "sin responder",
-      "escalada",
-    ]);
-  });
-
-  it("una fila limpia no lleva ninguna, porque marcar todas es no marcar", () => {
-    abrir([chat({ id: "c-limpia" })]);
-
-    expect(etiquetasDe("c-limpia")).toEqual([]);
-  });
-
-  it("«ambiguo» y «sin producto» siguen siendo dos, y se separan por el nombre", () => {
-    // Le piden al asesor cosas opuestas: una se resuelve desempatando en el
-    // chat, la otra cargando el anuncio en el catálogo, que es otra pantalla.
+  it("«en automático» se invirtió: se marca la que NO lo está", () => {
+    // Salía en 199 de cada 200 filas, así que marcaba la regla en vez de la
+    // excepción. Lo informativo es la conversación que alguien tomó a mano.
     abrir([
-      chat({ id: "c-ambiguo", mark: "ambiguo" }),
-      chat({ id: "c-sinprod", mark: "sin_identificar" }),
+      chat({ id: "c-automatica", agentMode: true }),
+      chat({ id: "c-a-mano", agentMode: false }),
     ]);
 
-    expect(etiquetasDe("c-ambiguo")).toEqual(["ambiguo"]);
-    expect(etiquetasDe("c-sinprod")).toEqual(["sin producto"]);
+    expect(etiquetasDe("c-automatica")).toEqual([]);
+    expect(etiquetasDe("c-a-mano")).toEqual(["lo llevo yo"]);
+  });
+
+  it("«confirmado» dejó de ser etiqueta, y sigue estando en el detalle", () => {
+    // Sale en el 68,5% de las filas: un chip que llevan casi todas no dice
+    // nada. Baja a la tira de detalle, que el teléfono no dibuja y el
+    // escritorio sí — no se pierde, deja de competir.
+    abrir([chat({ id: "c-confirmada", confirmationStatus: "confirmed" })]);
+
+    expect(etiquetasDe("c-confirmada")).toEqual([]);
+    expect(
+      within(fila("c-confirmada")).getByText("confirmado"),
+    ).toBeInTheDocument();
+  });
+
+  it("«por confirmar» sí es etiqueta, y entonces no se dice dos veces", () => {
+    // Es el mismo trato que «novedad» tenía con la pastilla de logística: el
+    // mismo hecho en la misma tira, una sola vez.
+    abrir([chat({ id: "c-pendiente", confirmationStatus: "pending" })]);
+
+    expect(etiquetasDe("c-pendiente")).toEqual(["por confirmar"]);
+    expect(within(fila("c-pendiente")).queryByText("pendiente")).toBeNull();
   });
 
   it("la novedad de logística no se dice dos veces en la misma fila", () => {
@@ -559,7 +687,54 @@ describe("las etiquetas de estado", () => {
   });
 });
 
-/** Los encabezados de sección, con su cuenta, de arriba abajo. */
+/**
+ * **«Tú:» delante de la vista previa cuando el último mensaje es nuestro.**
+ *
+ * En 874 de las 1.770 conversaciones la fila mostraba lo que escribimos
+ * nosotros y se leía igual que si lo hubiera escrito el cliente: «me escribió y
+ * no le contesté» y «ya le contesté» eran la misma fila.
+ */
+describe("de quién es la vista previa", () => {
+  /** La vista previa entera, con su prefijo si lo lleva. */
+  const previa = (id: string) =>
+    fila(id).querySelectorAll("p")[1]!.textContent;
+
+  it("lo nuestro va con «Tú:» y lo del cliente va sin nada", () => {
+    abrir([
+      chat({ id: "c-mia", preview: "ya te confirmo la guía", previewEsNuestro: true }),
+      chat({ id: "c-suya", preview: "¿ya salió mi pedido?" }),
+    ]);
+
+    expect(previa("c-mia")).toBe("Tú: ya te confirmo la guía");
+    expect(previa("c-suya")).toBe("¿ya salió mi pedido?");
+  });
+
+  it("un entrante lo apaga: el cliente acaba de escribir", async () => {
+    // `aplicarEvento` no sabe de este campo, así que sin esto la fila seguiría
+    // diciendo «Tú:» con el texto del cliente encima — la confusión exacta que
+    // la palabra vino a deshacer. Que el contador de no leídos suba es la
+    // prueba de que escribió el cliente: sube en un solo sitio del worker.
+    abrir([
+      chat({ id: "c-mia", preview: "ya te confirmo la guía", previewEsNuestro: true }),
+    ]);
+    expect(previa("c-mia")).toBe("Tú: ya te confirmo la guía");
+
+    act(() => {
+      emitirWa(
+        entrante("c-mia", {
+          lastMessagePreview: "sigo esperando",
+          unreadCount: 1,
+        }),
+      );
+    });
+
+    await waitFor(() => expect(previa("c-mia")).toBe("sigo esperando"));
+  });
+});
+
+/** Los encabezados de sección, de arriba abajo. Ya sin cuenta: la lleva la
+ *  barra de filtros, y el mismo número dos veces en la misma pantalla no
+ *  informa el doble. */
 function seccionesDeLaLista(): string[] {
   return within(screen.getByRole("list"))
     .queryAllByRole("heading")
@@ -585,14 +760,14 @@ const SEIS_Y_TRES = [
 ];
 
 describe("las secciones de la lista", () => {
-  it("llevan nombre y cuenta", () => {
+  it("llevan nombre, y la cuenta la lleva el filtro", () => {
     // Hasta hoy la lista no tenía secciones: tenía un filtro. Un `h1` y cero
     // `h2`, en la pantalla que más se abre del panel.
     abrir(SEIS_Y_TRES);
 
     expect(seccionesDeLaLista()).toEqual([
-      "Esperando respuesta · 6",
-      "El resto · 3",
+      "Esperando respuesta",
+      "El resto",
     ]);
   });
 
@@ -624,16 +799,18 @@ describe("las secciones de la lista", () => {
 
   it("un filtro que deja un solo grupo apaga los encabezados, en vez de repetirse", async () => {
     // «Sin responder» deja todas las filas en la primera sección: el encabezado
-    // diría lo mismo que el selector que está tres centímetros más arriba, y el
-    // otro sería un «· 0» que no lleva a ninguna parte.
+    // diría lo mismo que el filtro que está tres centímetros más arriba, y el
+    // otro sería una sección vacía que no lleva a ninguna parte.
     const user = userEvent.setup();
     abrir(SEIS_Y_TRES);
     expect(seccionesDeLaLista()).toHaveLength(2);
 
-    await user.selectOptions(screen.getByRole("combobox"), "sin_responder");
+    await user.click(filtro("Sin responder"));
 
     expect(seccionesDeLaLista()).toEqual([]);
-    expect(screen.getByText("6/9")).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("list")).getAllByRole("listitem"),
+    ).toHaveLength(6);
   });
 
   it("un filtro que corta las dos secciones las conserva", async () => {
@@ -644,22 +821,73 @@ describe("las secciones de la lista", () => {
       chat({ id: "c-resto", confirmationStatus: "pending" }),
     ]);
 
-    await user.selectOptions(screen.getByRole("combobox"), "pending");
+    await user.click(filtro("Por confirmar"));
 
     expect(seccionesDeLaLista()).toEqual([
-      "Esperando respuesta · 1",
-      "El resto · 1",
+      "Esperando respuesta",
+      "El resto",
     ]);
   });
 });
 
+/**
+ * **La barra de filtros, que reemplazó al bloque de cinco tarjetas.**
+ *
+ * Eran dos cosas separadas diciendo lo mismo —una tarjeta «Sin responder: 35» y
+ * un `<select>` con «Sin responder (35)» a diez centímetros—, y en 390 px no
+ * caben las dos.
+ */
+describe("la barra de filtros lleva la cuenta", () => {
+  it("dice cuántas hay de cada vista, y cuál está puesta", () => {
+    abrir(SEIS_Y_TRES);
+
+    expect(cuentaDelFiltro("Todas")).toBe("9");
+    expect(cuentaDelFiltro("Sin responder")).toBe("6");
+    expect(filtroPuesto()).toBe("Todas 9");
+  });
+
+  it("pulsar uno lo pone, y la lista hace lo que dice", async () => {
+    const user = userEvent.setup();
+    abrir(SEIS_Y_TRES);
+
+    await user.click(filtro("Sin responder"));
+
+    expect(filtroPuesto()).toBe("Sin responder 6");
+  });
+
+  it("con la bandeja vacía no hay filtro, y sí título y cartel", () => {
+    // Un filtro sobre cero filas no filtra, y cinco ceros seguidos se leen como
+    // una avería. Lo que queda es lo que explica la pantalla.
+    abrir([]);
+
+    expect(screen.queryByRole("button", { pressed: true })).toBeNull();
+    expect(
+      screen.getByRole("heading", { name: "Inbox", level: 1 }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("No hay conversaciones todavía."),
+    ).toBeInTheDocument();
+  });
+});
+
 describe("las secciones no mueven una fila bajo el cursor", () => {
-  /** Dos esperando y dos no: la lista se parte, que es cuando se puede saltar. */
+  /**
+   * Dos esperando y dos no: la lista se parte, que es cuando se puede saltar.
+   *
+   * `c-nueva` va con el agente apagado porque es la que va a recibir el
+   * entrante, y **un entrante no puede encender «sin responder» en una que
+   * lleva el agente**: es la primera de las tres condiciones de
+   * `puedeEstarSinResponder` (`@wa/db`), y `aplicarEvento` la respeta.
+   */
   const DOS_Y_DOS = [
     chat({ id: "c-espera", sinResponder: true, lastAt: "2026-07-01T09:00:00.000Z" }),
     chat({ id: "c-espera-2", sinResponder: true, lastAt: "2026-07-01T08:00:00.000Z" }),
     chat({ id: "c-quieta", lastAt: "2026-08-20T11:00:00.000Z" }),
-    chat({ id: "c-nueva", lastAt: "2026-08-20T10:00:00.000Z" }),
+    chat({
+      id: "c-nueva",
+      agentMode: false,
+      lastAt: "2026-08-20T10:00:00.000Z",
+    }),
   ];
 
   it("un entrante enciende la etiqueta sin sacar la fila de su sección", async () => {
@@ -679,7 +907,10 @@ describe("las secciones no mueven una fila bajo el cursor", () => {
       );
     });
 
-    // La etiqueta sí aparece: la fila dice lo que es, donde está.
+    // La etiqueta sí aparece: la fila dice lo que es, donde está. Y reemplaza a
+    // «lo llevo yo», que la fila llevaba por tener el agente apagado: «sin
+    // responder» ya lo dice, y el mismo hecho dos veces en la misma tira no
+    // informa el doble.
     await waitFor(() =>
       expect(etiquetasDe("c-nueva")).toEqual(["sin responder"]),
     );
@@ -687,8 +918,8 @@ describe("las secciones no mueven una fila bajo el cursor", () => {
       "c-espera", "c-espera-2", "c-quieta", "c-nueva",
     ]);
     expect(seccionesDeLaLista()).toEqual([
-      "Esperando respuesta · 2",
-      "El resto · 2",
+      "Esperando respuesta",
+      "El resto",
     ]);
   });
 
@@ -709,27 +940,14 @@ describe("las secciones no mueven una fila bajo el cursor", () => {
     await user.click(screen.getByRole("button", { name: /novedades/ }));
 
     expect(seccionesDeLaLista()).toEqual([
-      "Esperando respuesta · 3",
-      "El resto · 1",
+      "Esperando respuesta",
+      "El resto",
     ]);
     expect(ordenDeLaLista()).toEqual([
       "c-nueva", "c-espera", "c-espera-2", "c-quieta",
     ]);
   });
 });
-
-/** El número que muestra una tarjeta del encabezado. */
-function tarjeta(rotulo: string): string {
-  const p = screen.getByText(rotulo);
-  return p.parentElement!.querySelectorAll("p")[1]!.textContent!;
-}
-
-/** Lo que el selector dice de una vista, tal cual se lee. */
-function opcion(nombre: string): string {
-  return within(screen.getByRole("combobox")).getByText(
-    new RegExp(`^${nombre} \\(`),
-  ).textContent!;
-}
 
 describe("los tres números de «sin responder» dicen lo mismo", () => {
   /**
@@ -738,22 +956,33 @@ describe("los tres números de «sin responder» dicen lo mismo", () => {
    * ya habían sido respondidas**. Ahora lo decide el servidor y acá se lee el
    * mismo campo tres veces, así que no pueden discrepar — pero eso hay que
    * seguir sin romperlo, y esto es lo que lo vigila.
+   *
+   * Los tres eran la etiqueta, la tarjeta y el selector. La tarjeta y el
+   * selector se fundieron en el botón del filtro, así que ahora el tercero es
+   * **la lista filtrada**: que el número diga 6 y al pulsarlo se vean 6.
    */
-  it("la etiqueta, el contador de la barra y el filtro cuentan igual", () => {
+  it("la etiqueta, el contador del filtro y la lista filtrada cuentan igual", async () => {
+    const user = userEvent.setup();
     abrir(SEIS_Y_TRES);
 
     const conEtiqueta = within(screen.getByRole("list")).getAllByText(
       "sin responder",
     );
     expect(conEtiqueta).toHaveLength(6);
-    expect(tarjeta("Sin responder")).toBe("6");
-    expect(opcion("Sin responder")).toBe("Sin responder (6)");
+    expect(cuentaDelFiltro("Sin responder")).toBe("6");
+
+    await user.click(filtro("Sin responder"));
+
+    expect(
+      within(screen.getByRole("list")).getAllByRole("listitem"),
+    ).toHaveLength(6);
   });
 
   it("y siguen contando igual después de un entrante", async () => {
     abrir([
       chat({ id: "c-espera", sinResponder: true }),
-      chat({ id: "c-nueva" }),
+      // Con el agente apagado: si lo llevara, el entrante no la encendería.
+      chat({ id: "c-nueva", agentMode: false }),
     ]);
 
     act(() => {
@@ -765,8 +994,7 @@ describe("los tres números de «sin responder» dicen lo mismo", () => {
         within(screen.getByRole("list")).getAllByText("sin responder"),
       ).toHaveLength(2),
     );
-    expect(tarjeta("Sin responder")).toBe("2");
-    expect(opcion("Sin responder")).toBe("Sin responder (2)");
+    expect(cuentaDelFiltro("Sin responder")).toBe("2");
   });
 });
 

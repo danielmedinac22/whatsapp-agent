@@ -8,9 +8,7 @@ import {
 import {
   actividadDe,
   getSalesAgentSettings,
-  parseRecognitionOutcome,
   salesAgentIsConfigured,
-  resolveRowMark,
 } from "@wa/db";
 import { resolvePanelOperation } from "@/lib/operation";
 import { InboxClient } from "./inbox-client";
@@ -38,6 +36,28 @@ function bandejaPedida(
     inbox: b === "ventas" ? "ventas" : "operaciones",
     activatedAt: vendedor.activatedAt,
   };
+}
+
+/**
+ * **Si la vista previa de la fila la escribimos nosotros.**
+ *
+ * No compara mensajes: compara las dos fechas que la conversación ya guarda. Y
+ * eso alcanza porque **la vista previa y `last_outbound_at` se escriben en la
+ * misma sentencia** —`huellaDelSaliente`, en el worker, que las llama «el mismo
+ * hecho dicho de tres maneras»—, y en la ingesta pasa lo propio con
+ * `last_inbound_at`. Así que la más reciente de las dos dice de quién es el
+ * texto, sin un viaje más a la base.
+ *
+ * Sin ningún saliente no es nuestra, y sin ningún entrante sí: una conversación
+ * que solo tiene lo que le mandamos muestra lo que le mandamos.
+ */
+function elUltimoEsNuestro(c: {
+  lastInboundAt: Date | null;
+  lastOutboundAt: Date | null;
+}): boolean {
+  if (c.lastOutboundAt === null) return false;
+  if (c.lastInboundAt === null) return true;
+  return c.lastOutboundAt.getTime() > c.lastInboundAt.getTime();
 }
 
 export default async function InboxPage({
@@ -107,25 +127,18 @@ export default async function InboxPage({
         producto: i.shopify?.producto ?? null,
         assignedTo: i.assignedTo,
         sinResponder: i.sinResponder,
-        // La fila solo marca el reconocimiento cuando NO es limpio: la regla
-        // vive en `@wa/db` y aquí solo se le pasan los hechos. «Ambiguo» sale
-        // de lo que la cascada dejó registrado (`0026`); antes era
-        // indistinguible de «no encontré nada» y las dos se marcaban igual.
-        //
         // **Se calcula siempre, también sin vendedor**, que es lo que hace que
         // Katherine vea las escaladas: antes dependía de que hubiera bandeja, y
-        // sin vendedor no hay bandeja. Las otras dos marcas necesitan un clic de
-        // anuncio, y `ad_referral_at` es `null` en las 1.760 conversaciones de
-        // producción; el día que lleguen anuncios habrá vendedor, porque es el
-        // vendedor quien los atiende.
-        mark: resolveRowMark({
-          adReferralAt: i.conversation.adReferralAt,
-          productIdentified: i.conversation.productId !== null,
-          recognitionOutcome: parseRecognitionOutcome(
-            i.conversation.productRecognition,
-          ),
-          escalations: i.routing.escalations,
-        }),
+        // sin vendedor no hay bandeja.
+        //
+        // Era `mark: resolveRowMark(...)`, que devolvía además «ambiguo» y «sin
+        // producto». Esas dos marcas dejaron de dibujarse en la fila —nunca se
+        // encendieron: `product_recognition` y `ad_referral_at` son `null` en
+        // las 1.770 conversaciones— y con ellas se fue la función entera, que
+        // se quedaba con una sola rama viva. Lo que la cascada dudó se sigue
+        // contando en el hilo, fechado, que es donde de verdad se lee.
+        escalada: i.routing.escalations.length > 0,
+        previewEsNuestro: elUltimoEsNuestro(i.conversation),
       }))}
       approvedTemplates={approvedTemplates}
       query={q ?? ""}
