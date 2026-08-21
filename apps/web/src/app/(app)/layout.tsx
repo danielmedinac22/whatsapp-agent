@@ -10,9 +10,11 @@ import { operationTint } from "@wa/shared";
 import { resolveAccess } from "@/access/resolve";
 import { resolvePanelBars, resolvePanelOperationState } from "@/lib/operation";
 import { ChooseOperation } from "./choose-operation";
+import { MobileFrame } from "./mobile-frame";
 import { NAV_HREFS } from "./nav";
 import type { SalesNav } from "./module-nav";
 import {
+  Flag,
   OperationColumn,
   OperationRail,
   type RailOperation,
@@ -34,6 +36,13 @@ import {
  * `resolvePanelOperation()`: el layout no se la puede pasar a los `children`, y
  * pasarla por contexto la volvería invisible en la firma de las consultas, que
  * es justo lo que este trabajo vino a evitar.
+ *
+ * **Debajo de `lg` las dos barras no se apilan sobre el contenido: entran en un
+ * cajón** (`<MobileFrame>`), y arriba queda una barra de 52px. Es el veredicto
+ * del nivel 4. El riel y la columna se siguen dibujando **acá, en el
+ * servidor**, y viajan como `children`: el cajón es un envoltorio y no un
+ * segundo menú, así que no hay dos árboles de navegación que mantener de
+ * acuerdo ni dos veces las consultas que los alimentan.
  */
 export default async function AppLayout({
   children,
@@ -134,7 +143,6 @@ export default async function AppLayout({
         soft: "color-mix(in srgb, var(--color-text-soft) 14%, transparent)",
         faint: "color-mix(in srgb, var(--color-text-soft) 7%, transparent)",
       };
-  const collapsed = bars === "collapsed";
 
   return (
     <div
@@ -149,21 +157,44 @@ export default async function AppLayout({
         } as React.CSSProperties
       }
     >
-      <OperationRail
-        entries={entries}
-        activeId={active?.id ?? null}
-        bars={bars}
-        allowed={allowed}
-        sales={sales}
-      />
-      {collapsed || !activeEntry ? null : (
-        <OperationColumn
-          entry={activeEntry}
+      <MobileFrame
+        barra={
+          active ? (
+            <>
+              <Flag code={active.countryCode} className="h-[11px] w-4" />
+              <span className="truncate">{active.name}</span>
+            </>
+          ) : (
+            // Sin operación elegida la barra no inventa un nombre: dice lo que
+            // hay que hacer, y el cajón lleva dentro el riel con el que se hace.
+            <span className="truncate text-[var(--color-text-dim)]">
+              Elegí una operación
+            </span>
+          )
+        }
+      >
+        <OperationRail
+          entries={entries}
+          activeId={active?.id ?? null}
+          bars={bars}
           allowed={allowed}
-          email={session.user.email}
           sales={sales}
         />
-      )}
+        {/* **La columna se dibuja aunque las barras estén plegadas**, y es
+            `globals.css` quien la esconde —solo en escritorio— con
+            `.app-frame[data-bars="collapsed"] .op-column`. Omitirla del árbol
+            dejaba el cajón del teléfono sin menú: plegar es una preferencia
+            que se toma en una pantalla grande y viaja en una cookie hasta el
+            móvil, donde no significa nada. */}
+        {activeEntry ? (
+          <OperationColumn
+            entry={activeEntry}
+            allowed={allowed}
+            email={session.user.email}
+            sales={sales}
+          />
+        ) : null}
+      </MobileFrame>
 
       <main className="app-main">
         {/* `children` no se renderiza mientras no haya operación: la pantalla
