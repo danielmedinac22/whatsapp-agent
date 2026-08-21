@@ -1481,12 +1481,30 @@ function FilaDeConversacion({
   return (
     <li
       onClick={() => onAbrir(it)}
-      className={`mb-0.5 cursor-pointer rounded-lg border px-3 py-2 transition ${
+      /*
+        **En el teléfono cada fila es una tarjeta; en escritorio no.**
+
+        No es adorno: en escritorio el hilo va al lado y es él quien le pone
+        límite a la lista, así que una fila sin borde se lee bien. En el
+        teléfono la lista es la pantalla entera y sin superficie propia las
+        conversaciones corren pegadas, que es justo lo que este nivel vino a
+        arreglar.
+
+        La forma la fija el nivel 1: las superficies se separan por **aire y una
+        sombra suave**, no por opacidad de casi el mismo color. Tarjeta
+        (`--color-card`) sobre el fondo de la pantalla (`--color-bg`), y
+        `lg:` la devuelve a como estaba.
+
+        Y no contradice el nivel 2 —«la lista comparte el fondo de la pantalla,
+        el hilo va sobre blanco»—, porque ese veredicto describe la planta de
+        escritorio, donde lista e hilo conviven. Acá no hay hilo al lado.
+      */
+      className={`mb-1.5 cursor-pointer rounded-lg border px-3 py-2 transition lg:mb-0.5 lg:shadow-none ${
         abierta
           ? soloEnEscritorio
-            ? "border-transparent lg:border-[var(--color-ink)] lg:bg-[var(--color-ink-wash)]"
+            ? "border-[var(--color-border)] bg-[var(--color-card)] shadow-[var(--shadow-panel)] lg:border-[var(--color-ink)] lg:bg-[var(--color-ink-wash)]"
             : "border-[var(--color-ink)] bg-[var(--color-ink-wash)]"
-          : "border-transparent hover:bg-[var(--color-hover)]"
+          : "border-[var(--color-border)] bg-[var(--color-card)] shadow-[var(--shadow-panel)] hover:bg-[var(--color-hover)] lg:border-transparent lg:bg-transparent"
       }`}
     >
       <div className="flex items-baseline gap-2">
