@@ -31,7 +31,15 @@ const FLAGS: Readonly<Record<string, string>> = {
   CO: "linear-gradient(180deg,#fcd116 0 50%,#003893 50% 75%,#ce1126 75%)",
 };
 
-function Flag({
+/**
+ * La bandera de un país, por degradado y no por emoji: un emoji de bandera se
+ * dibuja distinto en cada sistema y en Windows no se dibuja.
+ *
+ * Se exporta porque la barra del teléfono (`.app-topbar`) también la lleva, y
+ * la arma el layout —en el servidor— para pasársela hecha a `<MobileFrame>`,
+ * que corre en el cliente.
+ */
+export function Flag({
   code,
   className,
 }: {
@@ -139,7 +147,16 @@ export function OperationRail({
           tight={tight}
         />
       ))}
-      {tight ? <ModuleNavIcons allowed={allowed} sales={sales} /> : null}
+      {/* Los iconos son la navegación del riel plegado, que es un estado de
+          escritorio. En el teléfono el riel vive dentro del cajón y la
+          navegación entera está ahí abajo, en la columna: los iconos serían
+          una segunda copia del mismo menú, más corta. `contents` y no `block`
+          para que sigan siendo hijos del flex del riel. */}
+      {tight ? (
+        <span className="hidden lg:contents">
+          <ModuleNavIcons allowed={allowed} sales={sales} />
+        </span>
+      ) : null}
       {/* Salir y plegar no son el mismo grupo, y hasta hoy se veían como uno:
           6px de separación entre un clic que se hace todos los días y otro que
           tira la sesión. La línea los separa y el chevrón se queda donde

@@ -79,6 +79,10 @@
   --state-escalada-fg: #a52020;
   --state-novedad-bg: #eae4fd;
   --state-novedad-fg: #5a41a8;
+  /* El par «sin producto» **conserva sus tokens y pierde su modificador**:
+     `.state-chip--sin-producto` se retira (la columna que lo encendía es NULL
+     en las 1.770 conversaciones), pero `orders-table.tsx` usa este par como su
+     neutro y ahí sigue significando algo. */
   --state-sinprod-bg: #e6ecf0;
   --state-sinprod-fg: #41586a;
 }
@@ -119,9 +123,14 @@
      El tinte (`--op*`) lo declara el layout sobre `.app-frame` y **solo lo
      usan las dos barras**. El contenido conserva la paleta neutra: si el
      acento siguiera al país, el color de «confirmado» dejaría de significar
-     una cosa sola. Debajo de `lg` el marco cae a una columna y las barras se
-     vuelven una banda superior — ahí se pierde la placa del país, deuda
-     anotada del nivel 1 y fuera del alcance de este ticket. */
+     una cosa sola.
+
+     **Debajo de `lg` el marco tiene dos filas y no cuatro**: la barra de 52px
+     y el contenido. Las dos barras siguen en el árbol, pero dentro de
+     `.app-drawer`, que está fuera de flujo — así que no ocupan ni un píxel
+     hasta que alguien abre el cajón. Es el veredicto del nivel 4, y lo que
+     compra son los 620-680px de navegación apilada que había antes de llegar
+     al primer título. */
 
   .app-frame {
     @apply grid min-h-screen grid-cols-1 lg:h-screen lg:overflow-hidden;
@@ -133,6 +142,145 @@
 
   .app-frame[data-bars="collapsed"] {
     @apply lg:grid-cols-[46px_1fr];
+  }
+
+  /* ── El teléfono: la barra, el cajón y el velo ───────────────────────────
+     Veredicto del nivel 4, cuatro rondas con el dueño del producto delante.
+     Se abrió porque Katherine contesta clientes desde el móvil, y ahí el
+     marco de escritorio costaba 620-680px de navegación antes del primer
+     título — cuatro quintos de un teléfono de 844px.
+
+     Las tres clases son del contrato de nombres del spec y **otra rama ya
+     está escribiendo contra ellas**: `.app-topbar`, `.app-drawer` (con
+     `.is-open`) y `.app-scrim` (con `.is-on`).
+
+     Nada de esto existe en escritorio: la barra y el velo se apagan en `lg`,
+     y el cajón se vuelve `display: contents` para que el riel y la columna
+     vuelvan a ser hijos directos de la retícula. Es lo que hace que el
+     escritorio no cambie ni un píxel, que es criterio de aceptación. */
+
+  .app-topbar {
+    background: var(--color-card);
+    border-color: var(--color-border);
+    /* **Fija, y no pegajosa.** `sticky` no serviría: en una retícula el bloque
+       contenedor de un elemento pegajoso es su propia celda, que aquí mide
+       exactamente los 52px de la barra, así que no tendría por dónde
+       desplazarse. Fija sale del flujo y la compensa el relleno de
+       `.app-main` — que es una sola línea y no una cuenta por pantalla.
+
+       Y el documento sigue siendo el que hace scroll, que es lo que deja al
+       navegador esconder su propia barra de direcciones: en un teléfono eso
+       son ~60px más de pantalla, justo lo que este ticket vino a recuperar. */
+    @apply fixed inset-x-0 top-0 z-30 flex h-[52px] items-center gap-2.5 border-b px-3 lg:hidden;
+  }
+
+  .app-topbar-btn {
+    @apply flex h-[34px] w-[34px] flex-none items-center justify-center rounded-[9px] text-[var(--color-text-dim)] transition active:bg-[var(--color-hover)];
+  }
+
+  .app-topbar-op {
+    @apply flex min-w-0 flex-1 items-center gap-[7px] text-[13.5px] font-semibold;
+  }
+
+  /* El velo es el texto más oscuro rebajado, el mismo mecanismo que el
+     `::backdrop` del diálogo de salir. `touch-action: none` es lo que impide
+     que el dedo, arrastrando sobre el velo, mueva la pantalla de atrás. */
+  .app-scrim {
+    background: color-mix(in srgb, var(--color-text-strong) 42%, transparent);
+    opacity: 0;
+    pointer-events: none;
+    touch-action: none;
+    transition: opacity 0.22s ease;
+    @apply fixed inset-0 z-40 lg:hidden;
+  }
+
+  .app-scrim.is-on {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* El cajón lleva dentro **el riel y la columna tal cual**, sin una segunda
+     copia del menú: un menú duplicado es un menú que se desincroniza. Fuera
+     de flujo, así que cerrado no ocupa nada.
+
+     `visibility: hidden` y no solo `translateX(-100%)`: desplazado fuera de
+     la pantalla el menú seguiría siendo alcanzable con el tabulador y seguiría
+     leyéndose en un lector de pantalla. La visibilidad se retrasa hasta el
+     final de la transición al cerrar, y va sin retraso al abrir. */
+  .app-drawer {
+    background: var(--color-menu);
+    box-shadow: 6px 0 24px -8px color-mix(in srgb, var(--color-text-strong) 35%, transparent);
+    width: min(288px, 86vw);
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition:
+      transform 0.24s cubic-bezier(0.32, 0.72, 0, 1),
+      visibility 0s 0.24s;
+    overscroll-behavior: contain;
+    /* Vertical al dedo, horizontal para nosotros: es lo que deja cerrar el
+       cajón arrastrándolo sin pelearse con su propio scroll. */
+    touch-action: pan-y;
+    @apply fixed inset-y-0 left-0 z-50 flex flex-col overflow-y-auto;
+  }
+
+  .app-drawer.is-open {
+    transform: none;
+    visibility: visible;
+    transition:
+      transform 0.24s cubic-bezier(0.32, 0.72, 0, 1),
+      visibility 0s 0s;
+  }
+
+  /* Mientras el dedo manda no hay transición: la posición la fija el gesto en
+     línea, y una transición encima la volvería un arrastre con retardo. */
+  .app-drawer.is-dragging,
+  .app-scrim.is-dragging {
+    transition: none;
+  }
+
+  /* El borde vivo del que se tira para abrir. 20px, que es el ancho que usan
+     el gesto de atrás de iOS y el cajón de Material: el pulgar no siempre
+     llega al botón de arriba a la izquierda, que es la razón por la que el
+     gesto es la mitad de este veredicto. `pan-y` deja pasar el scroll
+     vertical y se queda con el horizontal. */
+  .app-edge {
+    touch-action: pan-y;
+    @apply fixed inset-y-0 left-0 z-20 w-5 lg:hidden;
+  }
+
+  @media (min-width: 1024px) {
+    /* Sin caja: el riel y la columna vuelven a ser hijos directos de la
+       retícula de `.app-frame`, y sus dos plantas —`78px 216px 1fr` y
+       `46px 1fr`— siguen valiendo. `visibility` se hereda a través de
+       `display: contents`, así que hay que devolverla. */
+    .app-drawer {
+      display: contents;
+      visibility: visible;
+    }
+  }
+
+  /* Dentro del cajón la columna crece hasta el fondo, que es lo que deja el
+     correo y el indicador de conexión abajo del todo y no flotando a media
+     altura. Va acotado a debajo de `lg` porque arriba el cajón no tiene caja
+     y esto le llegaría igual a la columna de escritorio. */
+  @media (max-width: 1023px) {
+    .app-drawer .op-column {
+      @apply flex-1;
+    }
+
+    .app-drawer .op-rail {
+      /* El riel dentro del cajón conserva su tira horizontal: es donde se
+         cambia de operación, y en el teléfono es la única forma de hacerlo. */
+      @apply flex-none;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .app-drawer,
+    .app-drawer.is-open,
+    .app-scrim {
+      transition: none;
+    }
   }
 
   .op-rail {
@@ -183,7 +331,8 @@
   }
 
   .op-tile[aria-pressed="true"] .op-flag,
-  .op-column-head .op-flag {
+  .op-column-head .op-flag,
+  .app-topbar .op-flag {
     filter: none;
   }
 
@@ -206,16 +355,19 @@
     color: var(--op);
   }
 
+  /* Plegar las barras es un gesto de escritorio: en el teléfono no hay barras
+     que plegar, hay un cajón que se abre y se cierra. El botón y su raya no
+     bajan de `lg`. */
   .op-fold {
     background: var(--color-card);
-    @apply flex h-6 w-6 flex-none items-center justify-center rounded-[7px] border text-[var(--color-text-dim)] transition hover:border-[var(--op-line)] hover:text-[var(--color-text)];
+    @apply hidden h-6 w-6 flex-none items-center justify-center rounded-[7px] border text-[var(--color-text-dim)] transition lg:flex hover:border-[var(--op-line)] hover:text-[var(--color-text)];
   }
 
   /* La raya entre salir y plegar. Los 6px que había antes no alcanzaban: el
      chevrón se falla hacia arriba, y arriba estaba la salida. */
   .op-rail-sep {
     background: var(--color-border-strong);
-    @apply my-2 block h-px w-5 flex-none;
+    @apply my-2 hidden h-px w-5 flex-none lg:block;
   }
 
   /* Rojo solo al pasar por encima. Un icono rojo permanente al fondo del riel
@@ -255,7 +407,16 @@
     background:
       linear-gradient(180deg, var(--op-soft), var(--op-faint) 38%, transparent 72%),
       var(--color-menu);
-    @apply flex flex-col border-b px-3 py-3 lg:h-screen lg:overflow-y-auto lg:border-b-0 lg:border-r lg:px-3 lg:py-4;
+    @apply flex flex-col px-3 py-3 lg:h-screen lg:overflow-y-auto lg:border-r lg:px-3 lg:py-4;
+  }
+
+  /* Con las barras plegadas la columna **se sigue dibujando**, y solo se
+     esconde en escritorio. Antes el layout la omitía del árbol, y eso en el
+     teléfono dejaba el cajón sin menú: plegar es una preferencia que se toma
+     en el escritorio y viaja en una cookie hasta el móvil, donde no
+     significa nada. */
+  .app-frame[data-bars="collapsed"] .op-column {
+    @apply lg:hidden;
   }
 
   .op-column-head {
@@ -282,9 +443,13 @@
 
   .app-main {
     /* min-w-0: es item de grid, y sin esto su mínimo lo fija el contenido
-       (una línea con white-space:nowrap basta para empujar el documento). */
+       (una línea con white-space:nowrap basta para empujar el documento).
+
+       El relleno de arriba es el hueco de `.app-topbar`, que va fija. Como
+       `min-height` cuenta el relleno, el documento no se pasa de alto: en una
+       pantalla corta no aparece un scroll de 52px de la nada. */
     background: var(--color-surface);
-    @apply min-h-screen min-w-0 lg:h-screen lg:min-h-0 lg:overflow-y-auto;
+    @apply min-h-screen min-w-0 max-lg:pt-[52px] lg:h-screen lg:min-h-0 lg:overflow-y-auto;
   }
 
   .app-page {
@@ -320,6 +485,25 @@
     @apply text-[10.5px] font-bold uppercase tracking-[0.11em];
   }
 
+  /* **En el teléfono la línea dice solo la bandeja.** La barra de arriba ya
+     lleva la bandera y el nombre de la operación, y a 390px las dos cosas
+     quedan pegadas diciendo lo mismo. En escritorio no cambia nada: allá el
+     riel está a 78px del título y la repetición no molesta, que es
+     exactamente lo que decidió la ronda.
+
+     Son dos textos y no uno recortado con CSS porque el país y la bandeja
+     viven en el mismo nodo de texto, y a un nodo de texto no se le puede dar
+     estilo. Solo uno de los dos tiene caja a la vez, así que el lector de
+     pantalla tampoco oye la pantalla dos veces. */
+  .app-context .op-flag,
+  .app-context-full {
+    @apply max-lg:hidden;
+  }
+
+  .app-context-short {
+    @apply lg:hidden;
+  }
+
   .app-title {
     @apply text-[34px] font-bold leading-tight tracking-[-0.03em];
   }
@@ -349,8 +533,12 @@
 
   /* ── Las etiquetas de estado de la fila ───────────────────────────────
      **Ningún estado se codifica solo con color**: la etiqueta lleva el nombre
-     escrito y el color acompaña. Era criterio de aceptación, y con cinco
-     estados que pueden coincidir en una misma fila el matiz solo no alcanza. */
+     escrito y el color acompaña. Era criterio de aceptación, y con varios
+     estados que pueden coincidir en una misma fila el matiz solo no alcanza.
+
+     **`.state-chip--sin-producto` se retiró** en el nivel 4: no se encendió
+     nunca, porque `product_recognition` es NULL en las 1.770 conversaciones.
+     En su lugar entró `.state-chip--mio`, que da vuelta el automático. */
 
   .state-chip {
     @apply inline-flex items-center rounded-[5px] px-1.5 py-0.5 text-[9.5px] font-extrabold uppercase leading-none tracking-[0.06em];
@@ -376,9 +564,34 @@
     color: var(--state-novedad-fg);
   }
 
-  .state-chip--sin-producto {
-    background: var(--state-sinprod-bg);
-    color: var(--state-sinprod-fg);
+  /* «Lo llevo yo», que es «en automático» dado vuelta. Marcaba la regla en vez
+     de la excepción: salía en 199 de las 200 filas que la lista dibuja. Lo
+     informativo es la que alguien tomó a mano, y por eso lleva el mismo par
+     que llevaba el automático — es el mismo hecho contado por el otro lado. */
+  .state-chip--mio {
+    background: var(--state-auto-bg);
+    color: var(--state-auto-fg);
+  }
+
+  /* El `+N` del corte de dos chips. Las medidas son las de `.state-chip` y la
+     altura sale igual: pierde un píxel de relleno arriba y abajo, y lo
+     recupera con el borde. No lleva par de estado a propósito —no es un
+     estado, es lo que no cupo— así que va en el gris de texto tenue sobre el
+     fondo de la aplicación. */
+  .chip-more {
+    background: var(--color-bg);
+    border-color: var(--color-border);
+    color: var(--color-text-dim);
+    @apply inline-flex items-center rounded-[5px] border px-[5px] py-px text-[9.5px] font-extrabold uppercase leading-none tracking-[0.06em];
+  }
+
+  /* El `Tú:` que va delante del preview cuando el último mensaje es nuestro.
+     En 874 de 1.770 conversaciones la fila muestra lo que escribimos nosotros
+     y se lee igual que si lo hubiera escrito el cliente: es una palabra, y
+     separa «me escribió y no le contesté» de «ya le contesté». */
+  .row-prev-mine {
+    color: var(--color-text-soft);
+    @apply font-semibold;
   }
 
   /* ── Controles ────────────────────────────────────────────────────────── */

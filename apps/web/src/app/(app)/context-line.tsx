@@ -7,11 +7,17 @@
  * la está mirando.
  *
  * **Vive en el contenido y no en el marco, y esa es toda la razón por la que
- * existe.** El riel se pliega (`.app-frame[data-bars="collapsed"]`) y por debajo
- * de `lg` cae a una banda superior donde la placa del país se pierde: hasta hoy,
- * en la pantalla desde la que salen mensajes a Guatemala, el único indicio del
- * país era una bandera de 8×30 px en una barra que se puede cerrar. Lo que no se
- * puede plegar es el título de la pantalla, así que el país viaja pegado a él.
+ * existe.** El riel se pliega (`.app-frame[data-bars="collapsed"]`) y ahí la
+ * placa del país se pierde: en la pantalla desde la que salen mensajes a
+ * Guatemala, el único indicio del país era una bandera de 8×30 px en una barra
+ * que se puede cerrar. Lo que no se puede plegar es el título de la pantalla,
+ * así que el país viaja pegado a él.
+ *
+ * **En el teléfono dice solo la bandeja** —`CONFIRMACIÓN`, sin bandera y sin
+ * nombre de operación—, que es el veredicto del nivel 4. Ahí el país no se
+ * perdió: lo lleva la barra de 52px, a dos centímetros de este mismo texto, y a
+ * 390px las dos cosas quedan pegadas diciendo lo mismo. En escritorio no cambia
+ * nada, porque allá el riel está a 78px del título y la repetición no molesta.
  *
  * **`pantalla` es el módulo del menú, no el nombre de la pantalla** — «Ventas»,
  * «Confirmación», «Operación», los `label` de `NAV_GROUPS`. Repetir el `h1` dos
@@ -74,9 +80,17 @@ export function ContextLine({
   return (
     <p className="app-context flex items-center gap-1.5">
       <Flag code={op.countryCode} />
-      <span className="min-w-0">
+      {/*
+        Dos textos y no uno recortado, porque **el país y la bandeja viven en el
+        mismo nodo de texto** y a un nodo de texto no se le puede dar estilo. Los
+        esconde `globals.css` por ancho (`.app-context-full` y
+        `.app-context-short`), así que en cada pantalla hay exactamente uno con
+        caja: el lector de pantalla tampoco oye la bandeja dos veces.
+      */}
+      <span className="app-context-full min-w-0">
         {op.name} · {pantalla}
       </span>
+      <span className="app-context-short min-w-0">{pantalla}</span>
     </p>
   );
 }
