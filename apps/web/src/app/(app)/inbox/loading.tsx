@@ -82,10 +82,15 @@ export default function InboxLoading() {
         </div>
       </header>
 
-      <div className="grid min-h-0 gap-3 lg:flex-1 lg:grid-cols-[336px_1fr]">
+      {/* La fila declarada y el mínimo fuera, igual que en la pantalla de
+          verdad (ver el porqué en `inbox-client.tsx`). Un esqueleto existe para
+          que el marco no se mueva cuando llega el contenido, así que medir
+          distinto que la pantalla que anuncia es exactamente lo que no puede
+          hacer. */}
+      <div className="grid min-h-0 gap-3 lg:flex-1 lg:grid-cols-[336px_1fr] lg:grid-rows-[minmax(0,1fr)]">
         {/* Sin `.app-card`, como la lista de verdad: **lo que la separa del
             hilo es la superficie**, y el hilo es el que va sobre blanco. */}
-        <aside className="flex min-w-0 flex-col rounded-lg lg:h-auto lg:min-h-[520px] lg:overflow-hidden">
+        <aside className="flex min-w-0 flex-col rounded-lg lg:h-auto lg:overflow-hidden">
           <div className="flex flex-col gap-2 border-b border-[var(--color-border)] px-3 py-2.5">
             <div className="app-skeleton h-9 w-full lg:h-8" />
           </div>
