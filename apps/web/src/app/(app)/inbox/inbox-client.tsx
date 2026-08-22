@@ -1233,7 +1233,29 @@ export function InboxClient({
         )}
       </header>
 
-      <div className="grid min-h-0 gap-3 lg:flex-1 lg:grid-cols-[336px_1fr]">
+      {/*
+        **`grid-rows` y no solo `min-h-0`.** Sin fila declarada la única que hay
+        es implícita, y una fila implícita es `auto`: se estira a lo que mida su
+        contenido, aunque la retícula tenga alto definido. Con un hilo de verdad
+        —32 mensajes, 2.254px— la fila medía 2.254px dentro de un contenedor de
+        724px, así que el desbordamiento se lo comía `.app-main` y **la pantalla
+        entera scrolleaba**: la cabecera con el nombre y el teléfono del cliente
+        se iba hacia arriba, el compositor quedaba debajo del pliegue y el
+        `overflow-y-auto` del hilo no llegaba a activarse nunca.
+
+        `minmax(0, 1fr)` le devuelve el alto de la retícula a la fila, y con eso
+        el `h-full` de la tarjeta vuelve a resolver: scrollea el hilo por dentro,
+        la cabecera se queda y la lista recupera su propio scroll en la columna
+        de al lado. Es el segundo reporte de Vorare del 21-ago-2026.
+
+        **No se veía en desarrollo por la razón de siempre**: las conversaciones
+        sembradas traen uno o dos mensajes, y con eso la tarjeta nunca pasa del
+        alto de la ventana. El estado fácil aprobaba por la razón equivocada.
+
+        Solo en `lg`: en el teléfono el hilo es `fixed inset-0` y ya medía la
+        ventana.
+      */}
+      <div className="grid min-h-0 gap-3 lg:flex-1 lg:grid-cols-[336px_1fr] lg:grid-rows-[minmax(0,1fr)]">
         {/*
           **La lista comparte el fondo de la pantalla y el hilo va sobre
           blanco**, y eso —y no un borde grueso ni un espacio— es lo que las
@@ -1246,7 +1268,12 @@ export function InboxClient({
           55vh era lo que dejaba el campo de escribir a tres pantallas de
           distancia. `min-w-0` deja que el `truncate` de cada fila funcione.
         */}
-        <aside className="flex min-w-0 flex-col rounded-lg lg:h-auto lg:min-h-[520px] lg:overflow-hidden">
+        {/* Se fue el `lg:min-h-[520px]`: con la fila declarada, la columna ya se
+            estira sola hasta el alto de la retícula, y un mínimo por encima de
+            ese alto es el mismo desbordamiento por otra puerta —a 1024×640 la
+            fila mide 464px y ese mínimo la empujaba a 520, con lo que la
+            pantalla volvía a scrollear y la cabecera a irse. */}
+        <aside className="flex min-w-0 flex-col rounded-lg lg:h-auto lg:overflow-hidden">
           <div className="flex flex-col gap-2 border-b border-[var(--color-border)] px-3 py-2.5">
             <div className="relative">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--color-text-soft)]" />

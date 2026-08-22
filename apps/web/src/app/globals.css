@@ -112,9 +112,21 @@
     font-family: var(--font-display), sans-serif;
     letter-spacing: 0;
   }
+  /* **La tinta, no su tono suave.** `--color-ink-soft` es `#dbe8e4`, y
+     `--color-bubble-out` también: resaltar la selección la pintaba del mismo
+     color exacto que la burbuja de lo que nosotros mandamos, así que arrastrar
+     sobre nuestros mensajes no dibujaba nada. Se leía como «este chat no deja
+     seleccionar» —fue el reporte de Vorare del 21-ago-2026—, y sin embargo
+     `getSelection()` sí traía el texto: lo que fallaba era verlo, no copiarlo.
+     Sobre la burbuja del cliente, blanca, tampoco ayudaba: 1,15:1.
+
+     El par es el mismo que ya lleva `.app-button` —tinta de fondo, tarjeta de
+     texto—, así que no entra un color nuevo al sistema. Mide 4,35:1 contra la
+     superficie más apretada de las catorce (la burbuja saliente) y 5,47:1 entre
+     el texto y el resaltado, que es AA. */
   ::selection {
-    background: var(--color-ink-soft);
-    color: var(--color-text-strong);
+    background: var(--color-ink);
+    color: var(--color-card);
   }
 }
 
