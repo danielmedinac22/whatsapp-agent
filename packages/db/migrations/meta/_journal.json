@@ -232,6 +232,13 @@
       "when": 1787260164014,
       "tag": "0032_indice_muerto",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1787454596946,
+      "tag": "0033_interruptor_del_vendedor",
+      "breakpoints": true
     }
   ]
 }

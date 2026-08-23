@@ -33,7 +33,10 @@ export default async function VendedorPage() {
       <VendedorForm
         phone={phone}
         productos={productos}
+        yaTieneCorte={settings?.activatedAt != null}
         initial={{
+          // Sin fila, apagado: es el default de la columna y el estado de hoy.
+          enabled: settings?.enabled ?? SALES_AGENT_DEFAULTS.enabled,
           displayName: settings?.displayName ?? SALES_AGENT_DEFAULTS.displayName,
           greeting: settings?.greeting ?? SALES_AGENT_DEFAULTS.greeting,
           closingPush: settings?.closingPush ?? SALES_AGENT_DEFAULTS.closingPush,

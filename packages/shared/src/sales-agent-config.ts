@@ -11,7 +11,7 @@ import { z } from "zod";
  * desincronizan en cuanto una se toque.
  *
  * **Lo que este archivo no hace, a propósito: decidir si hay vendedor.** Ese
- * listón —`display_name` no vacío— vive en `@wa/db`
+ * listón —`enabled` y nombre visible— vive en `@wa/db`
  * (`sales-agent-settings.ts::salesAgentIsConfigured`), junto a la tabla que
  * describe, y es lo que sostiene la no-regresión de Guatemala. Escribir aquí
  * otra copia sería agregarle un lugar más donde el listón puede quedar
@@ -42,6 +42,8 @@ const MAX_TONE = 4000;
  * cambian, cambian acá.
  */
 export const SALES_AGENT_DEFAULTS = {
+  /** Apagado, que es el default de la columna y el borde seguro. */
+  enabled: false,
   displayName: "",
   greeting: "",
   closingPush: "",
@@ -165,6 +167,12 @@ export function discountEdgeQuestion(pct: number): string {
  * como un 500 de la base.
  */
 export const salesAgentSettingsInput = z.object({
+  /**
+   * El interruptor (`0033`). Es un campo más del formulario y no una ruta
+   * aparte: encender y ajustar el tono se guardan juntos, así que no existe el
+   * estado intermedio de un vendedor encendido con la configuración a medias.
+   */
+  enabled: z.boolean(),
   displayName: z.string().max(MAX_DISPLAY_NAME),
   greeting: z.string().max(MAX_BASE_MESSAGE),
   closingPush: z.string().max(MAX_BASE_MESSAGE),
@@ -195,6 +203,12 @@ export function normalizeSalesAgentSettings(
   input: SalesAgentSettingsInput,
 ): SalesAgentSettingsInput {
   return {
+    // **Encender exige nombre**, y se resuelve acá y no en el `refine` del
+    // esquema a propósito: un `enabled` sin nombre no es una petición inválida
+    // que haya que rebotar con un 400, es una petición que significa «apagado».
+    // Rebotarla dejaría al formulario mostrando un error por un estado que ya
+    // sabemos traducir, y el listón de `@wa/db` lo leería igual como apagado.
+    enabled: input.enabled && input.displayName.trim().length > 0,
     displayName: input.displayName.trim(),
     greeting: input.greeting.trim(),
     closingPush: input.closingPush.trim(),

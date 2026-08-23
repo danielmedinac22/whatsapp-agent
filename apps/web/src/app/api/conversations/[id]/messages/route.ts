@@ -31,7 +31,7 @@ export async function GET(
    * Katherine tiene que quedar exactamente como estaba.
    */
   const seller = await getSalesAgentSettings(op);
-  // El listón es el único del monorepo —nombre visible no vacío—, no la
+  // El listón es el único del monorepo —interruptor encendido y con nombre—, no la
   // existencia de la fila: con la configuración a medio llenar este hilo
   // narraba «El vendedor reconoció...» sobre un vendedor que no contesta.
   if (!salesAgentIsConfigured(seller)) {

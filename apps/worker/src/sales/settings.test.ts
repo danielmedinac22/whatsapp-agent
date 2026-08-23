@@ -21,16 +21,36 @@ describe("salesAgentIsConfigured · el listón único", () => {
   });
 
   it("la fila sola no basta: la `0022` la crea con todo en blanco", () => {
-    // Es el estado de producción hoy —una fila, `display_name` vacío— y el que
-    // encendió el menú del panel sin encender al vendedor. Contarla como
-    // vendedor activaría la lógica nueva sobre el número que hoy factura —el
-    // riesgo R8— sin que exista vendedor alguno.
-    expect(salesAgentIsConfigured({ displayName: "" })).toBe(false);
-    expect(salesAgentIsConfigured({ displayName: "   " })).toBe(false);
+    // Es el estado de producción hoy —una fila, apagada, `display_name`
+    // vacío— y el que encendió el menú del panel sin encender al vendedor.
+    // Contarla como vendedor activaría la lógica nueva sobre el número que hoy
+    // factura —el riesgo R8— sin que exista vendedor alguno.
+    expect(salesAgentIsConfigured({ enabled: false, displayName: "" })).toBe(false);
+    expect(salesAgentIsConfigured({ enabled: false, displayName: "   " })).toBe(false);
   });
 
-  it("con nombre visible sí hay vendedor", () => {
-    expect(salesAgentIsConfigured({ displayName: "Sebastián" })).toBe(true);
+  it("encendido y con nombre sí hay vendedor", () => {
+    expect(
+      salesAgentIsConfigured({ enabled: true, displayName: "Sebastián" }),
+    ).toBe(true);
+  });
+
+  it("el nombre sin el interruptor NO alcanza, y es lo que cambió en la `0033`", () => {
+    // Antes esto era `true`: el encendido se deducía del nombre. Ahora
+    // encender es un acto declarado, así que se puede dejar la configuración
+    // escrita y guardada con el vendedor apagado — que es como se ajusta el
+    // tono sin que nadie empiece a atender.
+    expect(
+      salesAgentIsConfigured({ enabled: false, displayName: "Sebastián" }),
+    ).toBe(false);
+  });
+
+  it("el interruptor sin nombre tampoco: se presentaría como nadie", () => {
+    // El panel no deja producir esta combinación, pero la tabla se escribe
+    // también por SQL, por un seed y por una restauración. La dirección segura
+    // del error es que no atienda.
+    expect(salesAgentIsConfigured({ enabled: true, displayName: "" })).toBe(false);
+    expect(salesAgentIsConfigured({ enabled: true, displayName: "  " })).toBe(false);
   });
 
   it("es un guardia de tipo: pasar el listón deja la fila en la mano", () => {
@@ -38,7 +58,12 @@ describe("salesAgentIsConfigured · el listón único", () => {
     // preguntar — un `!` es una segunda afirmación de lo que la condición ya
     // comprobó, y las segundas afirmaciones son las que se quedan cuando la
     // condición cambia.
-    const fila: { displayName: string; activatedAt: Date | null } | null = {
+    const fila: {
+      enabled: boolean;
+      displayName: string;
+      activatedAt: Date | null;
+    } | null = {
+      enabled: true,
       displayName: "Sebastián",
       activatedAt: null,
     };
@@ -64,31 +89,49 @@ describe("needsActivationStamp · cuándo se estampa la línea de corte", () => 
     expect(needsActivationStamp(null)).toBe(false);
   });
 
-  it("con el nombre vacío no se estampa: no hubo activación que fechar", () => {
+  it("apagado no se estampa: no hubo activación que fechar", () => {
     // Producción hoy. Estampar acá pondría la fecha de un encendido que nunca
     // ocurrió, y a partir de ella toda conversación nueva sin pedido caería en
     // la bandeja de un vendedor que sigue apagado.
     expect(
-      needsActivationStamp({ displayName: "", activatedAt: null }),
+      needsActivationStamp({ enabled: false, displayName: "", activatedAt: null }),
     ).toBe(false);
     expect(
-      needsActivationStamp({ displayName: "   ", activatedAt: null }),
+      needsActivationStamp({ enabled: false, displayName: "   ", activatedAt: null }),
     ).toBe(false);
   });
 
-  it("con nombre y sin fecha se estampa: es el caso que el respaldo cubre", () => {
+  it("la configuración escrita con el vendedor apagado tampoco estampa", () => {
+    // Es el caso que la `0033` hizo posible y el que sostiene la fase de
+    // pruebas: dejar el nombre y el tono guardados sin encender. La línea de
+    // corte tiene que seguir sin fecha hasta que alguien encienda de verdad.
+    expect(
+      needsActivationStamp({
+        enabled: false,
+        displayName: "Sebastián",
+        activatedAt: null,
+      }),
+    ).toBe(false);
+  });
+
+  it("encendido y sin fecha se estampa: es el caso que el respaldo cubre", () => {
     // Llenar `display_name` por SQL, por un seed o por una restauración no pasa
     // por el guardado del panel. Sin este respaldo, `activated_at` se quedaría
     // en `null` para siempre y la bandeja de ventas quedaría vacía con el
     // vendedor encendido, sin error y sin log que lo explique.
     expect(
-      needsActivationStamp({ displayName: "Sebastián", activatedAt: null }),
+      needsActivationStamp({
+        enabled: true,
+        displayName: "Sebastián",
+        activatedAt: null,
+      }),
     ).toBe(true);
   });
 
   it("con la fecha puesta NO se re-escribe, y ese es el punto", () => {
     expect(
       needsActivationStamp({
+        enabled: true,
         displayName: "Sebastián",
         activatedAt: new Date("2026-08-20T00:00:00.000Z"),
       }),
@@ -96,17 +139,25 @@ describe("needsActivationStamp · cuándo se estampa la línea de corte", () => 
   });
 
   it("apagar al vendedor y volver a encenderlo no mueve la fecha", () => {
-    // Borrar el nombre no borra la línea de corte —el guardado del panel ni
-    // toca la columna sin nombre—, así que al volver a escribirlo la fila llega
-    // acá con fecha y no se re-estampa. Re-estamparla devolvería a la bandeja
-    // de Katherine conversaciones vivas, que es lo que `no-regresion.md`
-    // prohíbe.
+    // Apagarlo ya no borra nada —desde la `0033` el nombre se queda— y el
+    // guardado no toca la columna con el vendedor apagado, así que al volver a
+    // encenderlo la fila llega acá con fecha y no se re-estampa. Re-estamparla
+    // devolvería a la bandeja de Katherine conversaciones vivas, que es lo que
+    // `no-regresion.md` prohíbe.
     const encendida = new Date("2026-08-20T00:00:00.000Z");
     expect(
-      needsActivationStamp({ displayName: "", activatedAt: encendida }),
+      needsActivationStamp({
+        enabled: false,
+        displayName: "Sebastián",
+        activatedAt: encendida,
+      }),
     ).toBe(false);
     expect(
-      needsActivationStamp({ displayName: "Sebastián", activatedAt: encendida }),
+      needsActivationStamp({
+        enabled: true,
+        displayName: "Sebastián",
+        activatedAt: encendida,
+      }),
     ).toBe(false);
   });
 });

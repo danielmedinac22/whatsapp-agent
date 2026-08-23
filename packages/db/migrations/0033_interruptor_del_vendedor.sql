@@ -1,0 +1,59 @@
+-- ────────────────────────────────────────────────────────────────────────────
+-- 0033 · El interruptor del vendedor
+--
+-- La única migración de esta ola, como siempre: drizzle-kit reescribe
+-- `meta/_journal.json` en cada generación, así que dos ramas que generen en
+-- paralelo chocan y el conflicto no lo ve ningún check local.
+--
+-- **El problema no es que el interruptor estuviera mal. Es que no existía como
+-- cosa.** Hasta acá «hay vendedor» se deducía de `display_name` no vacío, y la
+-- deducción es correcta —un vendedor sin nombre no puede presentarse— pero
+-- convertía un campo de texto en el interruptor de un módulo entero. Tres
+-- consecuencias, y las tres se pagaron:
+--
+--   1. **No se podía mostrar.** La pantalla dibujaba un formulario y en ninguna
+--      parte decía si Sebastián estaba encendido. El dueño de la operación
+--      abría `/vendedor` y no tenía forma de saber en qué estado estaba su
+--      operación.
+--   2. **Apagar era destruir.** La única forma de apagarlo era **borrar** el
+--      nombre, y con él se iba la configuración que costó escribir. Volver a
+--      encenderlo era volver a escribirla.
+--   3. **Encender no se anunciaba.** Guardar un nombre no solo enciende: en la
+--      misma sentencia estampa `activated_at`, la línea de corte que decide qué
+--      conversación es de quién y **que no se vuelve a mover nunca** (`0030`).
+--      Ese acto irreversible ocurría al teclear en un campo de texto, sin que
+--      nada lo dijera.
+--
+-- Un estado que el sistema deduce de la ausencia de un dato es un estado que no
+-- se puede ni mostrar ni deshacer. Esta columna lo vuelve un hecho que se
+-- declara.
+--
+-- **El listón sigue siendo uno solo.** `salesAgentIsConfigured` en `@wa/db`
+-- sigue siendo la única respuesta a «¿hay vendedor?» del monorepo, y lo que
+-- cambia es su cuerpo: ahora pide `enabled` **y** nombre visible. Los dos, y no
+-- solo el interruptor, porque la base se puede escribir por otras vías y un
+-- vendedor encendido sin nombre se presentaría ante el cliente como nadie; la
+-- dirección segura del error es que no atienda. Los ocho sitios que preguntan
+-- no cambian una línea — que es la razón por la que ese listón vive en una
+-- función y no repartido.
+--
+-- **El backfill preserva exactamente lo de hoy.** `enabled` nace en `false` y
+-- se enciende donde ya había nombre, así que toda operación que estuviera
+-- atendiendo sigue atendiendo y toda operación apagada sigue apagada. En
+-- Guatemala la única fila tiene `display_name` vacío: queda en `false`, que es
+-- el estado correcto y el mismo de antes de esta migración.
+--
+-- **Compatibilidad con lo desplegado, y acá SÍ hay orden.** A diferencia de la
+-- `0030`, esta columna la **lee** el código nuevo: el esquema la selecciona en
+-- el camino de entrada de todo mensaje. Aplicar la migración **antes** de
+-- desplegar el worker; al revés, el `select` falla contra una columna que no
+-- existe y Guatemala se queda muda. Al revés no muerde: el código viejo ignora
+-- una columna que no conoce.
+-- ────────────────────────────────────────────────────────────────────────────
+
+ALTER TABLE "sales_agent_settings" ADD COLUMN "enabled" boolean DEFAULT false NOT NULL;
+
+-- El estado de hoy, dicho en la columna nueva. `btrim` porque el listón viejo
+-- comparaba contra el nombre recortado, y un nombre de solo espacios nunca fue
+-- un vendedor encendido.
+UPDATE "sales_agent_settings" SET "enabled" = true WHERE btrim("display_name") <> '';

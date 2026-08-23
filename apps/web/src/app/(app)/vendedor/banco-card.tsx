@@ -219,8 +219,8 @@ export function BancoCard({
       {sinNombre && (
         <p className="mt-3 rounded-md border border-[color-mix(in_srgb,var(--state-espera-fg)_35%,transparent)] bg-[var(--state-espera-bg)] px-3 py-2 text-[11px] leading-snug text-[var(--state-espera-fg)]">
           Todavía no tiene nombre visible, así que se va a presentar sin nombre.
-          Escribí uno arriba para probarlo entero — probar no lo enciende, solo
-          guardar lo hace.
+          Escribí uno arriba para probarlo entero. Probar no lo enciende ni acá
+          ni con nombre: eso lo decide el interruptor de arriba de todo.
         </p>
       )}
 

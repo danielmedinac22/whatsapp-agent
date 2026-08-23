@@ -7,8 +7,12 @@ import {
 } from "./banco-vendedor";
 import type { SalesOrderDraft } from "../sales/order";
 
-/** Una configuración de vendedor completa y válida, para no repetirla. */
+/**
+ * Una configuración completa **y apagada**, que es el caso normal del banco:
+ * probar no exige encender, y ese es el motivo por el que el banco existe.
+ */
 const SEBASTIAN = {
+  enabled: false,
   displayName: "Sebastián",
   greeting: "¡Hola! Soy Sebastián de Vorare 👋",
   closingPush: "¿Te lo aparto? Pagas cuando lo recibes.",
@@ -88,6 +92,17 @@ describe("qué acepta el banco de pruebas", () => {
       turns: UN_TURNO,
     });
     expect(r.success).toBe(false);
+  });
+
+  it("se puede probar con el vendedor encendido, que es el mismo turno", () => {
+    // El banco no mira el interruptor: corre la configuración que le mandan.
+    // Encendido o apagado, el turno que arma es el mismo.
+    const r = vendedorBancoInput.safeParse({
+      settings: { ...SEBASTIAN, enabled: true },
+      productId: PRODUCTO,
+      turns: UN_TURNO,
+    });
+    expect(r.success).toBe(true);
   });
 
   it("el producto se elige por identificador, no por nombre", () => {

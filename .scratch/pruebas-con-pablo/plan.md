@@ -61,34 +61,48 @@ conjunto de anuncios de presupuesto mínimo apuntando a +502 3689 0343. Es la
 acción más barata que existe —duplicar un conjunto y cambiarle el destino— y es
 la única que enciende el tramo que nunca se ejecutó.
 
-## 3 · La trampa del encendido, y es irreversible
+## 3 · Encender y apagar, que hasta hoy no eran actos
 
-Guardar un nombre visible en Ventas → Vendedor hace **dos** cosas, no una:
-enciende al vendedor y **estampa `activated_at` con la hora de ese guardado**
-(`apps/web/src/lib/vendedor.ts:95`). Esa fecha es la línea de corte: lo nacido
-antes es de Katherine para siempre, lo nacido después sin pedido es de
-Sebastián.
+Hasta el 23-ago el interruptor del vendedor era **un campo de texto vacío**:
+`display_name` con algo escrito significaba encendido. La deducción era
+correcta —sin nombre no se puede presentar— pero convertía un campo en el
+interruptor de un módulo entero, y eso costaba tres cosas:
 
-Y **no se vuelve a mover nunca**. El `coalesce` de la misma sentencia lo impide,
-y el respaldo perezoso de `stampSalesAgentActivation` también. Apagar el
-vendedor borrando el nombre no la borra.
+1. **No se podía ver.** La pantalla mostraba un formulario y en ninguna parte
+   decía si Sebastián estaba atendiendo.
+2. **Apagar era destruir.** La única forma era borrar el nombre, y con él la
+   configuración que costó escribir.
+3. **Encender no se anunciaba.** Guardar un nombre además estampa
+   `activated_at` —la línea de corte, que **no se vuelve a mover nunca**— y eso
+   pasaba al teclear en un campo de texto, sin que nada lo dijera.
 
-La consecuencia práctica: **si Pablo enciende hoy para probar y apaga, la línea
-queda clavada hoy.** El día que lo enciendan de verdad, todas las conversaciones
-sin pedido nacidas entre medio caen de golpe en la bandeja de ventas. Es
-exactamente la bandeja definida por resta que el lote de la semana pasada
-apagó — el histórico de esos meses volvería a aparecerle a Sebastián como
-trabajo suyo.
+**Migración `0033`: el interruptor es una columna.** `sales_agent_settings
+.enabled`, con backfill que enciende donde ya había nombre — o sea, nada en
+Guatemala, que está apagada. El listón sigue siendo **una sola función**
+(`salesAgentIsConfigured`), y lo que cambió es su cuerpo: ahora pide interruptor
+**y** nombre. Los ocho sitios que preguntan no cambiaron una línea.
 
-**Esto dejó de ser un dilema el 23-ago**, y lo resolvió el banco de pruebas del
-punto 4: ajustar el tono ya no exige encender, así que el encendido se puede
-guardar para el día que la pauta apunte al número. Lo que queda de la trampa es
-lo que no cambia — **la primera vez que se guarde un nombre visible fija la línea
-para siempre**, así que ese guardado se hace cuando se quiere dejar encendido, no
-para ver qué pasa.
+El nombre sigue pesando porque la tabla se escribe también por SQL, por un seed
+y por una restauración, y un vendedor encendido sin nombre se le presenta al
+cliente como nadie. La dirección segura del error es que no atienda.
 
-Sigue abierta como ticket, y ahora sin urgencia, la opción de **mover la línea de
-corte a mano** como acto deliberado de admin.
+### Lo que gana Pablo
+
+- **Ve el estado**: la pantalla abre diciendo «Sebastián está apagado» o «está
+  atendiendo», con su botón.
+- **Apaga sin perder nada.** La configuración se queda escrita.
+- **Se le avisa lo irreversible, y una sola vez.** La primera vez que enciende,
+  el aviso dice que ese guardado fija la línea de corte para siempre. Después
+  desaparece, porque después ya no es cierto.
+- **Puede dejar todo listo sin encender**: nombre, tono y límite guardados con
+  el interruptor abajo. Es lo que hace posible la fase 0.
+
+### Lo que sigue siendo irreversible, y no cambió
+
+`activated_at` se estampa la primera vez que se enciende y **no se mueve nunca
+más**, ni apagando. Así que el primer encendido sigue siendo la decisión a
+tomar en serio — lo que cambió es que ahora se decide a propósito y con aviso,
+en vez de deducirse de que alguien escribió en un campo.
 
 ## 4 · El banco de pruebas — construido el 23-ago-2026
 
@@ -162,10 +176,13 @@ Cuatro comprobaciones, todas desde la máquina de Daniel:
    OpenRouter responde 402 y en `agent_runs` queda escrito «Response validation
    failed». **Sigue sin haber aviso cuando `agent_runs` acumula errores**, así
    que durante la prueba la única alarma es mirar.
-3. ⚠︎ **El estado de los tres frenos**: `sales_agent_settings.display_name`
-   vacío y `activated_at` en `null`, `products` en 0 filas, `writeMode:
+3. ⚠︎ **El estado de los tres frenos**: `sales_agent_settings.enabled` en
+   `false` y `activated_at` en `null`, `products` en 0 filas, `writeMode:
    dry_run` en Conexión → Shopify.
-4. **La credencial de Shopify caduca a las 24 h** y se reacuña sola. Si la
+4. **Aplicar la migración `0033` ANTES de desplegar el worker.** La columna la
+   lee el camino de entrada de todo mensaje: desplegar primero deja a Guatemala
+   muda contra una columna que no existe. Al revés no muerde.
+5. **La credencial de Shopify caduca a las 24 h** y se reacuña sola. Si la
    pantalla de la tienda dice algo raro, es lo primero a mirar.
 
 ## 7 · El orden de la prueba
@@ -180,9 +197,9 @@ necesita ni anuncio ni permiso, y la que más veces se va a repetir.
 presupuesto mínimo, público acotado, **destino +502 3689 0343**. Puede quedar
 pausado hasta el día de la prueba. Sin esto, las fases 3 y 4 no existen.
 
-**Fase 2 — Encender.** Catálogo con al menos un producto con precio, el id del anuncio de la fase 1 registrado contra ese producto, y el
-vendedor encendido. Lo verifica la banda de señal del catálogo, que dice en
-palabras si el mapa se está consultando o no.
+**Fase 2 — Encender.** El id del anuncio de la fase 1 registrado contra el
+producto, y el interruptor de `Ventas → Vendedor` arriba. La banda de señal del
+catálogo dice en palabras si el mapa se está consultando o no.
 
 **Fase 3 — el clic.** Pablo hace clic en el anuncio desde un número que nunca
 le haya escrito a Vorare, y conversa hasta dar los datos de entrega. Es la

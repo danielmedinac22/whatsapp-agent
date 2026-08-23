@@ -113,7 +113,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
        * veredicto rechazó.
        *
        * Solo aparece cuando la operación tiene vendedor configurado; lo decide
-       * el layout con `salesAgentIsConfigured` —nombre visible no vacío, no la
+       * el layout con `salesAgentIsConfigured` —encendido y con nombre, no la
        * existencia de la fila—, que es el mismo listón que usa el worker.
        */
       {

@@ -30,6 +30,8 @@ export interface ScopedSalesAgentSettingsRow {
 
 /** Lo mínimo que hace falta para saber si hay vendedor. Forma estructural. */
 export interface SalesAgentConfigRef {
+  /** El interruptor declarado (`0033`). */
+  enabled: boolean;
   displayName: string;
 }
 
@@ -48,12 +50,27 @@ export interface SalesAgentConfigRef {
  * convierte un `INSERT` a medio llenar en el momento en que Guatemala deja de
  * ser atendida por Katherine, sin que nadie lo haya pedido.
  *
- * El listón es el nombre visible porque es lo mínimo que un vendedor necesita
- * para presentarse y el único campo que el cliente ve, y es deliberadamente
- * conservador: mientras la respuesta sea «no», el comportamiento observable de
- * Guatemala es exactamente el de siempre —el riesgo R8 de la no-regresión—. Si
- * mañana hace falta un listón más alto (que tenga saludo, o modelo), **este es
- * el único sitio donde se cambia**, y esa frase ahora es verdad.
+ * **Desde la `0033` el listón son dos condiciones, y ninguna sobra.**
+ *
+ * `enabled` es el interruptor y es lo que cambió: antes el encendido se
+ * *deducía* de que hubiera nombre, y un estado deducido de la ausencia de un
+ * dato no se puede mostrar en una pantalla ni apagar sin destruir el dato. Ahora
+ * encender es un acto que alguien declara.
+ *
+ * El nombre visible sigue pesando porque el interruptor solo no alcanza: la
+ * tabla se puede escribir por SQL, por un seed o por una restauración, y un
+ * vendedor encendido sin nombre se le presentaría al cliente como nadie. La
+ * dirección segura del error es que no atienda — el mismo criterio con el que
+ * este listón se escribió la primera vez. El panel no deja producir esa
+ * combinación; esta función la cubre igual, por si el panel no es quien
+ * escribe.
+ *
+ * Es deliberadamente conservador: mientras la respuesta sea «no», el
+ * comportamiento observable de Guatemala es exactamente el de siempre —el
+ * riesgo R8 de la no-regresión—. Si mañana hace falta un listón más alto (que
+ * tenga saludo, o modelo), **este es el único sitio donde se cambia**, y esa
+ * frase sigue siendo verdad: los ocho sitios que preguntan no se enteraron de
+ * que el listón cambió.
  *
  * Es un guardia de tipo y no un `boolean` suelto para que preguntar por el
  * vendedor y quedarse con su fila sean el mismo acto: quien pasó el listón ya
@@ -63,7 +80,11 @@ export interface SalesAgentConfigRef {
 export function salesAgentIsConfigured<T extends SalesAgentConfigRef>(
   settings: T | null,
 ): settings is T {
-  return settings !== null && settings.displayName.trim().length > 0;
+  return (
+    settings !== null &&
+    settings.enabled &&
+    settings.displayName.trim().length > 0
+  );
 }
 
 /**

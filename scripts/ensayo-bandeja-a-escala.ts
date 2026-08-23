@@ -227,8 +227,11 @@ interface Escena {
  * `needsActivationStamp`.
  */
 async function vendedorEn(estado: "encendido" | "apagado", nombre: string) {
+  // Desde la `0033` apagar es bajar el interruptor y **no** borrar el nombre:
+  // el nombre se escribe igual para que la escena encendida tenga el suyo.
   await getDb().execute(
-    sql`update sales_agent_settings set display_name = ${estado === "encendido" ? nombre : ""}`,
+    sql`update sales_agent_settings
+        set enabled = ${estado === "encendido"}, display_name = ${nombre}`,
   );
   // **Sin esto la escena «apagada» medía la encendida.** `getSalesAgentSettings`
   // cachea la fila cinco segundos (`CACHE_DEL_VENDEDOR_MS`) y el marco la

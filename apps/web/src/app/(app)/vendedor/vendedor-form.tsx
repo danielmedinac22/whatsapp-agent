@@ -33,6 +33,7 @@ import { BancoCard } from "./banco-card";
 
 /** El borrador que se edita. `reasoningEffort` es texto porque la columna lo es. */
 type Draft = {
+  enabled: boolean;
   displayName: string;
   greeting: string;
   closingPush: string;
@@ -73,12 +74,22 @@ export function VendedorForm({
   initial,
   phone,
   productos,
+  yaTieneCorte,
 }: {
   initial: Draft;
   /** El número por el que sale lo que escribe. Contexto, no campo. */
   phone: string | null;
   /** El catálogo, para elegir de dónde viene el lead en el banco de pruebas. */
   productos: ProductoDelBanco[];
+  /**
+   * Si la operación **ya encendió alguna vez** (`activated_at` con fecha).
+   *
+   * Cambia lo que el aviso del interruptor tiene que decir: la primera vez el
+   * encendido fija la línea de corte para siempre, y de ahí en adelante ya no
+   * la mueve. Prometer lo mismo las dos veces sería asustar de más en la
+   * segunda o avisar de menos en la primera.
+   */
+  yaTieneCorte: boolean;
 }) {
   const [v, setV] = useState<Draft>(initial);
   const [baseline, setBaseline] = useState<Draft>(initial);
@@ -125,6 +136,17 @@ export function VendedorForm({
 
   return (
     <div className="space-y-4 pb-24">
+      {/* ── El interruptor ────────────────────────────────────────────── */}
+      {/* Va primero porque es lo primero que hay que poder responder al abrir
+          la pantalla: ¿está atendiendo o no? Antes de la `0033` la respuesta
+          había que deducirla de si el campo de nombre tenía texto. */}
+      <Interruptor
+        encendido={v.enabled}
+        nombre={v.displayName}
+        yaSeEncendioAlgunaVez={yaTieneCorte}
+        onChange={(e) => set("enabled", e)}
+      />
+
       {/* ── Identidad ─────────────────────────────────────────────────── */}
       <section className="app-card p-4">
         <h2 className="text-base font-semibold">Identidad</h2>
@@ -427,7 +449,12 @@ export function VendedorForm({
         <div className="fixed bottom-4 left-1/2 z-30 w-[min(720px,calc(100%-2rem))] -translate-x-1/2 rounded-xl border border-[color-mix(in_srgb,var(--state-auto-fg)_35%,transparent)] bg-[var(--color-card)] px-4 py-3 shadow-[var(--shadow-panel)] backdrop-blur">
           <div className="flex items-center justify-between gap-3">
             <p className="text-sm text-[var(--color-text)]">
-              {error ?? "Los cambios aplican en la próxima conversación, sin desplegar."}
+              {error ??
+                (v.enabled !== baseline.enabled
+                  ? v.enabled
+                    ? "Al guardar, Sebastián empieza a atender."
+                    : "Al guardar, todo vuelve a Katherine. No se pierde ninguna conversación."
+                  : "Los cambios aplican en la próxima conversación, sin desplegar.")}
             </p>
             <div className="flex items-center gap-2">
               <button
@@ -460,6 +487,91 @@ export function VendedorForm({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Encendido o apagado, dicho como estado y no como consecuencia de un campo
+ * vacío.
+ *
+ * **Las dos direcciones no son simétricas y por eso no se dicen igual.** Apagar
+ * es reversible y barato: vuelve todo a Katherine, no se pierde una
+ * conversación y la configuración se queda escrita. Encender **por primera vez**
+ * fija la línea de corte para siempre —`activated_at` no se vuelve a mover, ni
+ * apagando— así que ese aviso aparece una sola vez en la vida de la operación y
+ * después deja de aparecer, porque después ya no es cierto.
+ *
+ * El botón no guarda: cambia el borrador y la barra de abajo hace el resto.
+ * Un interruptor que guardara solo sería el único control de la pantalla que
+ * escribe sin confirmación, y justo el que no se puede deshacer.
+ */
+function Interruptor({
+  encendido,
+  nombre,
+  yaSeEncendioAlgunaVez,
+  onChange,
+}: {
+  encendido: boolean;
+  nombre: string;
+  yaSeEncendioAlgunaVez: boolean;
+  onChange: (encendido: boolean) => void;
+}) {
+  const sinNombre = nombre.trim() === "";
+
+  return (
+    <section className="app-card p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <h2 className="text-base font-semibold">
+            {encendido ? "Sebastián está atendiendo" : "Sebastián está apagado"}
+          </h2>
+          <p className="app-muted mt-1 text-sm leading-snug">
+            {encendido
+              ? "Los clientes que llegan por un anuncio los atiende él. Lo demás lo sigue atendiendo Katherine."
+              : "Todo lo atiende Katherine, como siempre. Podés configurarlo y probarlo acá abajo sin encenderlo."}
+          </p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={encendido}
+          aria-label={encendido ? "Apagar al vendedor" : "Encender al vendedor"}
+          disabled={!encendido && sinNombre}
+          onClick={() => onChange(!encendido)}
+          className={
+            encendido ? "app-button-secondary shrink-0" : "app-button shrink-0"
+          }
+        >
+          {encendido ? "Apagar" : "Encender"}
+        </button>
+      </div>
+
+      {!encendido && sinNombre && (
+        <p className="mt-3 text-[11px] leading-snug text-[var(--color-text-dim)]">
+          Para encenderlo hace falta un nombre visible: es con lo que se presenta
+          al cliente. Escribilo acá abajo.
+        </p>
+      )}
+
+      {encendido && !yaSeEncendioAlgunaVez && (
+        <p className="mt-3 rounded-md border border-[color-mix(in_srgb,var(--color-warn)_35%,transparent)] px-3 py-2 text-[11px] leading-snug text-[var(--color-warn)]">
+          <strong className="font-semibold">
+            Al guardar, esta es la primera vez que se enciende
+          </strong>{" "}
+          — y eso marca la línea a partir de la cual las conversaciones nuevas
+          son suyas. Esa marca queda fija: no se mueve aunque después lo apagues
+          y lo vuelvas a encender. Lo de antes sigue siendo de Katherine para
+          siempre.
+        </p>
+      )}
+
+      {encendido && yaSeEncendioAlgunaVez && (
+        <p className="mt-3 text-[11px] leading-snug text-[var(--color-text-dim)]">
+          Ya se había encendido antes, así que la línea de corte no se mueve: es
+          la del primer encendido.
+        </p>
+      )}
+    </section>
   );
 }
 

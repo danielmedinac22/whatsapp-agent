@@ -891,6 +891,26 @@ export const salesAgentSettings = pgTable(
     operationId: uuid("operation_id")
       .notNull()
       .references(() => operations.id, { onDelete: "restrict" }),
+    /**
+     * **El interruptor del vendedor.** Migración `0033`.
+     *
+     * Hasta acá el interruptor era `display_name` no vacío, y funcionaba: un
+     * vendedor sin nombre no puede presentarse, así que la ausencia del nombre
+     * y la ausencia del vendedor coincidían. Lo que no funcionaba era
+     * **decirlo**: la pantalla mostraba un formulario y no había manera de
+     * saber si el módulo estaba encendido, apagarlo obligaba a **borrar** el
+     * nombre —y con él el trabajo de configurarlo—, y encenderlo pasaba por
+     * escribir en un campo de texto sin que nada avisara que ese guardado
+     * estampa la línea de corte para siempre.
+     *
+     * Un estado que el sistema deduce de la ausencia de un dato es un estado
+     * que no se puede ni mostrar ni deshacer. Esta columna lo vuelve un hecho.
+     *
+     * **Nace en `false` y el backfill la enciende donde ya había nombre**, así
+     * que la operación que estuviera encendida sigue igual y la que no,
+     * tampoco. Guatemala no cambia: `display_name` está vacío.
+     */
+    enabled: boolean("enabled").notNull().default(false),
     /** Nombre visible del vendedor: «Sebastián». */
     displayName: text("display_name").notNull().default(""),
     /** Mensajes base — los momentos que el admin controla palabra por palabra. */

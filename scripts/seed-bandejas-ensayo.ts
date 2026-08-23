@@ -126,6 +126,7 @@ async function main() {
   // ── El interruptor: con vendedor hay dos bandejas ────────────────────────
   await db.insert(salesAgentSettings).values({
     operationId: op.id,
+    enabled: true,
     displayName: "Sebastián",
     greeting: "¡Hola! Soy Sebastián 👋",
     closingPush: "¿Te lo aparto?",

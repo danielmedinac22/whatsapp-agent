@@ -77,7 +77,7 @@ export default async function InboxPage({
   const op = await resolvePanelOperation();
 
   // El vendedor decide si esta operación tiene dos bandejas o una. Sin vendedor
-  // —el listón único: nombre visible no vacío, no la existencia de la fila—
+  // —el listón único: encendido y con nombre, no la existencia de la fila—
   // `listConversations` no filtra ni deriva nada y la pantalla es la de hoy.
   const seller = await getSalesAgentSettings(op);
   const bandeja = bandejaPedida(b, salesAgentIsConfigured(seller) ? seller : null);

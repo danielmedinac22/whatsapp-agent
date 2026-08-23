@@ -141,7 +141,7 @@ async function main() {
   console.log("\n2 · El respaldo perezoso: encender por SQL, sin pasar por el panel");
   await db
     .update(salesAgentSettings)
-    .set({ displayName: "Sebastián" })
+    .set({ enabled: true, displayName: "Sebastián" })
     .where(eq(salesAgentSettings.operationId, op.id));
   const antesDeLeer = await db
     .select({ activatedAt: salesAgentSettings.activatedAt })
@@ -200,8 +200,8 @@ async function main() {
   // primera vez que alguien abra `/vendedor` y guarde con nombre.
   await db.delete(salesAgentSettings).where(eq(salesAgentSettings.operationId, op.id));
 
-  const guardar = async (displayName: string) => {
-    const fields = { displayName: displayName.trim() };
+  const guardar = async (displayName: string, enabled = displayName.trim() !== "") => {
+    const fields = { enabled, displayName: displayName.trim() };
     const encendido = salesAgentIsConfigured(fields);
     await db
       .insert(salesAgentSettings)

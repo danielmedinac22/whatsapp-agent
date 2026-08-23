@@ -16,13 +16,14 @@ import {
  *
  * Lo que están cuidando no es el formulario sino la operación que factura: con
  * `sales_agent_settings` vacía, Guatemala la atiende el agente de confirmación,
- * y el único acto capaz de cambiar eso es escribir un nombre visible en esta
- * pantalla. Todo lo demás —guardar el tono, mover el límite, cambiar el
+ * y el único acto capaz de cambiar eso es **encender el interruptor** de esta
+ * pantalla (`0033`). Todo lo demás —guardar el nombre, el tono, el límite, el
  * modelo— tiene que poder hacerse sin encender a nadie.
  */
 
 /** Lo que manda la pantalla recién abierta contra la tabla vacía de hoy. */
 const EN_BLANCO: SalesAgentSettingsInput = {
+  enabled: false,
   displayName: "",
   greeting: "",
   closingPush: "",
@@ -35,6 +36,7 @@ const EN_BLANCO: SalesAgentSettingsInput = {
 };
 
 const COMPLETA: SalesAgentSettingsInput = {
+  enabled: true,
   displayName: "Sebastián",
   greeting: "¡Hola! Soy Sebastián de Vorare 👋",
   closingPush: "¿Te lo aparto? Pagas cuando lo recibes.",

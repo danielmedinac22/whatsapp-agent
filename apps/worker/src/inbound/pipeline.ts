@@ -165,7 +165,7 @@ async function attributeProduct(input: {
  * La configuración del vendedor de la operación que recibió el mensaje.
  *
  * De ella salen las dos cosas que el camino de ventas necesita: si hay vendedor
- * —el listón único, `salesAgentIsConfigured`: nombre visible no vacío, no la
+ * —el listón único, `salesAgentIsConfigured`: encendido y con nombre, no la
  * existencia de la fila— y **cuándo se encendió**, que es la línea de corte de
  * la bandeja. Se lee una sola vez por mensaje y se pasa hecha; la lectura está
  * cacheada por operación.
