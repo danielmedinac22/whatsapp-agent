@@ -317,6 +317,57 @@
     color: var(--ink);
   }
 
+  /* ── los dos números, uno al lado del otro ──────────────── */
+
+  .lineas { display: grid; gap: 0.85rem; }
+
+  @media (min-width: 34rem) {
+    .lineas { grid-template-columns: 1fr 1fr; }
+  }
+
+  .linea {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 1rem 1.05rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+  }
+
+  .linea.es-del-panel { border-color: var(--accent); }
+
+  .linea .rol {
+    font-family: var(--f-mono);
+    font-size: 0.66rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+  }
+
+  .linea.es-del-panel .rol { color: var(--accent); }
+
+  .linea .numero {
+    font-family: var(--f-mono);
+    font-size: 1.02rem;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+  }
+
+  .linea dl {
+    margin: 0;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.3rem 0.7rem;
+    font-size: 0.86rem;
+  }
+
+  .linea dt { color: var(--ink-dim); }
+  .linea dd { margin: 0; color: var(--ink-soft); }
+  .linea dd strong { color: var(--ink); font-weight: 600; }
+
   a { color: var(--accent-ink); text-decoration: underline; text-underline-offset: 0.18em; text-decoration-thickness: 1px; }
   a:hover { text-decoration-thickness: 2px; }
   a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
@@ -367,21 +418,76 @@
 
   <section>
     <div class="fase-cabeza">
+      <p class="fase-eyebrow">Primero esto, o nada de lo demás se entiende</p>
+      <h2>Vorare atiende por dos WhatsApp distintos</h2>
+    </div>
+    <p>
+      Hoy la venta y la confirmación viven en <strong>dos líneas separadas</strong>. Los
+      anuncios mandan la gente a una, y el panel —donde trabaja Katherine y donde va a
+      trabajar Sebastián— está conectado a la otra.
+    </p>
+    <div class="lineas">
+      <div class="linea es-del-panel">
+        <p class="rol">La línea del panel</p>
+        <p class="numero">+502 3689 0343</p>
+        <dl>
+          <dt>Hoy</dt><dd>Katherine confirma pedidos</dd>
+          <dt>Anuncios</dt><dd><strong>ninguno</strong> le llega</dd>
+          <dt>Estado</dt><dd>calidad verde, al día</dd>
+        </dl>
+      </div>
+      <div class="linea">
+        <p class="rol">La línea de la pauta</p>
+        <p class="numero">+502 4722 4176</p>
+        <dl>
+          <dt>Hoy</dt><dd>caen ahí los leads de los anuncios</dd>
+          <dt>Anuncios</dt><dd>los <strong>2 activos</strong> y 5 pausados</dd>
+          <dt>Estado</dt><dd>sobre una tecnología que Meta va a apagar</dd>
+        </dl>
+      </div>
+    </div>
+    <p>
+      Esa separación explica la única cosa rara del panel: de <strong>1.759
+      conversaciones, ninguna llegó por un anuncio</strong>. No es que se pierdan — es que
+      nunca pasaron por acá. Sebastián está esperando leads en una línea a la que no llega
+      ni un clic.
+    </p>
+    <p>
+      El plan de fondo, que ya está hablado, es <strong>dejar una sola línea</strong>, y
+      tiene que ser la del panel: la otra corre sobre una versión de WhatsApp que Meta está
+      descontinuando. <em>Esta prueba no es la mudanza.</em> Es mover un anuncio solo, con
+      presupuesto mínimo, para ver el camino funcionando antes de mover la pauta entera.
+    </p>
+    <div class="aviso ojo">
+      <p class="etiqueta">Ojo · los dos se llaman parecido</p>
+      <p>
+        En la consola de Meta, el número del panel aparece con el nombre
+        <strong>«Vorare Store Guatemala»</strong> pero cuelga de la cuenta llamada
+        <strong>«Vorare»</strong>. Y existe aparte otra cuenta llamada «Vorare Store
+        Guatemala», que es la del otro número. Elegir por el nombre es equivocarse:
+        <strong>elegí por el número</strong>, <span class="dato">+502 3689 0343</span>.
+      </p>
+    </div>
+  </section>
+
+  <hr>
+
+  <section>
+    <div class="fase-cabeza">
       <p class="fase-eyebrow">Antes de empezar</p>
       <h2>Lo que necesitás en la mano</h2>
     </div>
     <div class="fichas">
       <div class="ficha"><span class="clave">El panel</span><span class="valor">whatsapp-agent-mauve.vercel.app</span></div>
-      <div class="ficha"><span class="clave">El número que escucha el panel</span><span class="valor">+502 3689 0343</span></div>
-      <div class="ficha"><span class="clave">Al que apunta la pauta hoy</span><span class="valor">+502 4722 4176</span></div>
       <div class="ficha"><span class="clave">Cuenta publicitaria</span><span class="valor">act_2042265076620189</span></div>
       <div class="ficha"><span class="clave">Tienda conectada</span><span class="valor">Vorare Store Guatemala · GTQ</span></div>
     </div>
     <p>
-      Y un teléfono más: uno que <strong>nunca le haya escrito a Vorare</strong>. Es la única
-      forma de que la conversación nazca limpia y le toque a Sebastián. Si el número ya
-      escribió alguna vez, la conversación es vieja y le sigue tocando a Katherine —
-      buscalo en Conversaciones antes de usarlo.
+      Y un teléfono más, para hacer de cliente: uno que <strong>nunca le haya escrito a
+      +502 3689 0343</strong>. Es la única forma de que la conversación nazca limpia y le
+      toque a Sebastián; si ese número ya escribió alguna vez, su conversación es vieja y
+      le sigue tocando a Katherine. Buscalo en <strong>Conversaciones</strong> antes de
+      usarlo. Haber escrito a la otra línea no importa — esa no la ve el panel.
     </p>
     <p>
       Avisale a Daniel el día y la hora. Hay una parte de la prueba que hoy solo se ve
@@ -397,17 +503,14 @@
       <h2>El anuncio tiene que apuntar al número del panel</h2>
     </div>
     <p>
-      Es lo único que bloquea todo lo demás, y no es un detalle de configuración:
-      <strong>hoy ningún anuncio de la cuenta llega al panel</strong>. Los dos conjuntos
-      activos mandan a <span class="dato">+502 4722 4176</span>, que es otra WhatsApp
-      Business. El panel escucha <span class="dato">+502 3689 0343</span>. Por eso, de
-      1.759 conversaciones, ninguna llegó por un anuncio.
+      Es lo único que bloquea todo lo demás. Mientras ningún anuncio llegue a la línea del
+      panel, no hay nada que probar: Sebastián no tiene a quién atender.
     </p>
     <p>
-      Y sin anuncio, Sebastián <strong>no sabe de qué producto le están hablando</strong>.
-      No es que adivine mal: el producto se reconoce por el anuncio que trajo al cliente,
-      así que sin él la conversación llega a pedir los datos y termina en manos de una
-      persona.
+      Y hace falta un anuncio de verdad, no alcanza con escribirle al número.
+      <strong>El producto se reconoce por el anuncio que trajo al cliente</strong> — es el
+      clic el que dice de qué se está hablando. Sin eso, la conversación avanza, pide los
+      datos y termina en manos de una persona.
     </p>
     <ol class="pasos">
       <li class="paso">
