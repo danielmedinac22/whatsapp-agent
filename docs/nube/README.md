@@ -7,6 +7,19 @@ leer la base de producción, probar el agente contra OpenRouter y deployar.
 Las sesiones corren en una VM de Anthropic (Ubuntu 24.04, 4 vCPU, 16 GB de RAM,
 30 GB de disco) que clona este repo. Siguen corriendo con el teléfono guardado.
 
+## El camino corto
+
+```bash
+./docs/nube/asistente.sh
+```
+
+Te abre cada pantalla, te dice qué tocar, **lee las variables de Railway por vos**
+y te va dejando en el portapapeles lo que hay que pegar. Ningún secreto pasa por
+un archivo del repo ni por la conversación.
+
+El resto de este documento es lo mismo explicado, por si el asistente falla o
+querés entender qué hace cada campo.
+
 Lo que sigue son **los cuatro campos del diálogo de entorno** en
 [claude.ai/code](https://claude.ai/code), más las trampas que este repo tiene y
 que no se descubren hasta que fallan.
@@ -24,24 +37,10 @@ o los dominios, y cuando la caché cumple unos siete días.
 ## 2 · Network access
 
 Poné el nivel en **Custom**, dejá marcado *«Also include default list of common
-package managers»* y agregá esta lista. Sin esto la sesión no llega a la base ni
-al proveedor del modelo, aunque las credenciales estén bien.
-
-```text
-*.rlwy.net
-*.railway.app
-*.railway.com
-backboard.railway.app
-openrouter.ai
-api.kapso.ai
-graph.facebook.com
-app.dropi.gt
-api.dropi.gt
-api.vercel.com
-*.vercel.app
-*.myshopify.com
-*.frame.claudeusercontent.com
-```
+package managers»* y pegá la lista de [`dominios.txt`](./dominios.txt), que es
+la copia única: el asistente la lee de ahí, así que si cambia, cambia en un solo
+sitio. Sin esto la sesión no llega a la base ni al proveedor del modelo, aunque
+las credenciales estén bien.
 
 | dominio | para qué |
 | -- | -- |

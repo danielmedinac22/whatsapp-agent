@@ -1,0 +1,13 @@
+*.rlwy.net
+*.railway.app
+*.railway.com
+backboard.railway.app
+openrouter.ai
+api.kapso.ai
+graph.facebook.com
+app.dropi.gt
+api.dropi.gt
+api.vercel.com
+*.vercel.app
+*.myshopify.com
+*.frame.claudeusercontent.com
