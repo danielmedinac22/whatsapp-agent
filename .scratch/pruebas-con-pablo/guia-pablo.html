@@ -1,0 +1,646 @@
+<title>Encender a Sebastián</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+  :root {
+    --paper:        #F5F8F7;
+    --surface:      #FFFFFF;
+    --surface-sunk: #EDF2F1;
+    --ink:          #101A1D;
+    --ink-soft:     #46555A;
+    --ink-dim:      #6E7C81;
+    --rule:         #D6E0DE;
+    --rule-soft:    #E6EDEB;
+    --accent:       #0E6B5D;
+    --accent-soft:  #E0EFEB;
+    --accent-ink:   #0A4F45;
+    --ojo:          #8A5300;
+    --ojo-soft:     #FAEEDA;
+    --ojo-rule:     #E8C98F;
+    --quieto:       #4A5C69;
+    --quieto-soft:  #E8EDF1;
+    --quieto-rule:  #C6D3DC;
+
+    --f-display: "Newsreader", "Iowan Old Style", Georgia, serif;
+    --f-body:    "Public Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    --f-mono:    "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:        #0D1315;
+      --surface:      #141C1F;
+      --surface-sunk: #1A2427;
+      --ink:          #E8EFED;
+      --ink-soft:     #A9B8B9;
+      --ink-dim:      #7E8D8F;
+      --rule:         #263436;
+      --rule-soft:    #1E2A2C;
+      --accent:       #4EB39F;
+      --accent-soft:  #12302B;
+      --accent-ink:   #6FC9B6;
+      --ojo:          #E0AF5E;
+      --ojo-soft:     #2E2314;
+      --ojo-rule:     #574122;
+      --quieto:       #9DB2C0;
+      --quieto-soft:  #1A2329;
+      --quieto-rule:  #2E3C45;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper:        #0D1315;
+    --surface:      #141C1F;
+    --surface-sunk: #1A2427;
+    --ink:          #E8EFED;
+    --ink-soft:     #A9B8B9;
+    --ink-dim:      #7E8D8F;
+    --rule:         #263436;
+    --rule-soft:    #1E2A2C;
+    --accent:       #4EB39F;
+    --accent-soft:  #12302B;
+    --accent-ink:   #6FC9B6;
+    --ojo:          #E0AF5E;
+    --ojo-soft:     #2E2314;
+    --ojo-rule:     #574122;
+    --quieto:       #9DB2C0;
+    --quieto-soft:  #1A2329;
+    --quieto-rule:  #2E3C45;
+  }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--f-body);
+    font-size: 17px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .hoja {
+    max-width: 40rem;
+    margin: 0 auto;
+    padding: 2.75rem 1.25rem 5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 2.75rem;
+  }
+
+  /* ── cabecera ───────────────────────────────────────────── */
+
+  .portada { display: flex; flex-direction: column; gap: 1rem; }
+
+  .marca {
+    font-family: var(--f-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  h1 {
+    font-family: var(--f-display);
+    font-weight: 500;
+    font-size: clamp(2.5rem, 10vw, 3.6rem);
+    line-height: 1.02;
+    letter-spacing: -0.022em;
+    text-wrap: balance;
+    margin: 0;
+  }
+
+  .bajada {
+    font-size: 1.075rem;
+    color: var(--ink-soft);
+    max-width: 34rem;
+  }
+
+  .bajada strong { color: var(--ink); font-weight: 600; }
+
+  /* ── el mapa de las cuatro fases ────────────────────────── */
+
+  .mapa {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 1.1rem 1.15rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+  }
+
+  .mapa-titulo {
+    font-family: var(--f-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+  }
+
+  .mapa ol { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 0.7rem; }
+
+  .mapa li {
+    display: grid;
+    grid-template-columns: 1.75rem 1fr;
+    gap: 0.65rem;
+    align-items: baseline;
+    font-size: 0.94rem;
+    line-height: 1.45;
+  }
+
+  .mapa .num {
+    font-family: var(--f-mono);
+    font-size: 0.78rem;
+    color: var(--accent);
+    font-weight: 500;
+  }
+
+  .mapa .quien {
+    display: block;
+    font-family: var(--f-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    margin-top: 0.15rem;
+  }
+
+  /* ── secciones ──────────────────────────────────────────── */
+
+  section { display: flex; flex-direction: column; gap: 1.1rem; }
+
+  .fase-cabeza { display: flex; flex-direction: column; gap: 0.4rem; }
+
+  .fase-eyebrow {
+    font-family: var(--f-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--accent);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+  }
+
+  .fase-eyebrow .quien-hace {
+    color: var(--ink-dim);
+    border-left: 1px solid var(--rule);
+    padding-left: 0.5rem;
+  }
+
+  h2 {
+    font-family: var(--f-display);
+    font-weight: 500;
+    font-size: clamp(1.6rem, 5.5vw, 2rem);
+    line-height: 1.14;
+    letter-spacing: -0.015em;
+    text-wrap: balance;
+    margin: 0;
+  }
+
+  h3 {
+    font-family: var(--f-body);
+    font-weight: 700;
+    font-size: 1rem;
+    letter-spacing: -0.005em;
+    margin: 0;
+  }
+
+  p { margin: 0; }
+  section > p, .paso p, .aviso p { max-width: 36rem; }
+
+  strong { font-weight: 600; }
+  em { font-style: italic; color: var(--ink-soft); }
+
+  /* ── pasos ──────────────────────────────────────────────── */
+
+  .pasos { display: flex; flex-direction: column; gap: 0.9rem; margin: 0; padding: 0; list-style: none; counter-reset: paso; }
+
+  .paso {
+    counter-increment: paso;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 1rem 1.1rem;
+    display: grid;
+    grid-template-columns: 1.6rem 1fr;
+    gap: 0.4rem 0.7rem;
+  }
+
+  .paso::before {
+    content: counter(paso);
+    font-family: var(--f-mono);
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--accent);
+    padding-top: 0.15rem;
+  }
+
+  .paso > * { grid-column: 2; }
+
+  .paso .ruta {
+    font-family: var(--f-mono);
+    font-size: 0.78rem;
+    color: var(--ink-dim);
+    letter-spacing: 0.01em;
+  }
+
+  .paso p { font-size: 0.96rem; color: var(--ink-soft); }
+  .paso p strong { color: var(--ink); }
+
+  /* ── avisos: los dos tipos, y cada uno dice algo distinto ─ */
+
+  .aviso {
+    border-radius: 3px;
+    padding: 0.9rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    font-size: 0.94rem;
+  }
+
+  .aviso .etiqueta {
+    font-family: var(--f-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-weight: 500;
+  }
+
+  .ojo { background: var(--ojo-soft); border: 1px solid var(--ojo-rule); color: var(--ink); }
+  .ojo .etiqueta { color: var(--ojo); }
+
+  .quieto { background: var(--quieto-soft); border: 1px solid var(--quieto-rule); color: var(--ink); }
+  .quieto .etiqueta { color: var(--quieto); }
+
+  /* ── datos que hay que copiar ───────────────────────────── */
+
+  code, .dato {
+    font-family: var(--f-mono);
+    font-size: 0.88em;
+    background: var(--surface-sunk);
+    border-radius: 2px;
+    padding: 0.08em 0.34em;
+    color: var(--ink);
+    word-break: break-word;
+  }
+
+  .fichas {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    background: var(--surface);
+    overflow: hidden;
+  }
+
+  .ficha {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.5rem 1rem;
+    align-items: baseline;
+    padding: 0.7rem 1rem;
+    border-bottom: 1px solid var(--rule-soft);
+    font-size: 0.92rem;
+  }
+
+  .ficha:last-child { border-bottom: 0; }
+  .ficha .clave { color: var(--ink-soft); }
+  .ficha .valor {
+    font-family: var(--f-mono);
+    font-size: 0.85rem;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    color: var(--ink);
+  }
+
+  a { color: var(--accent-ink); text-decoration: underline; text-underline-offset: 0.18em; text-decoration-thickness: 1px; }
+  a:hover { text-decoration-thickness: 2px; }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
+
+  hr {
+    border: 0;
+    border-top: 1px solid var(--rule);
+    margin: 0;
+  }
+
+  .cierre {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    color: var(--ink-soft);
+    font-size: 0.92rem;
+  }
+
+  .cierre .marca { color: var(--ink-dim); }
+
+  @media (min-width: 40rem) {
+    .hoja { padding-inline: 2rem; }
+  }
+</style>
+
+<div class="hoja">
+
+  <header class="portada">
+    <p class="marca">Vorare Guatemala · Panel de ventas</p>
+    <h1>Encender a Sebastián</h1>
+    <p class="bajada">
+      Sebastián está construido entero y <strong>apagado a propósito</strong>: atiende al
+      que llega por un anuncio, le arma el pedido y lo cierra. Esta guía es el orden
+      exacto para encenderlo y probarlo de punta a punta — qué toca vos, qué toca en
+      Meta, y qué toca Daniel.
+    </p>
+  </header>
+
+  <div class="mapa">
+    <p class="mapa-titulo">El orden, y no se puede alterar</p>
+    <ol>
+      <li><span class="num">01</span><span>Apuntar un anuncio al número del panel<span class="quien">Vorare, en Meta</span></span></li>
+      <li><span class="num">02</span><span>Cargar el producto, registrar el anuncio y encender al vendedor<span class="quien">vos, en el panel</span></span></li>
+      <li><span class="num">03</span><span>Hacer clic en el anuncio y conversar como cliente<span class="quien">vos, desde el teléfono</span></span></li>
+      <li><span class="num">04</span><span>Dejar que el pedido entre de verdad a la tienda<span class="quien">Daniel, con un despliegue</span></span></li>
+    </ol>
+  </div>
+
+  <section>
+    <div class="fase-cabeza">
+      <p class="fase-eyebrow">Antes de empezar</p>
+      <h2>Lo que necesitás en la mano</h2>
+    </div>
+    <div class="fichas">
+      <div class="ficha"><span class="clave">El panel</span><span class="valor">whatsapp-agent-mauve.vercel.app</span></div>
+      <div class="ficha"><span class="clave">El número que escucha el panel</span><span class="valor">+502 3689 0343</span></div>
+      <div class="ficha"><span class="clave">Al que apunta la pauta hoy</span><span class="valor">+502 4722 4176</span></div>
+      <div class="ficha"><span class="clave">Cuenta publicitaria</span><span class="valor">act_2042265076620189</span></div>
+      <div class="ficha"><span class="clave">Tienda conectada</span><span class="valor">Vorare Store Guatemala · GTQ</span></div>
+    </div>
+    <p>
+      Y un teléfono más: uno que <strong>nunca le haya escrito a Vorare</strong>. Es la única
+      forma de que la conversación nazca limpia y le toque a Sebastián. Si el número ya
+      escribió alguna vez, la conversación es vieja y le sigue tocando a Katherine —
+      buscalo en Conversaciones antes de usarlo.
+    </p>
+    <p>
+      Avisale a Daniel el día y la hora. Hay una parte de la prueba que hoy solo se ve
+      desde los registros del servidor, y conviene que él esté mirando.
+    </p>
+  </section>
+
+  <hr>
+
+  <section>
+    <div class="fase-cabeza">
+      <p class="fase-eyebrow">Fase 01 <span class="quien-hace">Vorare, en Meta</span></p>
+      <h2>El anuncio tiene que apuntar al número del panel</h2>
+    </div>
+    <p>
+      Es lo único que bloquea todo lo demás, y no es un detalle de configuración:
+      <strong>hoy ningún anuncio de la cuenta llega al panel</strong>. Los dos conjuntos
+      activos mandan a <span class="dato">+502 4722 4176</span>, que es otra WhatsApp
+      Business. El panel escucha <span class="dato">+502 3689 0343</span>. Por eso, de
+      1.759 conversaciones, ninguna llegó por un anuncio.
+    </p>
+    <p>
+      Y sin anuncio, Sebastián <strong>no sabe de qué producto le están hablando</strong>.
+      No es que adivine mal: el producto se reconoce por el anuncio que trajo al cliente,
+      así que sin él la conversación llega a pedir los datos y termina en manos de una
+      persona.
+    </p>
+    <ol class="pasos">
+      <li class="paso">
+        <h3>Duplicá un conjunto de anuncios que ya funcione</h3>
+        <p><span class="ruta">Ads Manager · act_2042265076620189</span></p>
+        <p>Sirve cualquiera de los dos activos — <em>CJ NEURO WPP</em> o <em>CJ ABT WPP BUSSINES SEBASTIAN SEGUNDA CAMPAÑA</em>.</p>
+      </li>
+      <li class="paso">
+        <h3>Cambiale el destino a +502 3689 0343</h3>
+        <p>Es el cambio entero. Presupuesto al mínimo y público lo más acotado posible: no es una campaña, es una prueba.</p>
+      </li>
+      <li class="paso">
+        <h3>Copiá el ID del anuncio y dejalo pausado</h3>
+        <p>Lo vas a pegar en el panel en la fase siguiente. <strong>Se enciende recién el día de la prueba</strong>, cuando el catálogo ya esté cargado.</p>
+      </li>
+    </ol>
+    <div class="aviso ojo">
+      <p class="etiqueta">Ojo</p>
+      <p>
+        La atribución de un clic <strong>no se puede recuperar después</strong>. Meta no
+        tiene forma de devolverla. Todo lo que la pauta mande al número del panel antes
+        de que esta prueba salga limpia es plata invertida sin poder rastrear de dónde
+        vino la venta. Por eso el anuncio arranca pausado.
+      </p>
+    </div>
+  </section>
+
+  <hr>
+
+  <section>
+    <div class="fase-cabeza">
+      <p class="fase-eyebrow">Fase 02 <span class="quien-hace">vos, en el panel</span></p>
+      <h2>El catálogo, el anuncio y el vendedor</h2>
+    </div>
+    <p>
+      Las tres cosas son tuyas y se hacen desde el teléfono. Van en este orden porque la
+      última es la que enciende.
+    </p>
+    <ol class="pasos">
+      <li class="paso">
+        <h3>Cargá el producto que vende ese anuncio</h3>
+        <p><span class="ruta">Ventas → Catálogo</span></p>
+        <p>
+          Dos caminos: <strong>conectar un producto de la tienda</strong> — trae precio y
+          presentaciones solo —, o <strong>crearlo en el panel</strong>, y entonces tenés que
+          escribirle el precio vos. Sin precio, Sebastián no cierra: escala a una persona.
+        </p>
+      </li>
+      <li class="paso">
+        <h3>Registrá el ID del anuncio contra ese producto</h3>
+        <p><span class="ruta">Ventas → Catálogo → la ficha del producto</span></p>
+        <p>
+          Podés pegar el ID o buscarlo por nombre entre los anuncios de la cuenta. Fijate en
+          la banda de arriba de la pantalla: dice si el mapa se está consultando de verdad o
+          si está lleno y nadie lo mira.
+        </p>
+      </li>
+      <li class="paso">
+        <h3>Escribí el nombre visible del vendedor</h3>
+        <p><span class="ruta">Ventas → Vendedor → Identidad</span></p>
+        <p>
+          <strong>Ese campo es el interruptor.</strong> Con el nombre vacío, todo lo atiende
+          Katherine; con un nombre escrito, Sebastián existe. Aprovechá y dejá listos el
+          saludo, el tono y el límite de descuento — aplican en la conversación siguiente,
+          sin desplegar nada.
+        </p>
+      </li>
+    </ol>
+    <div class="aviso ojo">
+      <p class="etiqueta">Ojo · esto pasa una sola vez</p>
+      <p>
+        El momento en que guardás ese nombre queda grabado como <strong>la línea de
+        corte</strong>, y no se vuelve a mover nunca — ni borrando el nombre, ni volviéndolo
+        a escribir. Todo lo que ya existía sigue siendo de Katherine; todo lo que nazca
+        después sin pedido va a ser de Sebastián.
+      </p>
+      <p>
+        Por eso <strong>encendelo el mismo día que vas a probar</strong>, no antes. Si lo
+        encendés hoy y probás en tres semanas, todo lo que entre en el medio le va a
+        aparecer a Sebastián como trabajo pendiente el día que lo prendan de verdad.
+      </p>
+    </div>
+    <p>
+      Apenas guardes, el menú cambia: aparece <strong>Ventas → Conversaciones</strong> con
+      la bandeja de Sebastián, y el Inbox de Katherine queda con lo suyo. La bandeja de
+      ventas va a estar en cero, y está bien: todavía no llegó nadie.
+    </p>
+  </section>
+
+  <hr>
+
+  <section>
+    <div class="fase-cabeza">
+      <p class="fase-eyebrow">Fase 03 <span class="quien-hace">vos, desde el teléfono</span></p>
+      <h2>El clic, y la conversación entera</h2>
+    </div>
+    <p>
+      Activá el anuncio de la fase 01 y hacele clic desde el teléfono que nunca escribió.
+      Esta es la pasada que prueba todo de una sola vez.
+    </p>
+    <ol class="pasos">
+      <li class="paso">
+        <h3>Escribí como escribiría un cliente</h3>
+        <p>Preguntá el precio, dudá, pedí descuento, pedí que te lo manden. No le hagas la prueba fácil: es la forma de ver el tono y el límite de descuento funcionando.</p>
+      </li>
+      <li class="paso">
+        <h3>Mirá la conversación en la bandeja de ventas</h3>
+        <p><span class="ruta">Ventas → Conversaciones → En automático</span></p>
+        <p>Tiene que estar ahí, no en el Inbox de Katherine. Abriéndola vas a ver el producto reconocido y el hilo completo.</p>
+      </li>
+      <li class="paso">
+        <h3>Dale los datos de entrega</h3>
+        <p>Nombre, teléfono, departamento, municipio y dirección — o decile que lo reclamás en oficina. Ahí es donde Sebastián arma el pedido.</p>
+      </li>
+    </ol>
+    <div class="aviso quieto">
+      <p class="etiqueta">Esto no va a pasar, y está bien</p>
+      <p>
+        <strong>Al final no vas a recibir la confirmación del pedido.</strong> La escritura
+        en la tienda está en seco: el pedido se arma completo y no se manda. Y el sistema
+        prefiere quedarse callado antes que decirte «tu pedido quedó registrado» cuando no
+        quedó.
+      </p>
+      <p>
+        Ese silencio es el resultado esperado de esta fase. Daniel lo confirma desde los
+        registros del servidor: ahí sí queda escrito qué pedido se habría creado.
+      </p>
+    </div>
+    <div class="aviso quieto">
+      <p class="etiqueta">Esto no va a pasar, y está bien</p>
+      <p>
+        Si probás <strong>sin</strong> hacer clic en el anuncio — escribiéndole directo al
+        número —, Sebastián va a contestar pero no va a saber qué producto querés. Te lo va
+        a preguntar, y a los dos intentos pasa la conversación a una persona. No es un
+        error: el producto se reconoce por el anuncio.
+      </p>
+    </div>
+  </section>
+
+  <hr>
+
+  <section>
+    <div class="fase-cabeza">
+      <p class="fase-eyebrow">Fase 04 <span class="quien-hace">Daniel, con un despliegue</span></p>
+      <h2>Dejar que el pedido entre de verdad</h2>
+    </div>
+    <p>
+      Solo si la fase 03 salió limpia, y el mismo día. Daniel cambia el modo de escritura
+      y repetís una venta corta: el pedido aparece en Vorare Store Guatemala con número
+      propio, vos lo ves, y se cancela enseguida.
+    </p>
+    <p>
+      Esto <strong>no se enciende desde el panel a propósito</strong>. Darle permiso al
+      sistema para crear pedidos en la tienda de verdad no puede ser un clic distraído —
+      es un cambio que alguien decide y despliega.
+    </p>
+    <div class="aviso ojo">
+      <p class="etiqueta">Ojo</p>
+      <p>
+        Es el primer pedido que el sistema escribe en la tienda de Vorare. Que sea uno,
+        que sea tuyo, y que se cancele antes de que logística lo vea.
+      </p>
+    </div>
+  </section>
+
+  <hr>
+
+  <section>
+    <div class="fase-cabeza">
+      <p class="fase-eyebrow">Todavía no</p>
+      <h2>El reporte a Meta</h2>
+    </div>
+    <p>
+      Devolverle a Meta las ventas que trajo cada anuncio — que es lo que hace que la
+      pauta aprenda a quién buscar — está construido y no se puede encender: falta crear
+      el <strong>dataset de Guatemala</strong>, y el permiso para crearlo no está en el
+      token que mandó Vorare.
+    </p>
+    <p>
+      Dos caminos, los dos de Vorare: leer el ID del dataset en el Administrador de
+      Eventos y pegarlo en <span class="dato">Operación → Conexión → Meta</span>, o agregar
+      el permiso <span class="dato">whatsapp_business_management</span> al usuario de
+      sistema y volver a emitir el token. En <strong>Ventas → Reporte a Meta</strong> podés
+      ver el estado sin encender nada.
+    </p>
+  </section>
+
+  <hr>
+
+  <section>
+    <div class="fase-cabeza">
+      <p class="fase-eyebrow">Si algo se rompe</p>
+      <h2>Sebastián deja de contestar</h2>
+    </div>
+    <p>
+      Es la única falla que hoy <strong>no avisa</strong>, y ya pasó una vez: en agosto el
+      agente estuvo veinticinco horas mudo y nos enteramos porque un cliente preguntó. Las
+      plantillas siguen saliendo, así que desde afuera parece que solo «la IA no contesta».
+    </p>
+    <p>
+      Si ves que una conversación queda sin respuesta más de un par de minutos,
+      <strong>escribile a Daniel en el momento</strong>. La causa más probable es el saldo
+      del proveedor del modelo, y se ve en treinta segundos.
+    </p>
+  </section>
+
+  <hr>
+
+  <section>
+    <div class="fase-cabeza">
+      <p class="fase-eyebrow">Cuando quieras parar</p>
+      <h2>Cómo se apaga</h2>
+    </div>
+    <p>
+      Borrá el nombre visible en <strong>Ventas → Vendedor</strong> y guardá. Sebastián
+      deja de existir, el menú vuelve a como estaba y todo lo atiende Katherine otra vez.
+      No se pierde ninguna conversación: vuelven al Inbox de siempre.
+    </p>
+    <p>
+      Y pausá el anuncio de prueba en Meta. Mientras Sebastián esté apagado, un clic que
+      llegue al número del panel es un cliente esperando a que alguien lo lea.
+    </p>
+  </section>
+
+  <hr>
+
+  <div class="cierre">
+    <p class="marca">Guía de prueba · 23 de agosto de 2026</p>
+    <p>
+      Los datos de esta guía están verificados contra la operación de Guatemala hasta el
+      20 de agosto. Guatemala factura hoy y no cambia de comportamiento en ninguno de
+      estos pasos: mientras Sebastián esté apagado, todo sigue exactamente como está.
+    </p>
+  </div>
+
+</div>
