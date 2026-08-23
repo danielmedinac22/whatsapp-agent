@@ -1,5 +1,14 @@
 # CLAUDE.md
 
+@CONTEXT.md
+
+<!-- El import de arriba no es decorativo: carga CONTEXT.md en toda sesión, y
+     existe porque la memoria automática NO viaja. La documentación lo dice
+     textual: es local a la máquina y no se comparte con entornos de nube. En
+     una sesión en la web, lo que no esté en el repo no existe, y la primera que
+     corrimos dedujo mal el incidente del 21-ago teniendo la explicación a un
+     archivo de distancia, porque solo estaba mencionada y no cargada. -->
+
 ## Git / GitHub
 
 El remote `origin` (`danielmedinac22/whatsapp-agent`) es **privado y pertenece a la cuenta personal `danielmedinac22`**.
@@ -97,4 +106,6 @@ Tres diferencias que muerden si no se saben:
 
 1. **Railway al revés**, como dice la sección de deploy: en la nube el token es la credencial y no lleva `env -u`.
 2. **No hay `.env`.** La base de producción llega como `DATABASE_PUBLIC_URL` en el ambiente; el dominio privado `postgres.railway.internal` no resuelve fuera de Railway.
-3. **La memoria personal no viaja.** Una sesión en la nube arranca de un clon limpio: lo que no esté en el repo, no existe. Por eso `CONTEXT.md` recoge lo que hace falta saber y no está en el código.
+3. **La memoria automática no viaja, y no hay forma de que viaje.** Es local a la máquina y no se comparte con entornos de nube; `autoMemoryDirectory` solo acepta rutas absolutas o `~/`, así que tampoco se puede meter en el repo. Una sesión en la nube arranca de un clon limpio: lo que no esté en el repo, no existe.
+
+**La consecuencia práctica, y vale para las dos puntas:** cuando algo aprendido en una sesión tenga que sobrevivir a la siguiente, **no alcanza con guardarlo en memoria**. Si es una regla de cómo trabajar, va a `CLAUDE.md`; si es un hecho del negocio o una trampa de medición, va a `CONTEXT.md`, que se carga solo por el import de arriba. La memoria sirve para lo de esta máquina; el repo es lo único que las dos puntas comparten.
