@@ -7,6 +7,7 @@ import {
 } from "@wa/db";
 import { db } from "../db";
 import { openrouter } from "./openrouter";
+import { TECHO_DE_RESPUESTA } from "./techo-de-respuesta";
 import { buildEffectiveSystemPrompt } from "./effective-prompt";
 import { loadHistory } from "./runner";
 
@@ -80,6 +81,7 @@ export async function previewAgentReply(
     model: provider(input.model),
     system: effectiveSystemPrompt,
     messages,
+    maxOutputTokens: TECHO_DE_RESPUESTA,
   });
 
   return {

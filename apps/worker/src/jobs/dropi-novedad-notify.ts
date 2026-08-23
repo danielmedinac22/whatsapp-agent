@@ -11,6 +11,7 @@ import { db } from "../db";
 import { logger } from "../lib/logger";
 import { contactWaId } from "../lib/phone";
 import { openrouter } from "../agent/openrouter";
+import { TECHO_DE_RESPUESTA } from "../agent/techo-de-respuesta";
 import { NOVEDAD_TEMPLATE, sanitizeParam } from "../kapso/templates";
 import { enqueueOutbound } from "./outbound";
 import { DROPI_NOVEDAD_NOTIFY_QUEUE, getBoss } from "./queue";
@@ -88,6 +89,7 @@ async function generateNovedadMessage(input: {
     model: provider(input.model),
     system: SYSTEM_PROMPT,
     messages: [{ role: "user", content: userMsg }],
+    maxOutputTokens: TECHO_DE_RESPUESTA,
   });
   return result.text.trim();
 }

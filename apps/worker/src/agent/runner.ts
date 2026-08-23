@@ -24,6 +24,7 @@ import { evaluateSalesEscalation } from "../sales/escalation-triggers";
 import { salesReasoningOptions } from "../sales/model";
 import { enqueueApoyosVisuales } from "../sales/product-media-send";
 import { openrouter } from "./openrouter";
+import { TECHO_DE_RESPUESTA } from "./techo-de-respuesta";
 import { escalateToHuman, SALES_ESCALATION_REASON } from "./escalation";
 import { buildEffectiveSystemPrompt } from "./effective-prompt";
 import { buildSalesClosingTool } from "./sales-closing-tool";
@@ -230,6 +231,7 @@ async function flushSalesTurn(entry: Buffered): Promise<boolean> {
       model: provider(settings.model),
       system: systemPrompt,
       messages: prompt,
+      maxOutputTokens: TECHO_DE_RESPUESTA,
       // La herramienta del cierre va **solo cuando hay producto identificado**,
       // la misma condición con la que su bloque entra al prompt. Sin producto no
       // hay línea que armar y lo que corresponde es preguntar cuál es.
@@ -365,6 +367,7 @@ async function flushBuffer(contactId: string) {
       model: provider(settings.model),
       system: systemPrompt,
       messages: prompt,
+      maxOutputTokens: TECHO_DE_RESPUESTA,
     });
 
     const reply = result.text.trim();
