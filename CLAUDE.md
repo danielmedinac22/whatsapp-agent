@@ -1,8 +1,13 @@
 # CLAUDE.md
 
 @CONTEXT.md
+@.claude/memoria/MEMORY.md
 
-<!-- El import de arriba no es decorativo: carga CONTEXT.md en toda sesión, y
+<!-- El segundo import trae el índice de la memoria acumulada, que vive en el
+     repo justamente para poder viajar. Una línea por memoria; los archivos se
+     leen bajo demanda, igual que con la memoria nativa.
+
+     El primer import no es decorativo: carga CONTEXT.md en toda sesión, y
      existe porque la memoria automática NO viaja. La documentación lo dice
      textual: es local a la máquina y no se comparte con entornos de nube. En
      una sesión en la web, lo que no esté en el repo no existe, y la primera que
@@ -108,4 +113,6 @@ Tres diferencias que muerden si no se saben:
 2. **No hay `.env`.** La base de producción llega como `DATABASE_PUBLIC_URL` en el ambiente; el dominio privado `postgres.railway.internal` no resuelve fuera de Railway.
 3. **La memoria automática no viaja, y no hay forma de que viaje.** Es local a la máquina y no se comparte con entornos de nube; `autoMemoryDirectory` solo acepta rutas absolutas o `~/`, así que tampoco se puede meter en el repo. Una sesión en la nube arranca de un clon limpio: lo que no esté en el repo, no existe.
 
-**La consecuencia práctica, y vale para las dos puntas:** cuando algo aprendido en una sesión tenga que sobrevivir a la siguiente, **no alcanza con guardarlo en memoria**. Si es una regla de cómo trabajar, va a `CLAUDE.md`; si es un hecho del negocio o una trampa de medición, va a `CONTEXT.md`, que se carga solo por el import de arriba. La memoria sirve para lo de esta máquina; el repo es lo único que las dos puntas comparten.
+**La memoria acumulada sí viaja, porque se mudó al repo.** Vive en `.claude/memoria/`, su índice se importa arriba y `autoMemoryDirectory` apunta ahí en el `.claude/settings.local.json` de cada máquina —ruta absoluta, por eso no puede ir en el settings compartido—. Lo que se aprenda en esta máquina cae en el repo y llega a la nube en el siguiente clon.
+
+**Lo que no cierra, y hay que compensarlo a mano:** una sesión en la nube que aprenda algo lo escribe en su VM, que es efímera. Así que cuando algo tenga que sobrevivir a la sesión, **no alcanza con guardarlo en memoria**. Si es una regla de cómo trabajar, va a `CLAUDE.md`; si es un hecho del negocio o una trampa de medición, va a `CONTEXT.md`. El repo es lo único que las dos puntas comparten de verdad.

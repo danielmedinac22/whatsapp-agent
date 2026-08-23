@@ -118,9 +118,20 @@ corte:
 `.claude/skills/`, los hooks de `.claude/settings.json`, `.mcp.json`, y todo
 `scripts/`.
 
-**No viaja**: la memoria personal de Daniel (`~/.claude-personal/`), los skills
-de usuario, el `.env` local y el login de Railway. Por eso existe `CONTEXT.md`:
-es el intento de que lo que importa de esa memoria esté en el repo.
+**No viaja**: los skills de usuario, el `.env` local y el login de Railway.
+
+**La memoria automática viaja, pero en una sola dirección.** Se mudó a
+`.claude/memoria/` y su índice lo importa `CLAUDE.md`, así que lo aprendido en
+la máquina de Daniel llega a la nube con el clon. Al revés no: lo que aprenda
+una sesión en la nube muere con su VM.
+
+En una máquina nueva hay que apuntarle `autoMemoryDirectory`, que solo acepta
+rutas absolutas y por eso no puede vivir en el settings compartido. En
+`.claude/settings.local.json`, que está en el `.gitignore`:
+
+```json
+{ "autoMemoryDirectory": "/ruta/absoluta/al/checkout/.claude/memoria" }
+```
 
 ## Los deploys, y por qué conviene moverlos a git
 

@@ -1,0 +1,30 @@
+- [Panel de Ventas — qué falta](panel-de-ventas-estado.md) — 39/44: llegaron las llaves de Vorare; qué queda, quién lo trae y en qué orden se enciende
+- [No romper Guatemala](no-romper-guatemala.md) — restricción permanente, leer antes de empezar cualquier ticket
+- [Vorare opera en Guatemala](vorare-opera-en-guatemala.md) — GTQ y +502, no Colombia; abre segunda operación colombiana
+- [Términos comerciales del Panel de Ventas](terminos-comerciales-panel-ventas.md) — 200.000 COP/mes, qué incluye y qué creció después
+- [Activos de Meta de Vorare](activos-meta-vorare.md) — IDs verificados, y qué falta para CTWA y CAPI
+- [Base de ensayo con Docker](base-de-ensayo-con-docker.md) — sí hay base de desarrollo: ensayar migraciones y correr el panel sin tocar producción
+- [Las tool calls sí funcionan](tool-calls-si-funcionan.md) — medido contra el proveedor real; y el modelo miente solo al recibir el resultado
+- [Dedup de conversiones CAPI](dedup-de-conversiones-capi.md) — Meta no deduplica: la dedup es propia y el fallo se parte en tres
+- [Ejecutar encuentra lo que leer no](ejecutar-encuentra-lo-que-leer-no.md) — el error está en qué filas llegan, no en la decisión; ensayar contra base desechable
+- [La credencial de Shopify caduca](credencial-de-shopify-caduca.md) — no hay token fijo: se acuña cada 24 h, y preguntar por la columna vieja miente
+- [Lo que vacía de significado no lo ve el tipado](lo-que-vacia-de-significado-no-lo-ve-el-tipado.md) — el compilador atrapa lo que se retira, no lo que cambia de sentido
+- [La bandeja definida por resta](la-bandeja-definida-por-resta.md) — se llena de lo que no es suyo, y su contador se lee como lo que no mide
+- [Fechar el desfase antes de arreglarlo](fechar-el-desfase-antes-de-arreglarlo.md) — 855 filas mal, todas de antes del 28-jul: el bug ya estaba muerto
+- [Contar sobre lo cargado miente](contar-sobre-lo-cargado-miente.md) — el Inbox trae 200 filas de 5 días: el contador del cliente dice 0 donde la base dice 90
+- [El outbox no sabe de qué conversación es](el-outbox-no-sabe-de-que-conversacion-es.md) — 316 de 352 manuales sin conversation_id: cruzar por to_wa_id
+- [El panel y la base en costas opuestas](el-panel-y-la-base-en-costas-opuestas.md) — el worker usa cable privado y el panel cruza el país: 10 viajes por render, 1% de base
+- [Parchear la fila sin mentir](parchear-la-fila-sin-mentir.md) — sacar los reload deja campos derivados mintiendo; refresh no destruye, reload sí
+- [Costo de encender la bandeja de ventas](costo-de-encender-la-bandeja-de-ventas.md) — casi duplica el Inbox: 23→45 idas y vueltas, y el techo en 36.000 conversaciones
+- [Un índice no arregla leer todo](un-indice-no-arregla-leer-todo.md) — con una sola operación el Seq Scan es correcto: el arreglo es leer menos filas, no llegar por otro camino
+- [Reproducir la línea base antes de tocar](reproducir-la-linea-base-antes-de-tocar.md) — el número viejo exacto en base desechable, y el volcado a JSON que vuelve «las mismas filas» un diff
+- [Estado en la URL sin pagar un render](estado-en-la-url-sin-render.md) — router.push cuesta 23 consultas por clic; la History API cuesta cero
+- [El `or` que enciende el JIT](el-or-que-enciende-el-jit.md) — 131 de 137 ms eran compilar: un `not exists` dentro de un `or` no se vuelve anti-join
+- [El porcentaje de WAL depende del checkpoint](el-porcentaje-de-wal-depende-del-checkpoint.md) — no se compara entre sesiones: el denominador lo fija el checkpoint, y lo que transfiere son los bytes
+- [El contrato de nombres vuelve paralelo lo serial](el-contrato-de-nombres-vuelve-paralelo-lo-serial.md) — fijar los nombres antes de repartir rompe la cadena hacia globals.css
+- [El contraste se mide en el nodo](el-contraste-se-mide-en-el-nodo-no-en-la-tabla.md) — la tabla de pares da limpia y aun así 6 textos fallan: el color se hereda y el fondo lo pone un ancestro
+- [Katherine trabaja desde el teléfono](katherine-trabaja-desde-el-telefono.md) — la asesora responde desde el móvil: nada se valida solo en escritorio
+- [Chrome sin cabeza por CDP](chrome-sin-cabeza-por-cdp.md) — sin extensión hay navegador igual: gestos táctiles de verdad, y el md5 de la captura como prueba de que el escritorio no cambió
+- [La fila implícita se come el min-h-0](la-fila-implicita-se-come-el-min-h-0.md) — la retícula sin `grid-rows` scrollea la pantalla entera, y los datos sembrados lo escondían
+- [El resaltado invisible de la selección](el-resaltado-invisible-de-la-seleccion.md) — «no deja copiar» era `::selection` del mismo hex que la burbuja
+- [El panel no ve caerse al agente](el-panel-no-ve-caerse-al-agente.md) — «sin responder» exige agent_mode=false: la caída del agente es justo lo que no puede ver
