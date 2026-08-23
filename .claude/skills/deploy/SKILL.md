@@ -99,10 +99,30 @@ Mantiene `main` sincronizado con lo que sube `railway up`. Saltarse el push deja
 
 ## 5 · Deploy a Railway
 
-El proyecto está vinculado (`railway status` → `whatsapp-agent`/`production`), pero no tiene servicio default. Pasa el servicio explícito:
+### Primero: averiguá con qué credencial estás corriendo
+
+**Este paso cambia según dónde corra la sesión, y equivocarse parece un problema de credenciales sin serlo.**
+
+| dónde | qué credencial vale | cómo se invoca |
+| -- | -- | -- |
+| máquina local | el login de `~/.railway/config.json` | `env -u RAILWAY_TOKEN railway …` |
+| sesión en la nube | la variable `RAILWAY_TOKEN` del entorno | `railway …`, **sin** `env -u` |
+
+En la máquina de Daniel hay un `RAILWAY_TOKEN` inyectado **que es inválido**, y el CLI lo prefiere sobre el login guardado: por eso todo comando local va con `env -u RAILWAY_TOKEN`. En una sesión en la nube no hay archivo de login, así que el token es lo único que hay y `env -u` deja al CLI sin nada.
+
+La comprobación es una línea:
 
 ```bash
-railway up --service whatsapp-worker --ci
+[ -f ~/.railway/config.json ] && echo "local: usá env -u RAILWAY_TOKEN" || echo "nube: usá railway directo"
+```
+
+### El comando
+
+El proyecto está vinculado (`railway status` → `whatsapp-agent`/`production`), pero no tiene servicio default. Pasa el servicio explícito, con el prefijo que corresponda:
+
+```bash
+env -u RAILWAY_TOKEN railway up --service whatsapp-worker --ci   # local
+railway up --service whatsapp-worker --ci                        # nube
 ```
 
 - `--ci` evita el modo interactivo (necesario en sesiones no-TTY).
@@ -113,7 +133,7 @@ railway up --service whatsapp-worker --ci
 ## 6 · Verificación post-deploy
 
 ```bash
-sleep 8 && railway logs --service whatsapp-worker 2>&1 | tail -25
+sleep 8 && railway logs --service whatsapp-worker 2>&1 | tail -25   # con el prefijo del paso 5
 ```
 
 Busca:
@@ -151,12 +171,23 @@ EOF
 )"
 git push origin main
 
-# 4. deploy
-railway up --service whatsapp-worker --ci
+# 4. deploy — el prefijo depende de dónde corras (ver paso 5)
+env -u RAILWAY_TOKEN railway up --service whatsapp-worker --ci   # local
+railway up --service whatsapp-worker --ci                        # nube
 
 # 5. verificación
 sleep 8 && railway logs --service whatsapp-worker 2>&1 | tail -25
 ```
+
+## En una sesión en la nube
+
+Tres cosas cambian, y las tres están cubiertas arriba:
+
+- **Railway**: el token del entorno es la credencial, sin `env -u`. Ver el paso 5.
+- **`.env` no existe.** Los comandos de drizzle del paso 2 lo sourcean; en la nube el valor llega como `DATABASE_PUBLIC_URL` en el ambiente, así que va `DATABASE_URL="$DATABASE_PUBLIC_URL" pnpm --filter @wa/db migrate`.
+- **`gh` está autenticado por un proxy** que mantiene el token fuera de la VM, así que el `gh auth switch` de `CLAUDE.md` no aplica: la cuenta es la que conectaste al crear el entorno.
+
+El detalle completo del entorno está en `docs/nube/README.md`.
 
 ## Lo que NO debes hacer
 

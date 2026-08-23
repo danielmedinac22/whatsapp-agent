@@ -57,6 +57,12 @@ env -u RAILWAY_TOKEN railway up --service whatsapp-worker --ci   # la build tard
 
 No está en `~/.zshrc` ni en los demás perfiles: la inyecta el entorno de la sesión. No hay que borrarla ni pedirle nada al usuario — basta con `env -u`.
 
+**En una sesión en la nube esto es al revés y hay que mirarlo antes de escribir el comando.** Allá no existe `~/.railway/config.json`, así que el `RAILWAY_TOKEN` del entorno es la única credencial y `env -u` deja al CLI sin nada. La comprobación:
+
+```bash
+[ -f ~/.railway/config.json ] && echo "local: env -u RAILWAY_TOKEN" || echo "nube: railway directo"
+```
+
 ## Deploy del dashboard (Vercel)
 
 `apps/worker` va a Railway; `apps/web` va a Vercel y es un deploy aparte. Hay integración con GitHub, pero conviene forzarlo desde la raíz del repo:
@@ -68,3 +74,27 @@ vercel --prod --yes    # rootDirectory apps/web ya está en la config del proyec
 Dominio de producción: https://whatsapp-agent-mauve.vercel.app
 
 Cuando un cambio toca worker y web, **deploya primero el worker**: la UI nueva suele depender de endpoints nuevos del worker.
+
+## Agent skills
+
+### Issue tracker
+
+Los issues viven en Linear, workspace `Producto Con Daniel`, prefijo `PRO`, vía `mcp__linear-pcd__*`. Ver `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Los cinco roles canónicos con su nombre por defecto: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. Ninguna existe todavía en Linear. Ver `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Un solo contexto: `CONTEXT.md` en la raíz y `docs/adr/`. `CONTEXT.md` ya existe; `docs/adr/` todavía no. Ver `docs/agents/domain.md`.
+
+## Sesiones en la nube
+
+Este repo está preparado para correr en **Claude Code on the web**, para poder trabajar desde el celular sin depender de la máquina de Daniel. La configuración del entorno —setup script, dominios permitidos, variables— está en **`docs/nube/README.md`**.
+
+Tres diferencias que muerden si no se saben:
+
+1. **Railway al revés**, como dice la sección de deploy: en la nube el token es la credencial y no lleva `env -u`.
+2. **No hay `.env`.** La base de producción llega como `DATABASE_PUBLIC_URL` en el ambiente; el dominio privado `postgres.railway.internal` no resuelve fuera de Railway.
+3. **La memoria personal no viaja.** Una sesión en la nube arranca de un clon limpio: lo que no esté en el repo, no existe. Por eso `CONTEXT.md` recoge lo que hace falta saber y no está en el código.

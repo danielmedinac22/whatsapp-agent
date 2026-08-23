@@ -37,3 +37,5 @@ coverage/
 
 # Ajustes personales de Claude Code (permisos locales). No viaja al repo.
 .claude/settings.local.json
+# Lock de las tareas programadas: es estado de una máquina, no del proyecto.
+.claude/scheduled_tasks.lock
