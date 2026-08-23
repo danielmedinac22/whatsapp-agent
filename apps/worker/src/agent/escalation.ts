@@ -53,6 +53,18 @@ const REASON_LABEL: Record<EscalationReason, string> = {
  * —«quien pide hablar con una persona no tiene que insistir»—: se le dice que
  * sí, de una, y no se intenta retenerlo.
  */
+/**
+ * Lo que el cliente lee cuando su conversación pasa a una persona, si es que
+ * hay algo que decirle para ese motivo.
+ *
+ * Se expone —y no se copia— porque el banco de pruebas del vendedor tiene que
+ * poder mostrar **el mismo texto** sin escalar a nadie: una segunda copia sería
+ * una pantalla enseñando un mensaje que producción dejó de mandar.
+ */
+export function customerNoticeFor(reason: EscalationReason): string | null {
+  return CUSTOMER_NOTICE[reason] ?? null;
+}
+
 const CUSTOMER_NOTICE: Partial<Record<EscalationReason, string>> = {
   audio_message:
     "Recibí tu audio 🎙️ Un asesor te responderá en unos minutos por aquí mismo.",

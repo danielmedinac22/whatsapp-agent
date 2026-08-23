@@ -24,6 +24,7 @@ import { storeClosings } from "./shopify/closing-routes";
 import { capiReporting } from "./capi/reporting-routes";
 import { dropi } from "./routes/dropi";
 import { kapsoAdmin, kapsoWebhook } from "./routes/kapso";
+import { vendedor } from "./routes/vendedor";
 import {
   scheduleKapsoTemplatePoll,
   startKapsoTemplateWorker,
@@ -93,6 +94,8 @@ app.route("/api/capi", capiReporting);
 app.route("/api/meta", metaAds);
 app.route("/api/dropi", dropi);
 app.route("/api/kapso", kapsoAdmin);
+// El banco de pruebas del vendedor: oírlo sin encenderlo. No escribe nada.
+app.route("/api/vendedor", vendedor);
 
 const port = Number(process.env.PORT ?? 3001);
 

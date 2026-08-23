@@ -10,6 +10,8 @@ import {
   salesDiscountState,
   type SalesDiscountBehavior,
 } from "@wa/shared";
+import type { ProductoDelBanco } from "@/lib/vendedor";
+import { BancoCard } from "./banco-card";
 
 /**
  * La configuración del vendedor: secciones apiladas, la misma anatomía que la
@@ -70,10 +72,13 @@ const EFFORT_LABEL: Record<string, string> = {
 export function VendedorForm({
   initial,
   phone,
+  productos,
 }: {
   initial: Draft;
   /** El número por el que sale lo que escribe. Contexto, no campo. */
   phone: string | null;
+  /** El catálogo, para elegir de dónde viene el lead en el banco de pruebas. */
+  productos: ProductoDelBanco[];
 }) {
   const [v, setV] = useState<Draft>(initial);
   const [baseline, setBaseline] = useState<Draft>(initial);
@@ -409,6 +414,13 @@ export function VendedorForm({
           </div>
         </div>
       </section>
+
+      {/* ── Probar ────────────────────────────────────────────────────── */}
+      {/* Va al final y **recibe `v`, no `baseline`**: lo que se prueba es el
+          borrador que está en pantalla, que es lo que hace que probar no exija
+          guardar — y guardar un nombre visible enciende al vendedor y estampa
+          la línea de corte, que no se puede deshacer. */}
+      <BancoCard values={v} productos={productos} />
 
       {/* ── Barra de guardado ─────────────────────────────────────────── */}
       {dirty && (

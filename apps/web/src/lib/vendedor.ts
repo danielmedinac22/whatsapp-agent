@@ -2,6 +2,7 @@ import {
   connectionPhoneOf,
   getSalesAgentSettings,
   invalidateSalesAgentSettingsCache,
+  listCatalog,
   salesAgentIsConfigured,
   salesAgentSettings,
   sql,
@@ -29,6 +30,30 @@ import { db } from "./db";
  * puntos (`setAgentMode`, las plantillas).
  */
 
+/**
+ * Un producto, como lo necesita el selector del banco de pruebas: nombre para
+ * mostrarlo y si tiene precio propio.
+ *
+ * **No trae el precio**, y no es por ahorrar bytes: el de un producto conectado
+ * vive en la tienda y se lee en tiempo de uso, así que copiarlo acá sería la
+ * desincronización que el catálogo entero existe para no tener. Lo que la
+ * pantalla necesita saber es otra cosa —si al cerrar va a faltar el precio—, y
+ * eso sí se puede responder sin la tienda: un producto del panel sin precio no
+ * se puede vender, y uno de la tienda siempre lo tiene.
+ */
+export interface ProductoDelBanco {
+  id: string;
+  /**
+   * `null` en un producto conectado cuyo nombre todavía no se leyó de la
+   * tienda: la columna local es nullable justamente porque el nombre de allá se
+   * lee en tiempo de uso. La pantalla lo dice, no lo inventa.
+   */
+  name: string | null;
+  source: "shopify" | "native";
+  /** Si al cerrar va a haber precio. Un nativo sin precio escala. */
+  vendible: boolean;
+}
+
 /** Todo lo que la pantalla necesita para dibujarse. */
 export interface VendedorScreen {
   operation: Operation;
@@ -39,20 +64,38 @@ export interface VendedorScreen {
    * lectura: se configura en Conexión y esta pantalla no lo toca.
    */
   phone: string | null;
+  /**
+   * El catálogo, para elegir de qué producto viene el lead en el banco de
+   * pruebas. Vacío es el estado de producción hoy, y la pantalla lo dice.
+   */
+  productos: ProductoDelBanco[];
 }
 
 export async function loadVendedorScreen(): Promise<VendedorScreen> {
   // La misma operación que edita la pantalla de Katherine, resuelta igual:
   // hasta el selector es la única activa, y con dos falla en vez de adivinar.
   const operation = await resolvePanelOperation();
-  const [settings, phone] = await Promise.all([
+  const [settings, phone, catalogo] = await Promise.all([
     getSalesAgentSettings(operation),
     // El mismo lector que la barra del marco, y por eso cacheado igual: dos
     // consultas a `kapso_connection` desde el panel eran dos cachés que se
     // desincronizan la primera vez que alguien toque una (PRO-15).
     connectionPhoneOf(operation.id),
+    listCatalog(operation),
   ]);
-  return { operation, settings, phone };
+  return {
+    operation,
+    settings,
+    phone,
+    productos: catalogo.map(({ product }) => ({
+      id: product.id,
+      name: product.name,
+      source: product.source,
+      // Un producto de la tienda lee su precio allá en tiempo de uso; uno del
+      // panel sin precio propio no tiene de dónde sacarlo y el cierre escala.
+      vendible: product.source === "shopify" || product.price !== null,
+    })),
+  };
 }
 
 /**

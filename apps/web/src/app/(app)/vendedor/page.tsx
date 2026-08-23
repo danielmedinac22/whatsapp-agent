@@ -18,7 +18,7 @@ export const dynamic = "force-dynamic";
  * tablas hermanas y dos pantallas hermanas.
  */
 export default async function VendedorPage() {
-  const { operation, settings, phone } = await loadVendedorScreen();
+  const { operation, settings, phone, productos } = await loadVendedorScreen();
 
   return (
     <div className="app-page max-w-5xl space-y-3">
@@ -32,6 +32,7 @@ export default async function VendedorPage() {
       </header>
       <VendedorForm
         phone={phone}
+        productos={productos}
         initial={{
           displayName: settings?.displayName ?? SALES_AGENT_DEFAULTS.displayName,
           greeting: settings?.greeting ?? SALES_AGENT_DEFAULTS.greeting,

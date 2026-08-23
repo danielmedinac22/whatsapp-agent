@@ -282,3 +282,43 @@ export function activeSalesTonePreset(text: string): string | null {
   if (clean.length === 0) return null;
   return SALES_TONE_PRESETS.find((p) => p.text === clean)?.key ?? null;
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// El banco de pruebas del vendedor
+// ────────────────────────────────────────────────────────────────────────────
+
+/** Cuántos turnos de ida y vuelta acepta una prueba antes de cortar. */
+export const MAX_BANCO_TURNS = 40;
+
+/**
+ * Un turno de la conversación de prueba. El banco no guarda nada, así que la
+ * historia entera viaja en cada petición: el estado vive en la pantalla.
+ */
+export const bancoTurnInput = z.object({
+  role: z.enum(["user", "assistant"]),
+  content: z.string().min(1).max(2000),
+});
+
+/**
+ * Lo que el banco necesita para correr un turno.
+ *
+ * **La configuración viaja entera y sin guardar** —es
+ * {@link salesAgentSettingsInput}, el mismo objeto que el formulario tiene en
+ * la mano— y ahí está el punto: probar no puede exigir guardar, porque guardar
+ * un nombre visible enciende al vendedor y estampa la línea de corte, que es
+ * irreversible. El banco existe justamente para poder oír a Sebastián sin
+ * tomar esa decisión.
+ *
+ * `productId` es de qué producto viene el lead: **lo que el anuncio habría
+ * resuelto**. En producción no lo elige nadie, lo deduce la cascada del clic;
+ * acá se elige a mano porque el clic es lo único que un banco no puede
+ * simular. `null` es el caso real de un lead que llega sin anuncio reconocido,
+ * y con `candidateIds` se prueba el tercero: la cascada dudó entre varios.
+ */
+export const vendedorBancoInput = z.object({
+  settings: salesAgentSettingsInput,
+  productId: z.string().uuid().nullable(),
+  candidateIds: z.array(z.string().uuid()).max(20).nullable().optional(),
+  turns: z.array(bancoTurnInput).min(1).max(MAX_BANCO_TURNS),
+});
+export type VendedorBancoInput = z.infer<typeof vendedorBancoInput>;

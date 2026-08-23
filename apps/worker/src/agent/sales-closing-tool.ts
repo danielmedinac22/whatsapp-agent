@@ -85,7 +85,7 @@ import { escalateToHuman } from "./escalation";
  * va a una persona, que es lo que corresponde a un dato que falta en el panel y
  * que el cliente no puede aportar.
  */
-async function resolveClosingLine(
+export async function resolveClosingLine(
   operation: Operation,
   productId: string | null,
   capture: ClosingCapture,

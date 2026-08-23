@@ -80,48 +80,58 @@ exactamente la bandeja definida por resta que el lote de la semana pasada
 apagó — el histórico de esos meses volvería a aparecerle a Sebastián como
 trabajo suyo.
 
-Dos salidas, y hay que elegir una antes de la prueba:
+**Esto dejó de ser un dilema el 23-ago**, y lo resolvió el banco de pruebas del
+punto 4: ajustar el tono ya no exige encender, así que el encendido se puede
+guardar para el día que la pauta apunte al número. Lo que queda de la trampa es
+lo que no cambia — **la primera vez que se guarde un nombre visible fija la línea
+para siempre**, así que ese guardado se hace cuando se quiere dejar encendido, no
+para ver qué pasa.
 
-- **A · Encender una sola vez, el día que la pauta ya apunte al número.** Sin
-  cambios de código. La prueba de conversación se hace ese mismo día.
-- **B · Poder mover la línea de corte a mano**, como acto deliberado de admin
-  en la pantalla del vendedor. Es un ticket chico y no toca el camino que
-  factura, pero es cambiar una decisión de diseño que se tomó con motivo.
+Sigue abierta como ticket, y ahora sin urgencia, la opción de **mover la línea de
+corte a mano** como acto deliberado de admin.
 
-**Recomendado: A.** Alinear la prueba con el encendido real cuesta coordinación,
-no código, y evita tocar la regla que acaba de arreglar la bandeja.
+## 4 · El banco de pruebas — construido el 23-ago-2026
 
-## 4 · Lo que Pablo va a ver, y lo que no
+**Pablo ya puede conversar con Sebastián desde el celular sin encenderlo.**
+`Ventas → Vendedor → Probar`: manda la configuración del formulario **sin
+guardar**, corre el mismo constructor de prompt que el runner y contesta. No
+manda WhatsApp, no escribe en `agent_runs`, no escala, no crea pedidos, y sobre
+todo **no estampa la línea de corte** — que es lo que volvía irreversible la
+decisión del punto 3.
 
-Con la escritura en la tienda en seco (`SHOPIFY_ORDER_WRITE_MODE` sin poner,
-que es el estado de hoy), un cierre exitoso:
+Deja elegir de qué producto viene el lead, que en producción lo decide el clic
+del anuncio, y los otros dos estados reales de la cascada: no reconoció nada, y
+dudó entre varios. El cierre corre entero menos el último paso: valida, arma el
+pedido con su total y su descuento clampeado, y lo muestra — sin crearlo.
 
-- **no crea el pedido** en Shopify — correcto, es el modo seco;
-- **no le manda nada al cliente**, a propósito: decirle «tu pedido quedó
-  registrado» cuando no quedó es el fallo silencioso al revés
-  (`sales/closing.ts:216`);
-- **no deja fila en la cola de cierres**, porque la cola solo guarda los que
-  fallaron;
-- deja **una línea de log en Railway** y nada más.
+### Y al construirlo se cayó una afirmación de este mismo plan
 
-O sea: **un cierre en seco es invisible desde el panel.** Pablo va a ver la
-conversación pedirle los datos y después quedarse callada, sin manera de
-distinguir «cerró bien en seco» de «se rompió». Es la diferencia entre una
-prueba que concluye y una que deja dudas.
+La versión anterior decía que en modo seco **el cliente no recibe nada**. Es
+falso, y la fuente del error fue leer `sales/closing.ts` sin seguir el turno
+hasta el final: ahí el cierre efectivamente no anuncia nada, pero el turno sí.
+`resolveSalesTurnText` reemplaza el texto del modelo por `closingPendingMessage()`
+— *«¡Listo! Ya tengo todos tus datos ✅ / Un asesor te confirma el pedido por
+este mismo chat en un ratito»*.
 
-Tres formas de resolverlo, de menor a mayor:
+Lo que de verdad pasa en un cierre en seco:
 
-1. **Daniel mira los logs de Railway** durante la ventana de prueba y lo
-   confirma por WhatsApp. Cero código, sirve para una prueba acompañada.
-2. **Que el cierre en seco avise al admin** por el mismo camino que ya usa el
-   escalamiento (`adminPhone` de la conexión, editable en Conexión → Dropi).
-   Ticket chico, y le sirve a cualquier prueba futura.
-3. **Encender la escritura de verdad** contra un pedido desechable y cancelarlo
-   después. Es el riesgo R6 de la no-regresión, exige despliegue, y es la
-   prueba que de todas formas hay que hacer alguna vez.
+| | |
+| -- | -- |
+| El cliente recibe | el texto fijo de «tengo tus datos», **no** que el pedido exista |
+| El pedido en la tienda | no se crea |
+| La cola de cierres | no recibe fila: solo guarda los que fallaron |
+| El texto que redactó el modelo | **no sale** — se descarta a propósito |
 
-**Recomendado: 1 para la primera pasada, 3 como paso siguiente el mismo día si
-la conversación sale limpia.**
+Así que **el cierre no es invisible**: Pablo lo va a ver en el hilo, y ese
+mensaje fijo es la señal de que la herramienta corrió. Lo que sigue sin poder
+distinguir desde el panel es *por qué* calló: modo seco y cierre encolado por
+tienda desconectada mandan el mismo texto, porque para el cliente significan lo
+mismo. Es una ambigüedad menor y no bloquea nada.
+
+**La corrección más útil que trajo esto es de diseño del banco**: mostrar el
+texto del modelo como si fuera lo que el cliente lee habría enseñado un mensaje
+que producción descarta, justo en el turno que más importa. El banco muestra lo
+que sale, y guarda aparte lo que el vendedor redactó y no salió.
 
 ## 5 · Lo que no se puede hacer desde el producto
 
@@ -160,26 +170,31 @@ Cuatro comprobaciones, todas desde la máquina de Daniel:
 
 ## 7 · El orden de la prueba
 
-**Fase 0 — Vorare, en Meta (lo único que bloquea).** Un conjunto de anuncios de
-presupuesto mínimo, público acotado, **destino +502 3689 0343**. Puede quedar
-pausado hasta el día de la prueba. Sin esto, las fases 2 y 3 no existen.
+**Fase 0 — Pablo, en el panel, hoy y sin depender de nadie.** Cargar un producto
+en el catálogo y conversar con Sebastián en `Ventas → Vendedor → Probar` hasta
+que el tono convenza. Se puede guardar todo **menos el nombre visible**: guardar
+con el nombre vacío no enciende nada ni estampa la línea. Es la fase que no
+necesita ni anuncio ni permiso, y la que más veces se va a repetir.
 
-**Fase 1 — Pablo solo, en el panel.** Catálogo con al menos un producto con
-precio, el id del anuncio de la fase 0 registrado contra ese producto, y el
+**Fase 1 — Vorare, en Meta (lo único que bloquea el resto).** Un conjunto de anuncios de
+presupuesto mínimo, público acotado, **destino +502 3689 0343**. Puede quedar
+pausado hasta el día de la prueba. Sin esto, las fases 3 y 4 no existen.
+
+**Fase 2 — Encender.** Catálogo con al menos un producto con precio, el id del anuncio de la fase 1 registrado contra ese producto, y el
 vendedor encendido. Lo verifica la banda de señal del catálogo, que dice en
 palabras si el mapa se está consultando o no.
 
-**Fase 2 — el clic.** Pablo hace clic en el anuncio desde un número que nunca
+**Fase 3 — el clic.** Pablo hace clic en el anuncio desde un número que nunca
 le haya escrito a Vorare, y conversa hasta dar los datos de entrega. Es la
 pasada que verifica de una sola vez: la captura de la referencia, el
 reconocimiento del producto, el ruteo a la bandeja de ventas, la persona de
 Sebastián y la herramienta de cierre.
 
-**Fase 3 — la venta de verdad.** Solo si la fase 2 salió limpia:
+**Fase 4 — la venta de verdad.** Solo si la fase 3 salió limpia:
 `SHOPIFY_ORDER_WRITE_MODE=live`, un pedido desechable en la tienda real, y se
 cancela. Es el R6 de la no-regresión y se hace mirando.
 
-**Fase 4 — CAPI.** Falta el dataset y el permiso. Va aparte y va al final, con
+**Fase 5 — CAPI.** Falta el dataset y el permiso. Va aparte y va al final, con
 el código de prueba de Meta (R7).
 
 ## 8 · Qué queda para después de la prueba
@@ -189,7 +204,9 @@ Sale de lo que este plan destapó, y ninguno bloquea:
 - **Aviso cuando `agent_runs` acumula errores seguidos.** Es lo único que habría
   visto la caída del 21-ago a tiempo, y durante una prueba acompañada es la
   diferencia entre «Sebastián no contesta» y «Sebastián se cayó».
-- **Que el cierre en seco deje rastro visible** — punto 4 de arriba.
+- **Distinguir en el panel un cierre en seco de uno encolado.** Hoy los dos le
+  mandan el mismo texto al cliente, que está bien, pero desde adentro tampoco se
+  diferencian. Menor.
 - **Mover la línea de corte como acto deliberado** — opción B del punto 3.
 - **`create-user.ts` acepta los cuatro roles.**
 - **Alta de usuarios desde el panel**, el día que Vorare quiera dar accesos sin
