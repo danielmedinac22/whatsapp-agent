@@ -24,6 +24,7 @@ import {
   productPriceRejectionText,
   puedeEnviarse,
   rechazoDeSubida,
+  TOPE_DE_TEXTO_DEL_PRODUCTO,
   whatsappLimitBytes,
   etiquetaDeTipo,
   type ProductPriceRejection,
@@ -777,9 +778,129 @@ function Ficha({
         )}
       </section>
 
+      <FichaDeVenta row={row} onChanged={onChanged} onError={onError} />
       <Anuncios row={row} onChanged={onChanged} onError={onError} />
       <Archivos row={row} onChanged={onChanged} onError={onError} />
     </div>
+  );
+}
+
+/**
+ * La ficha que el vendedor lee del producto.
+ *
+ * **Está en las dos fuentes**, y es la única cosa de un producto conectado que
+ * esta pantalla escribe. No contradice el aviso de arriba —«el panel no
+ * escribe sobre la tienda»— porque no es una copia de nada: en Shopify este
+ * campo no existe. Lo que la tienda tiene es el cuerpo de una página de venta,
+ * y una página de venta le habla a alguien que la está mirando; esto es lo que
+ * un asesor tendría a mano para contestar por WhatsApp.
+ *
+ * **La pantalla dice que reemplaza, y lo dice antes de que se escriba.** Es la
+ * consecuencia que no se puede descubrir después: con la ficha puesta, la
+ * descripción de la tienda deja de entrar al prompt. Una ficha a medias no se
+ * completa con la landing — se queda a medias, y el vendedor dice que lo
+ * confirma. Esa es la dirección segura del error, pero solo si quien escribe
+ * sabe que va a pasar.
+ */
+function FichaDeVenta({
+  row,
+  onChanged,
+  onError,
+}: {
+  row: CatalogRow;
+  onChanged: () => void;
+  onError: (m: string | null) => void;
+}) {
+  const [texto, setTexto] = useState(row.salesBrief);
+  const [guardando, setGuardando] = useState(false);
+  const [guardado, setGuardado] = useState(false);
+  const idRef = useRef(row.id);
+
+  useEffect(() => {
+    if (idRef.current !== row.id) {
+      idRef.current = row.id;
+      setTexto(row.salesBrief);
+      setGuardado(false);
+    }
+  }, [row]);
+
+  const puesta = texto.trim().length > 0;
+  const pasado = texto.length - TOPE_DE_TEXTO_DEL_PRODUCTO;
+
+  async function guardar() {
+    setGuardando(true);
+    onError(null);
+    try {
+      const r = await fetch(`/api/catalogo/productos/${row.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        // Sola, sin los campos de la fuente: sobre un producto conectado esos
+        // hacen lanzar al accesor que los protege, y con razón.
+        body: JSON.stringify({ salesBrief: texto }),
+      });
+      const j = (await r.json()) as { error?: string };
+      if (!r.ok) throw new Error(j.error ?? "no se pudo guardar");
+      setGuardado(true);
+      onChanged();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  return (
+    <section className="space-y-1.5">
+      <h3 className="app-section">Ficha de venta · lo que lee el vendedor</h3>
+      <p className="app-muted text-[11px] leading-relaxed">
+        {puesta ? (
+          <>
+            Sebastián lee <strong className="text-[var(--color-text)]">esto</strong> y
+            nada más del producto
+            {row.source === "shopify" ? ": la descripción de la tienda no entra." : "."}{" "}
+            Si algo no está acá, no lo contesta — lo pasa a un asesor.
+          </>
+        ) : (
+          <>
+            Sin ficha, Sebastián lee{" "}
+            {row.source === "shopify"
+              ? "la descripción de la tienda, que está escrita para quien mira la página"
+              : "la descripción de arriba"}
+            . Escribí acá lo que hace falta para vender —para qué sirve, cómo se
+            usa, dosis, contraindicaciones, envío— y pasa a leer solo esto.
+          </>
+        )}
+      </p>
+      <textarea
+        className="app-textarea"
+        rows={8}
+        value={texto}
+        onChange={(e) => {
+          setTexto(e.target.value);
+          setGuardado(false);
+        }}
+        placeholder="Para qué sirve · cómo se usa · dosis · contraindicaciones · envío y pago"
+      />
+      <div className="flex items-center gap-2">
+        <button className="app-button" onClick={guardar} disabled={guardando}>
+          {guardando ? "Guardando…" : "Guardar ficha"}
+        </button>
+        {guardado ? (
+          <span className="text-[11px] text-[var(--color-ink)]">Guardado</span>
+        ) : null}
+        <span
+          className={
+            pasado > 0
+              ? "ml-auto text-[11px] text-[var(--color-danger)]"
+              : "app-muted ml-auto text-[11px]"
+          }
+        >
+          {pasado > 0
+            ? `${pasado.toLocaleString("es")} caracteres de más — no se leen`
+            : `${texto.length.toLocaleString("es")} / ${TOPE_DE_TEXTO_DEL_PRODUCTO.toLocaleString("es")}`}
+        </span>
+      </div>
+    </section>
   );
 }
 

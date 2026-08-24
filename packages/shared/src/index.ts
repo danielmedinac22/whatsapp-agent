@@ -7,4 +7,5 @@ export * from "./wa-templates";
 export * from "./sales-agent-config";
 export * from "./product-media";
 export * from "./product-price";
+export * from "./ficha-de-venta";
 export * from "./capi-estado";

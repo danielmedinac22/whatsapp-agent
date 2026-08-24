@@ -75,6 +75,16 @@ export interface CatalogRow {
   source: "shopify" | "native";
   name: string;
   description: string;
+  /**
+   * La ficha que el equipo escribió para el vendedor, o `""`.
+   *
+   * **La tienen las dos fuentes**, y es lo único de un producto conectado que
+   * el panel escribe. No contradice «el panel no escribe sobre la tienda»: en
+   * Shopify este campo no existe, así que no hay copia que se desincronice.
+   * Cuando está, es lo único que el vendedor lee del producto —la descripción
+   * de la tienda deja de entrar al prompt—.
+   */
+  salesBrief: string;
   nameSource: NameSource;
   shopifyProductId: string | null;
   /**
@@ -251,6 +261,8 @@ export async function loadCatalogView(op: Operation): Promise<CatalogView> {
     description: n.description,
     nameSource: n.nameSource,
     shopifyProductId: n.entry.product.shopifyProductId,
+    // De la fila y no de la tienda, en las dos fuentes: es nuestro.
+    salesBrief: n.entry.product.salesBrief ?? "",
     price: n.price,
     nativePrice: n.nativePrice,
     createdAt: n.entry.product.createdAt.toISOString(),

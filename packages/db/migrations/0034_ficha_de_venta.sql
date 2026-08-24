@@ -1,0 +1,45 @@
+-- ────────────────────────────────────────────────────────────────────────────
+-- 0034 · La ficha de venta
+--
+-- La única migración de esta ola, como siempre: drizzle-kit reescribe
+-- `meta/_journal.json` en cada generación, así que dos ramas que generen en
+-- paralelo chocan y el conflicto no lo ve ningún check local.
+--
+-- **El vendedor estaba leyendo una página web.** La descripción de un producto
+-- de Shopify no es una ficha técnica: es el cuerpo de una landing. Medido
+-- contra las dos fichas de Vorare —5.821 y 4.069 caracteres de texto plano— lo
+-- que traen es el carrusel de ofertas, la marquesina de sellos repetida para la
+-- animación, las reseñas y las instrucciones para tocar un botón amarillo que
+-- solo existe en el navegador. De todo eso el modelo veía los primeros 800
+-- caracteres, y esos 800 se los comía el encabezado: la dosis del REVITALHAIR
+-- empieza en el 2.603 y las contraindicaciones en el 4.565. Ninguna de las dos
+-- llegaba nunca. El modelo contestaba «2 cápsulas al día» porque es lo que
+-- suena razonable, no porque lo hubiera leído.
+--
+-- **Esta columna no es una copia y ahí está todo el asunto.** La `0022` fijó
+-- que el panel no escribe sobre la tienda: nombre, descripción y precio de un
+-- producto conectado se leen en tiempo de uso y guardarlos acá sería la
+-- desincronización silenciosa —el panel cobrando un precio que Shopify ya
+-- cambió—. Una ficha de venta no cae bajo esa regla porque **en Shopify no
+-- existe**: no hay nada de qué desincronizarse. Por eso se puede escribir
+-- también sobre un producto conectado, y por eso no pasa por
+-- `updateNativeProduct`, que sigue negándose a tocar lo que vive en la tienda.
+--
+-- **Cuando está, reemplaza.** El vendedor lee la ficha o lee la descripción de
+-- la tienda, nunca las dos. Sumarlas sería lo cómodo y es lo que deja el
+-- problema tapado: con las dos presentes, una ficha a medias se ve igual de
+-- bien que una completa y el equipo no se entera de cuál escribió.
+--
+-- **Nula es el estado normal.** Nace nula en los dos productos de Guatemala y
+-- eso no rompe nada: sin ficha se lee la descripción de la tienda, que es lo
+-- que ya se hacía — ahora limpia de marquesinas y reseñas, y con un tope que le
+-- da lugar a la ficha técnica en vez de cortarla en el encabezado.
+--
+-- **Sin orden contra el despliegue.** La columna la lee el camino del vendedor,
+-- que hoy en Guatemala está apagado (`sales_agent_settings.enabled = false`,
+-- ver `0033`), y el código viejo ignora una columna que no conoce. Aun así
+-- conviene el orden de siempre —migración y después worker—, porque el `select`
+-- del catálogo la nombra.
+-- ────────────────────────────────────────────────────────────────────────────
+
+ALTER TABLE "products" ADD COLUMN "sales_brief" text;

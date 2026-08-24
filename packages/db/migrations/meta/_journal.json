@@ -239,6 +239,13 @@
       "when": 1787454596946,
       "tag": "0033_interruptor_del_vendedor",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1787583372894,
+      "tag": "0034_ficha_de_venta",
+      "breakpoints": true
     }
   ]
 }

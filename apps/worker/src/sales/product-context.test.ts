@@ -39,6 +39,7 @@ describe("renderProductContextBlock · la ficha que ve el vendedor", () => {
   it("lleva nombre, precio, presentaciones y descripción", () => {
     const bloque = renderProductContextBlock({
       name: "REVITALHAIR Serum Capilar",
+      salesBrief: null,
       description: "Serum con biotina.",
       price: "199 GTQ",
       variants: ["30 ml"],
@@ -55,6 +56,7 @@ describe("renderProductContextBlock · la ficha que ve el vendedor", () => {
     // plausibles el hueco de una ficha incompleta.
     const bloque = renderProductContextBlock({
       name: "Producto sin ficha",
+      salesBrief: null,
       description: null,
       price: null,
       variants: [],
@@ -65,6 +67,7 @@ describe("renderProductContextBlock · la ficha que ve el vendedor", () => {
   it("lo que la fuente no da, no se nombra", () => {
     const bloque = renderProductContextBlock({
       name: "Producto sin ficha",
+      salesBrief: null,
       description: null,
       price: null,
       variants: [],
@@ -72,6 +75,87 @@ describe("renderProductContextBlock · la ficha que ve el vendedor", () => {
     expect(bloque).not.toContain("Precio:");
     expect(bloque).not.toContain("Presentaciones");
     expect(bloque).not.toContain("Descripción");
+  });
+});
+
+describe("renderProductContextBlock · de dónde sale el texto del producto", () => {
+  const LANDING = [
+    "🔥 Elige tu oferta — la seleccionas en la barra de compra",
+    "👇",
+    '¿Deseas tu producto? Dale a la barra amarilla "Comprar con envío gratis".',
+    "💊 ¿Cómo tomarlo? Toma 2 cápsulas por día, 20–30 min antes de comer.",
+  ].join("\n");
+
+  it("con ficha del equipo, la descripción de la tienda no entra", () => {
+    // La decisión de diseño del cambio. Sumarlas dejaría al equipo sin saber
+    // nunca si su ficha alcanza: la landing taparía el hueco.
+    const bloque = renderProductContextBlock({
+      name: "REVITALHAIR",
+      salesBrief: "2 cápsulas al día con agua. No en embarazo ni lactancia.",
+      description: LANDING,
+      price: "159 GTQ",
+      variants: [],
+    });
+    expect(bloque).toContain("Ficha del producto, escrita por el equipo");
+    expect(bloque).toContain("2 cápsulas al día con agua.");
+    expect(bloque).not.toContain("barra amarilla");
+  });
+
+  it("con ficha, tampoco lleva el aviso de que está leyendo una página web", () => {
+    // El aviso existe para lo que se copió de la landing. Sobre una ficha
+    // escrita para WhatsApp sería una advertencia sobre algo que no pasó.
+    const bloque = renderProductContextBlock({
+      name: "REVITALHAIR",
+      salesBrief: "2 cápsulas al día.",
+      description: LANDING,
+      price: null,
+      variants: [],
+    });
+    expect(bloque).not.toContain("página web");
+  });
+
+  it("sin ficha, la tienda entra limpia y avisada", () => {
+    const bloque = renderProductContextBlock({
+      name: "REVITALHAIR",
+      salesBrief: null,
+      description: LANDING,
+      price: null,
+      variants: [],
+    });
+    expect(bloque).toContain("copiada de su página de venta");
+    // Lo que la limpieza saca: la línea que es solo un emoji.
+    expect(bloque).not.toContain("👇");
+    // Lo que la limpieza NO saca, porque borrarlo por regla es adivinar: la
+    // instrucción de tocar un botón. De eso se encarga el aviso.
+    expect(bloque).toContain("barra amarilla");
+    expect(bloque).toContain("no la mandes a hacer clic en nada");
+    // Y lo que hacía falta desde el principio.
+    expect(bloque).toContain("2 cápsulas por día");
+  });
+
+  it("una ficha en blanco no cuenta como ficha", () => {
+    const bloque = renderProductContextBlock({
+      name: "REVITALHAIR",
+      salesBrief: "   ",
+      description: LANDING,
+      price: null,
+      variants: [],
+    });
+    expect(bloque).toContain("copiada de su página de venta");
+  });
+
+  it("el tope le da lugar a la ficha técnica, que vive al final de la landing", () => {
+    // El bug que originó todo: con 800 caracteres, una landing de 5.000 se
+    // cortaba en el encabezado y la dosis no llegaba nunca.
+    const largo = "Relleno de encabezado. ".repeat(150); // ~3.450 caracteres
+    const bloque = renderProductContextBlock({
+      name: "REVITALHAIR",
+      salesBrief: null,
+      description: `${largo}\nDosis: 2 cápsulas por día.`,
+      price: null,
+      variants: [],
+    });
+    expect(bloque).toContain("Dosis: 2 cápsulas por día.");
   });
 });
 
@@ -117,10 +201,12 @@ describe("nativeProductContext · el producto del panel", () => {
     // descripción. Un precio nativo es una columna que todavía no existe.
     const contexto = nativeProductContext({
       name: "Combo Vorare",
+      salesBrief: null,
       description: "Dos serums y un tónico.",
     });
     expect(contexto).toEqual({
       name: "Combo Vorare",
+      salesBrief: null,
       description: "Dos serums y un tónico.",
       price: null,
       variants: [],
@@ -128,8 +214,12 @@ describe("nativeProductContext · el producto del panel", () => {
   });
 
   it("una fila sin nombre no produce ficha", () => {
-    expect(nativeProductContext({ name: null, description: "algo" })).toBeNull();
-    expect(nativeProductContext({ name: "  ", description: null })).toBeNull();
+    expect(
+      nativeProductContext({ name: null, salesBrief: null, description: "algo" }),
+    ).toBeNull();
+    expect(
+      nativeProductContext({ name: "  ", salesBrief: null, description: null }),
+    ).toBeNull();
   });
 });
 

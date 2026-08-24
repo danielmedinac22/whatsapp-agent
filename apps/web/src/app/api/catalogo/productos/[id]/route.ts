@@ -1,5 +1,5 @@
 import { auth } from "@/auth";
-import { deleteProduct, updateNativeProduct } from "@wa/db";
+import { deleteProduct, setSalesBrief, updateNativeProduct } from "@wa/db";
 import { resolvePanelOperation } from "@/lib/operation";
 
 /**
@@ -8,6 +8,14 @@ import { resolvePanelOperation } from "@/lib/operation";
  * El id llega de la URL, o sea de afuera. Quien decide si se puede tocar es el
  * accesor, que resuelve `null` para un producto de otra operación —y lanza
  * sobre uno conectado, porque **el panel no escribe sobre la tienda**.
+ *
+ * **La ficha de venta viaja por su propio accesor y esa separación es la
+ * regla, no una comodidad.** `updateNativeProduct` se sigue negando a tocar un
+ * producto conectado, que es lo correcto para nombre, descripción y precio:
+ * guardar acá una copia de lo que vive en la tienda es la desincronización
+ * silenciosa que la `0022` prohibió. `sales_brief` no es una copia —en Shopify
+ * no existe— así que se puede escribir sobre cualquier fuente sin abrirle un
+ * agujero a esa regla. Mezclarlos en un solo accesor habría exigido relajarla.
  */
 export async function PATCH(
   req: Request,
@@ -26,10 +34,26 @@ export async function PATCH(
      * dejar escalando a un asesor, que es el estado seguro.
      */
     price?: string | number | null;
+    /** Ausente no la toca; la cadena vacía la borra y devuelve al producto a leer la tienda. */
+    salesBrief?: string | null;
   };
 
   try {
-    const product = await updateNativeProduct(await resolvePanelOperation(), id, {
+    const op = await resolvePanelOperation();
+
+    // Primero la ficha: es lo único que un producto conectado acepta, y si va
+    // después, el `throw` de `updateNativeProduct` se la lleva por delante.
+    if (body.salesBrief !== undefined) {
+      await setSalesBrief(op, id, body.salesBrief);
+    }
+
+    const tocaLoDeLaFuente =
+      body.name !== undefined ||
+      body.description !== undefined ||
+      body.price !== undefined;
+    if (!tocaLoDeLaFuente) return Response.json({ ok: true, id });
+
+    const product = await updateNativeProduct(op, id, {
       ...(body.name !== undefined ? { name: body.name } : {}),
       ...(body.description !== undefined
         ? { description: body.description }

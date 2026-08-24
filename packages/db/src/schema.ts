@@ -1043,6 +1043,24 @@ export const products = pgTable(
     name: text("name"),
     description: text("description"),
     /**
+     * **Lo que el equipo quiere que el vendedor sepa del producto.**
+     *
+     * No es una copia de nada, y por eso se puede escribir también sobre un
+     * producto conectado sin romper la regla de que el panel no escribe sobre
+     * la tienda (`0022`): en Shopify **este dato no existe**. La descripción de
+     * la tienda es el cuerpo de una página de venta —ofertas, sellos, reseñas,
+     * instrucciones para tocar un botón que en WhatsApp no hay—; esto es la
+     * ficha que un asesor tendría a mano.
+     *
+     * Cuando está, es **lo único** que el vendedor lee del producto: la
+     * descripción de la tienda no se suma. Sumarlas dejaría al equipo sin
+     * saber nunca si su ficha alcanza, que es el estado del que veníamos.
+     *
+     * Nula es el estado normal y no un pendiente: sin ficha, el vendedor lee la
+     * descripción de la tienda limpia, que es lo que hace hoy.
+     */
+    salesBrief: text("sales_brief"),
+    /**
      * **Solo para los nativos** (`0028`). Un producto conectado no tiene precio
      * acá y no puede tenerlo: el suyo vive en la tienda y se lee en tiempo de
      * uso, y una copia local sería la desincronización silenciosa que

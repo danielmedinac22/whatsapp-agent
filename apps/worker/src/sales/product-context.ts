@@ -17,6 +17,21 @@
  * - **Nativo** (`source = 'native'`): sale del panel, o sea de la fila de
  *   `products`. No hay tienda a la que preguntarle.
  *
+ * **Y dos textos posibles, que no es lo mismo que dos fuentes.** Lo que la
+ * tienda tiene no es una ficha técnica: es el cuerpo de una página de venta,
+ * con su carrusel de ofertas, su marquesina de sellos repetida para la
+ * animación, sus reseñas y sus instrucciones para tocar un botón que en
+ * WhatsApp no existe. Por eso hay un segundo texto —`products.sales_brief`, la
+ * ficha que escribe el equipo— y **cuando está, gana**: la descripción de la
+ * tienda deja de entrar. No se suman a propósito. Con las dos presentes, una
+ * ficha a medias se leería igual de bien que una completa porque la landing le
+ * taparía el hueco, y el equipo no se enteraría nunca de cuál escribió.
+ *
+ * Mientras no haya ficha se lee la landing, pero limpia (`texto-vendible.ts`) y
+ * con el aviso de qué es. Las dos cosas hacen falta y ninguna reemplaza a la
+ * otra: una regla borra las formas de ruido que anticipamos, y la frase que le
+ * dice al modelo que está leyendo una página web cubre las que no.
+ *
  * **Si no hay producto identificado, no hay bloque.** Devolver `null` es lo que
  * hace verdadera la frase del ticket: mientras el producto no esté
  * identificado, Sebastián conversa sin contexto de producto y sin inventarlo.
@@ -44,13 +59,21 @@ import {
   type Operation,
   type Product,
 } from "@wa/db";
-import { mediaKind } from "@wa/shared";
+import { mediaKind, TOPE_DE_TEXTO_DEL_PRODUCTO } from "@wa/shared";
 import { db } from "../db";
 import { logger } from "../lib/logger";
 import { getProductsByIds, type ShopifyProduct } from "../shopify/admin";
+import { textoVendible } from "./texto-vendible";
 
-/** Igual que en el bloque de postventa: la descripción larga se recorta. */
-const DESCRIPTION_MAX_CHARS = 800;
+/**
+ * El tope, que vive en `@wa/shared` porque el panel lo muestra mientras se
+ * escribe la ficha. Ahí está por qué es ese número y por qué 800 era el bug.
+ *
+ * **El tope no es la solución, es el piso.** La solución es que el equipo
+ * escriba la ficha de venta (`products.sales_brief`), que entra sin landing
+ * alrededor. Este número es lo que se lee mientras eso no exista.
+ */
+const DESCRIPTION_MAX_CHARS = TOPE_DE_TEXTO_DEL_PRODUCTO;
 
 /** Cuántas variantes disponibles caben antes de que dejen de informar. */
 const MAX_VARIANTS = 8;
@@ -62,6 +85,13 @@ const MAX_VARIANTS = 8;
  */
 export interface ProductContext {
   name: string;
+  /**
+   * Lo que el equipo escribió para el vendedor, si lo escribió. **Gana sobre
+   * `description`**: cuando está, la descripción de la tienda no entra al
+   * prompt. Ver `products.sales_brief`.
+   */
+  salesBrief: string | null;
+  /** El cuerpo de la página de venta de la tienda. Crudo: acá se limpia. */
   description: string | null;
   /** Ya formateado («199 GTQ» o un rango). `null` si la fuente no da precio. */
   price: string | null;
@@ -81,10 +111,45 @@ function formatPrice(amount: string | null, currency: string | null): string {
 }
 
 /**
+ * De dónde salió el texto del producto, que es lo que cambia cómo hay que
+ * leerlo. `null` cuando no hay texto de ninguna de las dos.
+ */
+type FuenteDelTexto = "ficha" | "tienda";
+
+/**
+ * El texto del producto y de dónde salió. **La ficha del equipo gana.**
+ *
+ * No se suman a propósito, y es la decisión de diseño del cambio. Con las dos
+ * presentes el modelo tendría más material y el equipo tendría menos: una ficha
+ * a medias se leería igual de bien que una completa, porque la landing taparía
+ * el hueco, y nadie se enteraría de cuál escribió. Reemplazar hace que la ficha
+ * se note — para bien y para mal, que es la única forma de que se corrija.
+ */
+function textoDelProducto(
+  product: ProductContext,
+): { fuente: FuenteDelTexto; texto: string } | null {
+  const ficha = product.salesBrief?.trim();
+  if (ficha) return { fuente: "ficha", texto: truncate(ficha, DESCRIPTION_MAX_CHARS) };
+
+  const tienda = product.description?.trim();
+  if (!tienda) return null;
+  // Limpiar **antes** de recortar: si el tope cayera sobre el texto crudo, los
+  // caracteres se los seguirían llevando la marquesina y las reseñas.
+  const limpio = textoVendible(tienda);
+  if (!limpio) return null;
+  return { fuente: "tienda", texto: truncate(limpio, DESCRIPTION_MAX_CHARS) };
+}
+
+/**
  * El bloque, dado el producto. **Puro.**
  *
- * La última línea no es de adorno: es la única defensa contra que el modelo
- * complete con especificaciones plausibles el hueco que la ficha no llena.
+ * El cierre no es de adorno: es la única defensa contra que el modelo complete
+ * con especificaciones plausibles el hueco que la ficha no llena. Y cuando lo
+ * que se leyó es la página de la tienda, lleva además el aviso de **qué** se
+ * leyó, que es lo que ninguna regla de limpieza puede reemplazar: una landing
+ * le habla a alguien que la está mirando en un navegador, y quien escribe está
+ * en WhatsApp. Decirle al modelo qué tiene delante cubre las formas de landing
+ * que no anticipamos; borrar líneas solo cubre las que sí.
  */
 export function renderProductContextBlock(product: ProductContext): string {
   const lines: string[] = [];
@@ -95,11 +160,24 @@ export function renderProductContextBlock(product: ProductContext): string {
   if (variants.length > 0) {
     lines.push(`Presentaciones disponibles: ${variants.join(", ")}`);
   }
-  const description = product.description?.trim();
-  if (description) {
-    lines.push(`Descripción y especificaciones: ${truncate(description, DESCRIPTION_MAX_CHARS)}`);
+
+  const texto = textoDelProducto(product);
+  if (texto) {
+    lines.push("");
+    lines.push(
+      texto.fuente === "ficha"
+        ? "Ficha del producto, escrita por el equipo para que la uses al vender:"
+        : "Descripción del producto, copiada de su página de venta:",
+    );
+    lines.push(texto.texto);
   }
+
   lines.push("");
+  if (texto?.fuente === "tienda") {
+    lines.push(
+      "Ese texto es el de una página web y le habla a alguien que la está viendo: esta persona está en WhatsApp y no la tiene delante. No le hables de botones, barras ni de «la página», no la mandes a hacer clic en nada, y no repitas comentarios de otros clientes como si fueran datos del producto.",
+    );
+  }
   lines.push(
     "Es el producto del que te está escribiendo esta persona. Responde sus preguntas con esta información y solo con esta: si algo no está aquí, dile que se lo confirmas y no lo inventes.",
   );
@@ -170,6 +248,9 @@ export function shopifyProductContext(product: ShopifyProduct): ProductContext {
     : "";
   return {
     name: product.title,
+    // La ficha no viaja acá: no vive en la tienda, vive en nuestra fila. La
+    // pone `buildFicha`, que es quien tiene las dos mitades a la vista.
+    salesBrief: null,
     description: product.description || null,
     price: price || null,
     variants: product.variants
@@ -186,11 +267,14 @@ export function shopifyProductContext(product: ShopifyProduct): ProductContext {
  * precio nativo es una columna que todavía no está, no un dato que este archivo
  * pueda deducir.
  */
-export function nativeProductContext(row: Pick<Product, "name" | "description">): ProductContext | null {
+export function nativeProductContext(
+  row: Pick<Product, "name" | "description" | "salesBrief">,
+): ProductContext | null {
   const name = row.name?.trim();
   if (!name) return null;
   return {
     name,
+    salesBrief: row.salesBrief,
     description: row.description,
     price: null,
     variants: [],
@@ -274,5 +358,12 @@ async function buildFicha(
     );
     return null;
   }
-  return renderProductContextBlock(shopifyProductContext(live));
+  // La ficha de venta es **nuestra**, no de la tienda: se pega acá, donde están
+  // a la vista las dos mitades. Es lo único de la fila que se usa en un
+  // producto conectado, y no contradice «el panel no escribe sobre la tienda»
+  // porque este campo en Shopify no existe.
+  return renderProductContextBlock({
+    ...shopifyProductContext(live),
+    salesBrief: row.salesBrief,
+  });
 }

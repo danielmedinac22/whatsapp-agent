@@ -496,6 +496,37 @@ export async function updateNativeProduct(
   return row;
 }
 
+/**
+ * Escribe (o borra) la ficha de venta de un producto. **De cualquier fuente.**
+ *
+ * Es el único accesor que toca un producto conectado, y no contradice a
+ * {@link updateNativeProduct}: lo que aquella protege es que el panel no
+ * guarde **una copia** de lo que vive en la tienda, porque una copia se
+ * desincroniza sin avisar. `sales_brief` no copia nada — en Shopify este campo
+ * no existe. Es lo que el equipo quiere que el vendedor sepa, que es
+ * precisamente lo que la landing no dice.
+ *
+ * La cadena vacía **borra** la ficha, igual que con el precio: quitarla es una
+ * corrección legítima y devuelve el producto a leer la descripción de la
+ * tienda, que es el estado de partida y no una avería.
+ */
+export async function setSalesBrief(
+  op: Operation,
+  productId: string,
+  brief: string | null,
+): Promise<Product> {
+  const current = await getProduct(op, productId);
+  if (!current) throw new Error("el producto no existe en esta operación");
+
+  const [row] = await getDb()
+    .update(products)
+    .set({ salesBrief: brief?.trim() || null, updatedAt: new Date() })
+    .where(and(eq(products.operationId, op.id), eq(products.id, productId)))
+    .returning();
+  if (!row) throw new Error("el producto no existe en esta operación");
+  return row;
+}
+
 /** Saca un producto del catálogo. Sus mapeos se van con él (`cascade`). */
 export async function deleteProduct(
   op: Operation,

@@ -53,6 +53,16 @@ if (process.env.DATABASE_PUBLIC_URL) {
 el dashboard cruza el país. Por eso una consulta de más en un render cuesta
 mucho más de lo que el número de milisegundos local sugiere.
 
+**La descripción de un producto de Shopify no es una ficha: es una landing.**
+Trae el carrusel de ofertas, la marquesina de sellos repetida para la animación,
+las reseñas y las instrucciones para tocar un botón que solo existe en el
+navegador. Las dos de Vorare miden 5.821 y 4.069 caracteres de texto plano, y lo
+que sirve para contestar —dosis, ficha, contraindicaciones— vive **al final**:
+en el REVITALHAIR la dosis empieza en el carácter 2.603 y las contraindicaciones
+en el 4.565. Un tope de caracteres corta justo lo útil, porque una landing abre
+vendiendo. Lo que el vendedor lee del producto es `products.sales_brief` —la
+ficha que escribe el equipo— y solo si no hay, la landing limpia.
+
 **La credencial de Shopify caduca.** No hay token fijo: se acuña cada 24 horas.
 Preguntar por la columna vieja devuelve un valor que miente.
 
