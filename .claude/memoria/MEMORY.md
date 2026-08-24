@@ -28,3 +28,5 @@
 - [La fila implícita se come el min-h-0](la-fila-implicita-se-come-el-min-h-0.md) — la retícula sin `grid-rows` scrollea la pantalla entera, y los datos sembrados lo escondían
 - [El resaltado invisible de la selección](el-resaltado-invisible-de-la-seleccion.md) — «no deja copiar» era `::selection` del mismo hex que la burbuja
 - [El panel no ve caerse al agente](el-panel-no-ve-caerse-al-agente.md) — «sin responder» exige agent_mode=false: la caída del agente es justo lo que no puede ver
+- [Verificar sin entrar al panel](verificar-sin-entrar-al-panel.md) — el login bloquea la vista, no la comprobación: las rutas del panel son proxies al worker
+- [El migrador contra prod lo corre el usuario](el-migrador-contra-prod-lo-corre-el-usuario.md) — el clasificador lo bloquea; los deploys no, y el orden columna→deploy no es opcional
