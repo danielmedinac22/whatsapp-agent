@@ -183,8 +183,17 @@ export function entrante(
 /** Lo que el hilo va a encontrar cuando pida los mensajes de la conversación. */
 export type HiloServido = {
   messages: Array<Record<string, unknown>>;
+  hasMore?: boolean;
   events?: unknown[];
   sellerName?: string;
+  /**
+   * Las páginas de más arriba, por cursor (`?before=`). Un cursor sin página
+   * contesta vacío; `null` contesta un error, como una red que se cae.
+   */
+  anteriores?: Record<
+    string,
+    { messages: Array<Record<string, unknown>>; hasMore: boolean } | null
+  >;
 };
 
 export type RedFingida = {
@@ -251,7 +260,14 @@ export function montarRed(): RedFingida {
 
       const hilo = url.match(/\/api\/conversations\/([^/]+)\/messages/);
       if (hilo) {
-        return respuesta(red.hilos[hilo[1]!] ?? { messages: [], events: [] });
+        const servido = red.hilos[hilo[1]!];
+        const before = new URL(url, "http://panel").searchParams.get("before");
+        if (before !== null) {
+          const pagina = servido?.anteriores?.[before];
+          if (pagina === null) return respuesta({ error: "caída" }, false);
+          return respuesta(pagina ?? { messages: [], hasMore: false });
+        }
+        return respuesta(servido ?? { messages: [], events: [] });
       }
 
       const guionada = red.respuestas.find((r) => url.includes(r.url));

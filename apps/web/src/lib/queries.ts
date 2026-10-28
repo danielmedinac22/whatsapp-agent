@@ -1505,23 +1505,57 @@ export async function getConversationById(op: Operation, id: string) {
  * conversación— pero el id llega desde la URL, así que la pertenencia se
  * verifica igual: sin esto, pegar el id de una conversación colombiana en la
  * URL abre el historial completo del cliente.
+ *
+ * **Se lee desde el final, de a {@link MENSAJES_POR_PAGINA}.** Antes ordenaba
+ * ascendente y cortaba en 200: en un chat largo lo que quedaba fuera eran los
+ * mensajes **más nuevos**, que se enviaban y se registraban pero no se veían.
+ * Ahora se pide descendente con uno de más —ese uno es el que dice si queda
+ * algo arriba— y se da vuelta para pintar en orden.
+ *
+ * `before` es el id del mensaje más viejo que el hilo ya tiene. El corte se
+ * hace sobre el par `(created_at, id)` con la fila del cursor leída **en la
+ * base**, no con una fecha que viaje por la URL: `created_at` guarda
+ * microsegundos y un `Date` de JS los corta a milisegundos, así que dos
+ * mensajes del mismo milisegundo se saltarían. El id desempata. Un cursor que
+ * no es de esta conversación —o de esta operación— no encuentra fila, la
+ * comparación da `null` y la página sale vacía.
  */
 export async function listMessages(
   op: Operation,
   conversationId: string,
-  limit = 200,
-) {
-  return db
+  { before }: { before?: string } = {},
+): Promise<{ messages: (typeof messages.$inferSelect)[]; hasMore: boolean }> {
+  const filas = await db
     .select()
     .from(messages)
     .where(
       and(
         eq(messages.conversationId, conversationId),
         throughConversationOfOperation(op, messages.conversationId),
+        before
+          ? sql`(${messages.createdAt}, ${messages.id}) < (
+              select ${messages.createdAt}, ${messages.id} from ${messages}
+              where ${messages.id} = ${before}
+                and ${messages.conversationId} = ${conversationId}
+                and ${throughConversationOfOperation(op, messages.conversationId)}
+            )`
+          : undefined,
       ),
     )
-    .orderBy(asc(messages.createdAt))
-    .limit(limit);
+    .orderBy(desc(messages.createdAt), desc(messages.id))
+    .limit(MENSAJES_POR_PAGINA + 1);
+  return {
+    messages: filas.slice(0, MENSAJES_POR_PAGINA).reverse(),
+    hasMore: filas.length > MENSAJES_POR_PAGINA,
+  };
+}
+
+/** Cuántos mensajes trae cada viaje del hilo: al abrir y al subir. */
+export const MENSAJES_POR_PAGINA = 50;
+
+/** Un cursor de mensajes válido: un uuid. Lo demás ni llega a la base. */
+export function esCursorDeMensaje(valor: string): boolean {
+  return UUID.test(valor);
 }
 
 /**

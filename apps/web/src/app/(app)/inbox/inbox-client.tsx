@@ -4,6 +4,7 @@ import {
   Fragment,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   useTransition,
@@ -25,6 +26,11 @@ import {
 import type { WaEvent } from "@wa/shared";
 import { ContextLine } from "../context-line";
 import { VoiceRecorder } from "./voice-recorder";
+import {
+  anteponerPagina,
+  mezclarVentana,
+  type HiloCargado,
+} from "./hilo-paginado";
 import { tiempoCompleto, tiempoRelativo } from "./tiempo-relativo";
 import {
   AlertCircle,
@@ -1705,6 +1711,12 @@ const SERVICE_WINDOW_MS = 24 * 60 * 60 * 1000;
  */
 const MARGEN_AL_PIE_PX = 80;
 
+/**
+ * Cuánto antes del tope del hilo se piden los mensajes anteriores. Pedirlos al
+ * llegar al píxel cero deja al asesor mirando el borde mientras cargan.
+ */
+const MARGEN_AL_TOPE_PX = 80;
+
 type WindowState = "open" | "closed" | "unknown";
 
 /** Estado de la ventana de 24h de Meta. `unknown` (sin inbound registrado) no
@@ -1790,7 +1802,18 @@ function ConversationPane({
   // Solo para volver: en el teléfono el hilo tapa la lista, y salir es
   // retroceder en el historial, que es donde `?c=` ya está escrito.
   const router = useRouter();
-  const [msgs, setMsgs] = useState<Msg[]>([]);
+  /**
+   * Los mensajes cargados y si queda algo más arriba. Van juntos porque la
+   * mezcla de la ventana reciente decide los dos a la vez (ver
+   * `hilo-paginado.ts`).
+   */
+  const [hilo, setHilo] = useState<HiloCargado<Msg>>({
+    msgs: [],
+    hasMore: false,
+  });
+  const msgs = hilo.msgs;
+  const [cargandoMas, setCargandoMas] = useState(false);
+  const [falloAnteriores, setFalloAnteriores] = useState(false);
   const [events, setEvents] = useState<WireEvent[]>([]);
   const [seller, setSeller] = useState<string>("El vendedor");
   const [text, setText] = useState("");
@@ -1809,6 +1832,15 @@ function ConversationPane({
    * un hilo recién abierto se lee desde el final, como en WhatsApp.
    */
   const alPieRef = useRef(true);
+  /** Si el hilo ya se bajó al pie al abrir. Pasa una sola vez por chat. */
+  const abiertoRef = useRef(false);
+  /** Dónde estaba la vista justo antes de anteponer una página. */
+  const anclaRef = useRef<{ alto: number; top: number } | null>(null);
+  /** La próxima actualización es una página anterior: no bajar al pie. */
+  const anteponiendoRef = useRef(false);
+  const cargandoRef = useRef(false);
+  /** El último cursor pedido. El mismo no se pide dos veces. */
+  const cursorPedidoRef = useRef<string | null>(null);
 
   // La ventana se calcula con el inbound más reciente que conozcamos: el de la
   // lista del servidor o uno recién llegado por SSE a este hilo.
@@ -1823,6 +1855,16 @@ function ConversationPane({
       .sort()
       .at(-1) ?? null;
   const windowState = windowStateOf(effectiveLastInbound);
+
+  // Los eventos de venta llegan todos con la primera página. Mientras quede
+  // historial sin cargar, los anteriores al primer mensaje visible se guardan:
+  // pintados arriba del todo quedarían pegados a mensajes que no son los suyos.
+  const desdeVisible =
+    hilo.hasMore && msgs[0] ? Date.parse(msgs[0].createdAt) : null;
+  const eventosVisibles =
+    desdeVisible === null
+      ? events
+      : events.filter((e) => Date.parse(e.at) >= desdeVisible);
 
   const reopenOptions = buildReopenOptions({
     contactName: chat.name.startsWith("+") ? null : chat.name,
@@ -1869,6 +1911,12 @@ function ConversationPane({
    * leyendo, no me muevas».
    */
   useEffect(() => {
+    // Anteponer mensajes viejos no es tráfico nuevo: ahí la vista la sostiene
+    // el ancla de abajo, y bajar al pie la arrancaría de lo que se está leyendo.
+    if (anteponiendoRef.current) {
+      anteponiendoRef.current = false;
+      return;
+    }
     if (!alPieRef.current) return;
     const el = scrollRef.current;
     // `scrollTo` no existe en todos los entornos donde este componente se
@@ -1877,12 +1925,96 @@ function ConversationPane({
     el?.scrollTo?.({ top: el.scrollHeight, behavior: "smooth" });
   }, [msgs, events]);
 
+  /**
+   * Dos saltos que tienen que pasar **antes de pintar**, o se ve el parpadeo:
+   *
+   * - Al abrir, el hilo arranca al pie de golpe. Bajar con animación pasaría
+   *   por el tope y pediría la página anterior sin que nadie subiera.
+   * - Al anteponer una página, el contenido crece por arriba. El contenedor
+   *   lleva `overflow-anchor: none` —el navegador no compensa por su cuenta,
+   *   y no todos lo hacen igual—, así que se compensa acá: la distancia al
+   *   fondo queda igual y lo que se estaba leyendo no se mueve.
+   */
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const ancla = anclaRef.current;
+    if (ancla) {
+      anclaRef.current = null;
+      el.scrollTop = ancla.top + (el.scrollHeight - ancla.alto);
+      return;
+    }
+    if (!abiertoRef.current && msgs.length > 0) {
+      abiertoRef.current = true;
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [msgs]);
+
+  /**
+   * Pedir la página anterior a la del mensaje más viejo cargado.
+   *
+   * Dos guardas: una petición a la vez, y **nunca dos veces el mismo cursor**.
+   * La segunda es la que impide el bucle: si la petición falla, el cursor no
+   * cambia y el siguiente evento de scroll volvería a pedirla sin fin. Tras un
+   * fallo se reintenta solo con el botón.
+   */
+  const cargarAnteriores = async () => {
+    const cursor = msgs[0]?.id;
+    if (!cursor || !hilo.hasMore || cargandoRef.current) return;
+    if (cursorPedidoRef.current === cursor) return;
+    cursorPedidoRef.current = cursor;
+    cargandoRef.current = true;
+    setCargandoMas(true);
+    setFalloAnteriores(false);
+    let pagina: HiloCargado<Msg> | null = null;
+    try {
+      const r = await fetch(
+        `/api/conversations/${chat.id}/messages?before=${encodeURIComponent(cursor)}`,
+        { cache: "no-store" },
+      );
+      if (r.ok) {
+        const j = (await r.json()) as { messages: Msg[]; hasMore?: boolean };
+        pagina = { msgs: j.messages, hasMore: Boolean(j.hasMore) };
+      }
+    } catch {
+      // Se trata igual que una respuesta fallida.
+    }
+    cargandoRef.current = false;
+    setCargandoMas(false);
+    if (!pagina) {
+      setFalloAnteriores(true);
+      return;
+    }
+    const el = scrollRef.current;
+    if (el) anclaRef.current = { alto: el.scrollHeight, top: el.scrollTop };
+    anteponiendoRef.current = true;
+    const nueva = pagina;
+    setHilo((prev) => anteponerPagina(prev, nueva));
+  };
+
+  const reintentarAnteriores = () => {
+    cursorPedidoRef.current = null;
+    void cargarAnteriores();
+  };
+
   const anotarSiVaAlPie = () => {
     const el = scrollRef.current;
     if (!el) return;
     alPieRef.current =
       el.scrollHeight - el.scrollTop - el.clientHeight <= MARGEN_AL_PIE_PX;
+    if (el.scrollTop < MARGEN_AL_TOPE_PX) void cargarAnteriores();
   };
+
+  /**
+   * Un hilo cuya primera página no llena la pantalla no tiene scroll, y sin
+   * scroll no hay evento que pida la siguiente. Se pide sola.
+   */
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !hilo.hasMore || cargandoMas || falloAnteriores) return;
+    if (el.scrollHeight <= el.clientHeight) void cargarAnteriores();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hilo, cargandoMas, falloAnteriores]);
 
   /**
    * Mandar algo es volver al pie, aunque se estuviera leyendo arriba.
@@ -1902,10 +2034,14 @@ function ConversationPane({
     if (r.ok) {
       const j = (await r.json()) as {
         messages: Msg[];
+        hasMore?: boolean;
         events?: WireEvent[];
         sellerName?: string;
       };
-      setMsgs(j.messages);
+      // Mezclar, no reemplazar: cada `message.created` pasa por aquí, y
+      // reemplazar devolvería al asesor a los últimos 50 tras haber subido.
+      const ventana = { msgs: j.messages, hasMore: Boolean(j.hasMore) };
+      setHilo((prev) => mezclarVentana(prev, ventana));
       setEvents(j.events ?? []);
       if (j.sellerName) setSeller(j.sellerName);
     }
@@ -1937,11 +2073,12 @@ function ConversationPane({
           reload();
           return;
         }
-        setMsgs((prev) =>
-          prev.map((m) =>
+        setHilo((prev) => ({
+          ...prev,
+          msgs: prev.msgs.map((m) =>
             m.id === ev.messageId ? { ...m, status: ev.status } : m,
           ),
-        );
+        }));
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2130,7 +2267,8 @@ function ConversationPane({
         <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--color-text-dim)]">
           <span className="inline-flex h-7 items-center gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2">
             <MessageSquareText className="h-3.5 w-3.5" />
-            {msgs.length} mensajes
+            {msgs.length}
+            {hilo.hasMore ? "+" : ""} mensajes
           </span>
           <span className="inline-flex h-7 items-center gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2">
             <span className="h-2 w-2 rounded-full bg-[var(--color-ink)]" />
@@ -2168,9 +2306,29 @@ function ConversationPane({
         role="log"
         aria-label="Mensajes de la conversación"
         onScroll={anotarSiVaAlPie}
-        className="flex-1 space-y-2 overflow-y-auto bg-[var(--color-surface)] p-4"
+        className="flex-1 space-y-2 overflow-y-auto bg-[var(--color-surface)] p-4 [overflow-anchor:none]"
       >
-        {threadEntries(msgs, events).map((entry) =>
+        {cargandoMas && (
+          <p
+            role="status"
+            className="text-center text-xs text-[var(--color-text-dim)]"
+          >
+            Cargando mensajes anteriores…
+          </p>
+        )}
+        {falloAnteriores && (
+          <p className="text-center text-xs text-[var(--color-text-dim)]">
+            No se pudieron cargar los mensajes anteriores.{" "}
+            <button
+              type="button"
+              onClick={reintentarAnteriores}
+              className="underline"
+            >
+              Reintentar
+            </button>
+          </p>
+        )}
+        {threadEntries(msgs, eventosVisibles).map((entry) =>
           entry.kind === "event" ? (
             <SalesEventLine
               key={`ev-${entry.event.kind}-${entry.at}`}

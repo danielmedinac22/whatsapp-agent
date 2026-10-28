@@ -1,5 +1,11 @@
 import { auth } from "@/auth";
-import { getSalesContext, listMessages, markRead } from "@/lib/queries";
+import {
+  esCursorDeMensaje,
+  getConversationById,
+  getSalesContext,
+  listMessages,
+  markRead,
+} from "@/lib/queries";
 import { resolvePanelOperation } from "@/lib/operation";
 import {
   getSalesAgentSettings,
@@ -8,7 +14,7 @@ import {
 } from "@wa/db";
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const session = await auth();
@@ -17,9 +23,26 @@ export async function GET(
   // El historial de una conversación de otra operación no se sirve vacío: se
   // contesta 404. Vacío se leería como «este cliente nunca escribió».
   const op = await resolvePanelOperation();
+
+  /**
+   * `?before=<id>`: la página anterior, cuando el asesor sube por el hilo.
+   * Solo mensajes: subir a leer no es abrir el chat, así que no marca leído, y
+   * el contexto de venta ya llegó con la primera página.
+   */
+  const before = new URL(req.url).searchParams.get("before");
+  if (before !== null) {
+    if (!esCursorDeMensaje(before)) {
+      return new Response("bad cursor", { status: 400 });
+    }
+    if (!(await getConversationById(op, id))) {
+      return new Response("not found", { status: 404 });
+    }
+    return Response.json(await listMessages(op, id, { before }));
+  }
+
   const read = await markRead(op, id);
   if (!read) return new Response("not found", { status: 404 });
-  const msgs = await listMessages(op, id);
+  const { messages: msgs, hasMore } = await listMessages(op, id);
 
   /**
    * El contexto de venta va **en el mismo hilo y en las dos bandejas**: los
@@ -35,12 +58,13 @@ export async function GET(
   // existencia de la fila: con la configuración a medio llenar este hilo
   // narraba «El vendedor reconoció...» sobre un vendedor que no contesta.
   if (!salesAgentIsConfigured(seller)) {
-    return Response.json({ messages: msgs, events: [] });
+    return Response.json({ messages: msgs, hasMore, events: [] });
   }
 
   const facts = await getSalesContext(op, id);
   return Response.json({
     messages: msgs,
+    hasMore,
     events: facts ? salesThreadEvents(facts) : [],
     sellerName: seller.displayName.trim(),
   });
