@@ -45,7 +45,7 @@ const rango = (desde: number, hasta: number) =>
   Array.from({ length: hasta - desde }, (_, i) => m(desde + i));
 
 /**
- * La geometría del hilo, que jsdom no tiene: cada hijo mide 20 px y se ven
+ * La geometría del hilo, que jsdom no tiene: cada fila mide 20 px y se ven
  * 400. Con eso anteponer cambia el alto de verdad y el ancla se puede medir.
  */
 const ALTO_FILA = 20;
@@ -55,7 +55,11 @@ function instalarGeometria() {
   Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
     configurable: true,
     get(this: HTMLElement) {
-      return esHilo(this) ? this.children.length * ALTO_FILA : 0;
+      // Los avisos de carga flotan con alto cero; solo las filas del último
+      // hijo (la lista de mensajes) ocupan lugar.
+      return esHilo(this)
+        ? (this.lastElementChild?.children.length ?? 0) * ALTO_FILA
+        : 0;
     },
   });
   Object.defineProperty(HTMLElement.prototype, "clientHeight", {

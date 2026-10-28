@@ -2306,28 +2306,35 @@ function ConversationPane({
         role="log"
         aria-label="Mensajes de la conversación"
         onScroll={anotarSiVaAlPie}
-        className="flex-1 space-y-2 overflow-y-auto bg-[var(--color-surface)] p-4 [overflow-anchor:none]"
+        className="flex-1 overflow-y-auto bg-[var(--color-surface)] p-4 [overflow-anchor:none]"
       >
-        {cargandoMas && (
-          <p
-            role="status"
-            className="text-center text-xs text-[var(--color-text-dim)]"
-          >
-            Cargando mensajes anteriores…
-          </p>
-        )}
-        {falloAnteriores && (
-          <p className="text-center text-xs text-[var(--color-text-dim)]">
-            No se pudieron cargar los mensajes anteriores.{" "}
-            <button
-              type="button"
-              onClick={reintentarAnteriores}
-              className="underline"
+        {/* Los avisos de carga flotan sobre el tope del hilo con alto cero: si
+            ocuparan lugar en el flujo, el contenido bajaría su altura al
+            aparecer y, como el contenedor no compensa (`overflow-anchor:none`),
+            el lector vería un salto antes de que lleguen los mensajes. */}
+        <div className="pointer-events-none sticky top-0 z-10 h-0 overflow-visible">
+          {cargandoMas && (
+            <p
+              role="status"
+              className="mx-auto w-fit rounded-full bg-[var(--color-surface)] px-3 py-1 text-center text-xs text-[var(--color-text-dim)] shadow-sm"
             >
-              Reintentar
-            </button>
-          </p>
-        )}
+              Cargando mensajes anteriores…
+            </p>
+          )}
+          {falloAnteriores && (
+            <p className="pointer-events-auto mx-auto w-fit rounded-full bg-[var(--color-surface)] px-3 py-1 text-center text-xs text-[var(--color-text-dim)] shadow-sm">
+              No se pudieron cargar los mensajes anteriores.{" "}
+              <button
+                type="button"
+                onClick={reintentarAnteriores}
+                className="underline"
+              >
+                Reintentar
+              </button>
+            </p>
+          )}
+        </div>
+        <div className="space-y-2">
         {threadEntries(msgs, eventosVisibles).map((entry) =>
           entry.kind === "event" ? (
             <SalesEventLine
@@ -2339,6 +2346,7 @@ function ConversationPane({
             <MessageBubble key={entry.msg.id} m={entry.msg} />
           ),
         )}
+        </div>
       </div>
 
       <footer className="border-t border-[var(--color-border)] bg-[var(--color-surface)] p-3">
